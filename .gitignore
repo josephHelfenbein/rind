@@ -40,4 +40,9 @@
 # debug information files
 *.dwo
 
-.vscode/
+src/assets/shaders/compiled
+
+.DS_Store
+
+build
+bin

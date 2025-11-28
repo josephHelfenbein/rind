@@ -10,8 +10,9 @@ rind::GameInstance::GameInstance() {
     };
 
     sceneManager = std::make_unique<engine::SceneManager>(renderer.get(), std::move(scenes));
-
-
+    textureManager = std::make_unique<engine::TextureManager>(renderer.get(), "src/assets/textures/");
+    shaderManager = std::make_unique<engine::ShaderManager>(renderer.get(), "src/assets/shaders/compiled/");
+    
 }
 
 rind::GameInstance::~GameInstance() {

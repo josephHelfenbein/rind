@@ -1,0 +1,95 @@
+{
+    "configurations": [
+        {
+            "name": "Windows",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/**",
+                "${env:VK_SDK_PATH}/Include",
+                "${env:VK_SDK_PATH}/include",
+                "${env:VULKAN_SDK}/Include",
+                "${env:VULKAN_SDK}/include"
+            ],
+            "defines": [
+                "WIN32",
+                "UNICODE",
+                "_UNICODE",
+                "VK_USE_PLATFORM_WIN32_KHR",
+                "_CRT_SECURE_NO_WARNINGS"
+            ],
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "windows-msvc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/include/**",
+                    "${workspaceFolder}/src",
+                    "${env:VK_SDK_PATH}/Include",
+                    "${env:VK_SDK_PATH}/include",
+                    "${env:VULKAN_SDK}/Include",
+                    "${env:VULKAN_SDK}/include",
+                    "${env:VK_SDK_PATH}/Lib",
+                    "${env:VULKAN_SDK}/Lib"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        },
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/include/glm",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/**",
+                "/usr/include",
+                "/usr/local/include",
+                "/usr/include/freetype2",
+                "${env:VK_SDK_PATH}/Include",
+                "${env:VULKAN_SDK}/include"
+            ],
+            "defines": [
+                "VULKAN_HPP_NO_EXCEPTIONS"
+            ],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-gcc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+        },
+        {
+            "name": "macOS",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/**",
+                "/usr/local/include",
+                "/opt/homebrew/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "__APPLE__",
+                "VK_USE_PLATFORM_MACOS_MVK",
+                "VULKAN_HPP_NO_EXCEPTIONS"
+            ],
+            "compilerPath": "/usr/bin/clang++",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "macos-clang-arm64",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "macFrameworkPath": [
+                "/System/Library/Frameworks",
+                "/Library/Frameworks"
+            ]
+        }
+    ],
+    "version": 4
+}
