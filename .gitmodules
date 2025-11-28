@@ -1,0 +1,15 @@
+[submodule "include/external/glfw"]
+	path = include/external/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "include/external/stb"]
+	path = include/external/stb
+	url = https://github.com/nothings/stb.git
+[submodule "include/external/glm"]
+	path = include/external/glm
+	url = https://github.com/g-truc/glm.git
+[submodule "include/external/freetype"]
+	path = include/external/freetype
+	url = https://github.com/freetype/freetype
+[submodule "include/external/fastgltf"]
+	path = include/external/fastgltf
+	url = https://github.com/spnda/fastgltf
