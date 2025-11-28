@@ -3,9 +3,9 @@
 #include <memory>
 #include <game/GameInstance.h>
 
-std::unique_ptr<rift::GameInstance> game;
+std::unique_ptr<rind::GameInstance> game;
 
 int main() {
-    game = std::make_unique<rift::GameInstance>();
+    game = std::make_unique<rind::GameInstance>();
     return 0;
 }
