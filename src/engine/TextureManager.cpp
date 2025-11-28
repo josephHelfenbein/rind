@@ -4,28 +4,30 @@
 #include <iostream>
 
 engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string textureDirectory) : renderer(renderer) {
-    std::function<void(const std::string& directory)> scanAndLoadTextures = [&](const std::string& directory) {
+    std::function<void(const std::string& directory, std::string parentPath)> scanAndLoadTextures = [&](const std::string& directory, std::string parentPath) {
         std::vector<std::string> textureFiles = engine::scanDirectory(directory);
         for (const auto& filePath : textureFiles) {
             if (std::filesystem::is_directory(filePath)) {
-                scanAndLoadTextures(filePath);
+                scanAndLoadTextures(filePath, parentPath + std::filesystem::path(filePath).filename().string() + "-");
                 continue;
             }
             if (!std::filesystem::is_regular_file(filePath)) {
                 continue;
             }
             std::string fileName = std::filesystem::path(filePath).filename().string();
-            if (textures.find(fileName) != textures.end()) {
-                std::cout << std::format("Warning: Duplicate texture file name detected: {}. Skipping {}\n", fileName, filePath);
+            std::string textureName = parentPath + fileName;
+            if (textures.find(textureName) != textures.end()) {
+                std::cout << std::format("Warning: Duplicate texture name detected: {}. Skipping {}\n", textureName, filePath);
                 continue;
             }
             Texture texture = {
                 .path = filePath,
                 // load image data into Vulkan resources
             };
-            textures[fileName] = texture;
+            textures[textureName] = texture;
         }
     };
+    scanAndLoadTextures(textureDirectory, "");
 }
 
 engine::TextureManager::~TextureManager() {
