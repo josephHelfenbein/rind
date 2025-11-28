@@ -10,17 +10,9 @@
 namespace engine {
     class Entity {
     public:
-        Entity(EntityManager* entityManager, const std::string& name, std::string shader, int renderPass, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false) : entityManager(entityManager), name(name), shader(shader), renderPass(renderPass), transform(transform), textures(textures), isMovable(isMovable) {
-            entityManager->addEntity(name, std::make_unique<Entity>(std::move(*this)));
-            // load textures into Vulkan resources (descriptor set creation, etc.)
-        }
+        Entity(EntityManager* entityManager, const std::string& name, std::string shader, int renderPass, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
 
-        ~Entity() {
-            for (auto& child : children) {
-                delete child;
-            }
-            children.clear();
-        }
+        ~Entity();
 
         virtual void update(float deltaTime) {}
 
@@ -59,8 +51,10 @@ namespace engine {
         
         std::map<std::string, Entity*>& getEntities() { return entities; }
 
-        void addEntity(const std::string& name, std::unique_ptr<Entity> entity);
+        void addEntity(const std::string& name, Entity* entity);
         void removeEntity(const std::string& name);
+        void unregisterEntity(const std::string& name);
+        void clear();
         
         std::vector<Entity*>& getRootEntities() { return rootEntities; }
         std::vector<Entity*>& getMovableEntities() { return movableEntities; }
@@ -91,7 +85,6 @@ namespace engine {
 
     private:
         engine::Renderer* renderer;
-        std::vector<std::unique_ptr<Entity>> entityList;
 
         std::map<std::string, Entity*> entities;
         std::vector<Entity*> rootEntities;

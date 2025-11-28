@@ -1,5 +1,19 @@
 #include <engine/EntityManager.h>
 
+engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, int renderPass, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
+    : entityManager(entityManager), name(name), shader(shader), renderPass(renderPass), transform(transform), textures(textures), isMovable(isMovable) {
+    entityManager->addEntity(name, this);
+    // load textures into Vulkan resources (descriptor set creation, etc.)
+}
+
+engine::Entity::~Entity() {
+    for (auto& child : children) {
+        delete child;
+    }
+    children.clear();
+    entityManager->unregisterEntity(name);
+}
+
 void engine::Entity::updateWorldTransform() {
     glm::mat4 transform(1.0f);
     std::vector<Entity*> hierarchy;
@@ -38,25 +52,30 @@ void engine::Entity::setIsMovable(bool isMovable) {
 }
 
 engine::EntityManager::~EntityManager() {
-    for (auto& entityPtr : entityList) {
-        delete entityPtr.get();
-    }
-    entityList.clear();
+    clear();
 }
 
-void engine::EntityManager::addEntity(const std::string& name, std::unique_ptr<Entity> entity) {
-    entityList.push_back(std::move(entity));
-    entities[name] = entityList.back().get();
+void engine::EntityManager::addEntity(const std::string& name, Entity* entity) {
+    entities[name] = entity;
 
     if (entities[name]->getIsMovable()) {
-        addMovableEntry(entities[name]);
+        addMovableEntry(entity);
     }
     if (entities[name]->getParent() == nullptr) {
-        addRootEntry(entities[name]);
+        addRootEntry(entity);
     }
 }
 
 void engine::EntityManager::removeEntity(const std::string& name) {
+    auto it = entities.find(name);
+    if (it != entities.end()) {
+        Entity* entity = it->second;
+        unregisterEntity(name);
+        delete entity;
+    }
+}
+
+void engine::EntityManager::unregisterEntity(const std::string& name) {
     auto it = entities.find(name);
     if (it != entities.end()) {
         Entity* entity = it->second;
@@ -67,9 +86,15 @@ void engine::EntityManager::removeEntity(const std::string& name) {
             removeRootEntry(entity);
         }
         entities.erase(it);
-        entityList.erase(std::remove_if(entityList.begin(), entityList.end(),
-            [&](const std::unique_ptr<Entity>& e) { return e.get() == entity; }), entityList.end());
     }
+}
+
+void engine::EntityManager::clear() {
+    while (!entities.empty()) {
+        delete entities.begin()->second;
+    }
+    rootEntities.clear();
+    movableEntities.clear();
 }
 
 void engine::EntityManager::updateAll(float deltaTime) {

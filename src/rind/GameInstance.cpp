@@ -7,11 +7,11 @@ rind::GameInstance::GameInstance() {
         std::make_unique<engine::Scene>(titleScreenScene),
         std::make_unique<engine::Scene>(mainGameScene)
     };
-
-    sceneManager = std::make_unique<engine::SceneManager>(renderer.get(), std::move(scenes));
+    
+    entityManager = std::make_unique<engine::EntityManager>(renderer.get());
+    sceneManager = std::make_unique<engine::SceneManager>(renderer.get(), entityManager.get(), std::move(scenes));
     textureManager = std::make_unique<engine::TextureManager>(renderer.get(), "src/assets/textures/");
     shaderManager = std::make_unique<engine::ShaderManager>(renderer.get(), "src/assets/shaders/compiled/");
-    entityManager = std::make_unique<engine::EntityManager>(renderer.get());
 }
 
 rind::GameInstance::~GameInstance() {
@@ -19,10 +19,10 @@ rind::GameInstance::~GameInstance() {
 
 // Scenes
 
-std::function<void()> titleScreenScene = [](){
+std::function<void(engine::EntityManager*)> titleScreenScene = [](engine::EntityManager* entityManager){
     // Title screen logic here
 };
 
-std::function<void()> mainGameScene = [](){
+std::function<void(engine::EntityManager*)> mainGameScene = [](engine::EntityManager* entityManager){
     // Gameplay scene logic here
 };
