@@ -8,7 +8,7 @@ engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string t
         std::vector<std::string> textureFiles = engine::scanDirectory(directory);
         for (const auto& filePath : textureFiles) {
             if (std::filesystem::is_directory(filePath)) {
-                scanAndLoadTextures(filePath, parentPath + std::filesystem::path(filePath).filename().string() + "-");
+                scanAndLoadTextures(filePath, parentPath + std::filesystem::path(filePath).filename().string() + "_");
                 continue;
             }
             if (!std::filesystem::is_regular_file(filePath)) {

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <engine/Renderer.h>
+#include <engine/ShaderManager.h>
+#include <engine/TextureManager.h>
 #include <string>
 #include <map>
 #include <vector>
@@ -26,6 +28,18 @@ namespace engine {
 
         std::string getName() const { return name; }
         Entity* getParent() const { return parent; }
+        glm::mat4 getTransform() const { return transform; }
+        glm::mat4 getWorldTransform() const { return worldTransform; }
+        std::string getShader() const { return shader; }
+        int getRenderPass() const { return renderPass; }
+
+        const std::vector<std::string>& getTextures() const { return textures; }
+        const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
+        void setDescriptorSets(const std::vector<VkDescriptorSet>& sets) { descriptorSets = sets; }
+
+        std::vector<VkBuffer>& getUniformBuffers() { return uniformBuffers; }
+        void ensureUniformBuffers(Renderer* renderer, GraphicsShader* shader);
+        void destroyUniformBuffers(Renderer* renderer);
 
         const std::vector<Entity*>& getChildren() const { return children; }
 
@@ -37,6 +51,11 @@ namespace engine {
         glm::mat4 worldTransform;
         std::vector<std::string> textures;
         bool isMovable;
+
+        std::vector<VkDescriptorSet> descriptorSets;
+        std::vector<VkBuffer> uniformBuffers;
+        std::vector<VkDeviceMemory> uniformBuffersMemory;
+        size_t uniformBufferStride = 0;
 
         EntityManager* entityManager;
 
@@ -55,6 +74,8 @@ namespace engine {
         void removeEntity(const std::string& name);
         void unregisterEntity(const std::string& name);
         void clear();
+
+        void loadTextures();
         
         std::vector<Entity*>& getRootEntities() { return rootEntities; }
         std::vector<Entity*>& getMovableEntities() { return movableEntities; }

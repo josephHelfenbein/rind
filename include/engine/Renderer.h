@@ -63,6 +63,10 @@ namespace engine {
         class ShaderManager* getShaderManager() { return shaderManager; }
 
         std::vector<VkDescriptorSet> createDescriptorSets(class GraphicsShader* shader, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
+        std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+
+        VkDevice getDevice() { return device; }
+        uint32_t getFramesInFlight() { return MAX_FRAMES_IN_FLIGHT; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
