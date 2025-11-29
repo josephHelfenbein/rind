@@ -47,8 +47,22 @@ namespace engine {
         void registerInputManager(class InputManager* inputManager) {
             this->inputManager = inputManager;
         }
+        void registerUIManager(class UIManager* uiManager) {
+            this->uiManager = uiManager;
+        }
+        void registerTextureManager(class TextureManager* textureManager) {
+            this->textureManager = textureManager;
+        }
+        void registerShaderManager(class ShaderManager* shaderManager) {
+            this->shaderManager = shaderManager;
+        }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
+        class UIManager* getUIManager() { return uiManager; }
+        class TextureManager* getTextureManager() { return textureManager; }
+        class ShaderManager* getShaderManager() { return shaderManager; }
+
+        std::vector<VkDescriptorSet> createDescriptorSets(class GraphicsShader* shader, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -99,6 +113,9 @@ namespace engine {
 
         class EntityManager* entityManager;
         class InputManager* inputManager;
+        class UIManager* uiManager;
+        class TextureManager* textureManager;
+        class ShaderManager* shaderManager;
 
         bool cursorLocked;
 

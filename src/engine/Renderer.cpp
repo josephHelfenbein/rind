@@ -2,6 +2,9 @@
 
 #include <engine/InputManager.h>
 #include <engine/EntityManager.h>
+#include <engine/UIManager.h>
+#include <engine/TextureManager.h>
+#include <engine/ShaderManager.h>
 
 engine::Renderer::Renderer(std::string windowTitle, std::vector<RenderPass> renderPasses) : windowTitle(windowTitle), renderPasses(renderPasses) {}
 
@@ -329,6 +332,74 @@ VkImageView engine::Renderer::createImageView(VkImage image, VkFormat format, Vk
         throw std::runtime_error("Failed to create texture image view!");
     }
     return imageView;
+}
+
+std::vector<VkDescriptorSet> engine::Renderer::createDescriptorSets(GraphicsShader* shader, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers) {
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader->descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = shader->descriptorPool,
+        .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+        .pSetLayouts = layouts.data()
+    };
+    std::vector<VkDescriptorSet> descriptorSets(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate descriptor sets!");
+    }
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    bufferInfos.reserve(buffers.size());
+    imageInfos.reserve(textures.size() * MAX_FRAMES_IN_FLIGHT);
+    std::vector<VkWriteDescriptorSet> descriptorWrites;
+    descriptorWrites.reserve((textures.size() + buffers.size()) * MAX_FRAMES_IN_FLIGHT);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        for (size_t j = 0; j < textures.size(); ++j) {
+            const size_t bufferIndex = i * textures.size() + j;
+            VkBuffer bufferHandle = buffers[j];
+            if (bufferHandle == VK_NULL_HANDLE) {
+                throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");
+            }
+            bufferInfos.push_back({
+                .buffer = bufferHandle,
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            });
+            descriptorWrites.push_back({
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[i],
+                .dstBinding = static_cast<uint32_t>(j),
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &bufferInfos.back()
+            });
+        }
+        for (size_t j = 0; j < textures.size(); ++j) {
+            Texture* texture = textures[j];
+            if (!texture || !texture->imageView) {
+                throw std::runtime_error("Invalid texture provided for descriptor set creation!");
+            }
+            imageInfos.push_back({
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = texture->imageView,
+                .sampler = texture->imageSampler
+            });
+            descriptorWrites.push_back({
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[i],
+                .dstBinding = static_cast<uint32_t>(buffers.size() + j),
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pImageInfo = &imageInfos[i * textures.size() + j]
+            });
+        }
+    }
+    if (!descriptorWrites.empty()) {
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        descriptorWrites.clear();
+    }
+    return descriptorSets;
 }
 
 void engine::Renderer::createRenderPasses() {
