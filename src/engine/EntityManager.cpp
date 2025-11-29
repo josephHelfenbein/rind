@@ -51,6 +51,10 @@ void engine::Entity::setIsMovable(bool isMovable) {
     }
 }
 
+engine::EntityManager::EntityManager(engine::Renderer* renderer) : renderer(renderer) {
+    renderer->registerEntityManager(this);
+}
+
 engine::EntityManager::~EntityManager() {
     clear();
 }

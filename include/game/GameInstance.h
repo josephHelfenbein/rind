@@ -6,6 +6,7 @@
 #include <engine/ShaderManager.h>
 #include <engine/TextureManager.h>
 #include <engine/EntityManager.h>
+#include <engine/InputManager.h>
 
 namespace rind {
     class GameInstance {
@@ -18,5 +19,6 @@ namespace rind {
         std::unique_ptr<engine::ShaderManager> shaderManager;
         std::unique_ptr<engine::TextureManager> textureManager;
         std::unique_ptr<engine::EntityManager> entityManager;
+        std::unique_ptr<engine::InputManager> inputManager;
     };
 };

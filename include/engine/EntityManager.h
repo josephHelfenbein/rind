@@ -46,7 +46,7 @@ namespace engine {
 
     class EntityManager {
     public:
-        EntityManager(engine::Renderer* renderer) : renderer(renderer) {}
+        EntityManager(engine::Renderer* renderer);
         ~EntityManager();
         
         std::map<std::string, Entity*>& getEntities() { return entities; }
