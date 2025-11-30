@@ -5,7 +5,7 @@ engine::SceneManager::SceneManager(Renderer* renderer, EntityManager* entityMana
     if (scenes.empty()) {
         throw std::invalid_argument("Scenes vector cannot be empty");
     }
-    setActiveScene(0);
+    renderer->registerSceneManager(this);
 }
 
 void engine::SceneManager::setActiveScene(int index) {

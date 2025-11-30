@@ -1,6 +1,7 @@
 #pragma once
 
 #include <engine/Renderer.h>
+#include <stb/stb_image.h>
 #include <string>
 #include <map>
 
@@ -20,6 +21,8 @@ namespace engine {
     public:
         TextureManager(engine::Renderer* renderer, std::string textureDirectory);
         ~TextureManager();
+
+        void init();
         
         Texture* getTexture(const std::string& name);
         void registerTexture(const std::string& name, const Texture& texture);
@@ -27,5 +30,6 @@ namespace engine {
     private:
         std::map<std::string, Texture> textures;
         engine::Renderer* renderer;
+        std::string textureDirectory;
     };
 };

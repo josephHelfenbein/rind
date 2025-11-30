@@ -28,10 +28,16 @@ namespace engine {
             int poolMultiplier = 1;
             int vertexBitBindings = 1;
             int fragmentBitBindings = 4;
+            std::function<void(VkVertexInputBindingDescription&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
+            std::vector<uint32_t> fragmentDescriptorCounts = {};
             VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
+            VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
             bool depthWrite = true;
             VkCompareOp depthCompare = VK_COMPARE_OP_LESS;
+            bool enableDepth = true;
             VkRenderPass renderPassToUse = VK_NULL_HANDLE;
+            VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
+            int colorAttachmentCount = 1;
         } config;
 
         VkPipeline pipeline{};
@@ -65,6 +71,10 @@ namespace engine {
         void addGraphicsShader(const std::string& name, const ShaderStageInfo& vertex, const ShaderStageInfo& fragment, const GraphicsShader::Config& config = {});
 
         void addComputeShader(const std::string& name, const ShaderStageInfo& compute, const ComputeShader::Config& config = {});
+
+        void loadAllShaders();
+        void loadGraphicsShader(const std::string& name);
+        void loadComputeShader(const std::string& name);
 
         void editGraphicsShader(const std::string& name, const ShaderStageInfo& newVertex, const ShaderStageInfo& newFragment);
         void editComputeShader(const std::string& name, const ShaderStageInfo& newCompute);

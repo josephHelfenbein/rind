@@ -20,12 +20,66 @@ engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string sha
 }
 
 engine::ShaderManager::~ShaderManager() {
-    // Cleanup Vulkan resources for each shader
     for (auto& shader : graphicsShaders) {
-        // vkDestroyPipeline, vkDestroyPipelineLayout, vkDestroyDescriptorSetLayout, vkDestroyDescriptorPool, etc.
+        if (shader->pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(renderer->getDevice(), shader->pipeline, nullptr);
+        }
+        if (shader->pipelineLayout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(renderer->getDevice(), shader->pipelineLayout, nullptr);
+        }
+        if (shader->descriptorSetLayout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(renderer->getDevice(), shader->descriptorSetLayout, nullptr);
+        }
+        if (shader->descriptorPool != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(renderer->getDevice(), shader->descriptorPool, nullptr);
+        }
     }
     for (auto& shader : computeShaders) {
-        // vkDestroyPipeline, vkDestroyPipelineLayout, vkDestroyDescriptorSetLayout, vkDestroyDescriptorPool, etc.
+        if (shader->pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(renderer->getDevice(), shader->pipeline, nullptr);
+        }
+        if (shader->pipelineLayout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(renderer->getDevice(), shader->pipelineLayout, nullptr);
+        }
+        if (shader->descriptorSetLayout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(renderer->getDevice(), shader->descriptorSetLayout, nullptr);
+        }
+        if (shader->descriptorPool != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(renderer->getDevice(), shader->descriptorPool, nullptr);
+        }
+    }
+}
+
+void engine::ShaderManager::loadAllShaders() {
+    for (const auto& [name, shader] : graphicsShaderMap) {
+        loadGraphicsShader(name);
+    }
+    for (const auto& [name, shader] : computeShaderMap) {
+        loadComputeShader(name);
+    }
+}
+
+void engine::ShaderManager::loadGraphicsShader(const std::string& name) {
+    auto it = graphicsShaderMap.find(name);
+    if (it != graphicsShaderMap.end()) {
+        GraphicsShader* shader = it->second;
+        renderer->createGraphicsDescriptorSetLayout(*shader);
+        renderer->createGraphicsPipeline(*shader);
+        renderer->createGraphicsDescriptorPool(*shader);
+    } else {
+        std::cout << std::format("Warning: Graphics shader {} not found.\n", name);
+    }
+}
+
+void engine::ShaderManager::loadComputeShader(const std::string& name) {
+    auto it = computeShaderMap.find(name);
+    if (it != computeShaderMap.end()) {
+        ComputeShader* shader = it->second;
+        renderer->createComputeDescriptorSetLayout(*shader);
+        renderer->createComputePipeline(*shader);
+        renderer->createComputeDescriptorPool(*shader);
+    } else {
+        std::cout << std::format("Warning: Compute shader {} not found.\n", name);
     }
 }
 
@@ -36,8 +90,6 @@ void engine::ShaderManager::addGraphicsShader(const std::string& name, const Sha
         .fragment = fragment,
         .config = config
     });
-
-    // update shader pipeline
 
     graphicsShaderMap[name] = shader.get();
     graphicsShaders.push_back(std::move(shader));
@@ -50,8 +102,6 @@ void engine::ShaderManager::addComputeShader(const std::string& name, const Shad
         .config = config
     });
 
-    // update shader pipeline
-
     computeShaderMap[name] = shader.get();
     computeShaders.push_back(std::move(shader));
 }
@@ -61,8 +111,7 @@ void engine::ShaderManager::editGraphicsShader(const std::string& name, const Sh
     if (shader) {
         shader->vertex = newVertex;
         shader->fragment = newFragment;
-
-        // update shader pipeline
+        loadGraphicsShader(name);
     }
 }
 
@@ -70,8 +119,7 @@ void engine::ShaderManager::editComputeShader(const std::string& name, const Sha
     auto shader = getComputeShader(name);
     if (shader) {
         shader->compute = newCompute;
-
-        // update shader pipeline
+        loadComputeShader(name);
     }
 }
 

@@ -56,14 +56,78 @@ namespace engine {
         void registerShaderManager(class ShaderManager* shaderManager) {
             this->shaderManager = shaderManager;
         }
+        void registerSceneManager(class SceneManager* sceneManager) {
+            this->sceneManager = sceneManager;
+        }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
         class TextureManager* getTextureManager() { return textureManager; }
         class ShaderManager* getShaderManager() { return shaderManager; }
+        class SceneManager* getSceneManager() { return sceneManager; }
 
         std::vector<VkDescriptorSet> createDescriptorSets(class GraphicsShader* shader, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
         std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+        std::pair<VkImage, VkDeviceMemory> createImage(
+            uint32_t width,
+            uint32_t height,
+            uint32_t mipLevels,
+            VkSampleCountFlagBits samples,
+            VkFormat format,
+            VkImageTiling tiling,
+            VkImageUsageFlags usage,
+            VkMemoryPropertyFlags properties,
+            uint32_t arrayLayers,
+            VkImageCreateFlags flags = 0
+        );
+        VkImageView createImageView(
+            VkImage image,
+            VkFormat format,
+            VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT,
+            uint32_t mipLevels = 1,
+            VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D,
+            uint32_t layerCount = 1
+        );
+        void transitionImageLayout(
+            VkImage image,
+            VkFormat format,
+            VkImageLayout oldLayout,
+            VkImageLayout newLayout,
+            uint32_t mipLevels,
+            uint32_t layerCount = 1
+        );
+        void copyBufferToImage(
+            VkBuffer buffer,
+            VkImage image,
+            uint32_t width,
+            uint32_t height,
+            uint32_t layerCount = 1
+        );
+        VkSampler createTextureSampler(
+            VkFilter magFilter,
+            VkFilter minFilter,
+            VkSamplerMipmapMode mipmapMode,
+            VkSamplerAddressMode addressModeU,
+            VkSamplerAddressMode addressModeV,
+            VkSamplerAddressMode addressModeW,
+            float mipLodBias,
+            VkBool32 anisotropyEnable,
+            float maxAnisotropy,
+            VkBool32 compareEnable,
+            VkCompareOp compareOp,
+            float minLod,
+            float maxLod,
+            VkBorderColor borderColor,
+            VkBool32 unnormalizedCoordinates
+        );
+
+        void createGraphicsDescriptorSetLayout(GraphicsShader& shader);
+        void createGraphicsPipeline(GraphicsShader& shader);
+        void createGraphicsDescriptorPool(GraphicsShader& shader);
+
+        void createComputeDescriptorSetLayout(class ComputeShader& shader);
+        void createComputePipeline(class ComputeShader& shader);
+        void createComputeDescriptorPool(class ComputeShader& shader);
 
         VkDevice getDevice() { return device; }
         uint32_t getFramesInFlight() { return MAX_FRAMES_IN_FLIGHT; }
@@ -106,6 +170,10 @@ namespace engine {
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHR surface;
         int msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+        bool framebufferResized = false;
+
+        float deltaTime = 0.0f;
+        float lastFrameTime = 0.0f;
 
         VkQueue graphicsQueue;
         VkQueue presentQueue;
@@ -114,12 +182,26 @@ namespace engine {
         VkFormat swapChainImageFormat;
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
+        VkCommandPool commandPool;
+        VkSampler mainTextureSampler;
+
+        std::vector<VkFence> inFlightFences;
+        std::vector<VkSemaphore> imageAvailableSemaphores;
+        std::vector<VkSemaphore> renderFinishedSemaphores;
+        std::vector<VkCommandBuffer> commandBuffers;
+        VkImage colorImage;
+        VkDeviceMemory colorImageMemory;
+        VkImageView colorImageView;
+        VkImage depthImage;
+        VkDeviceMemory depthImageMemory;
+        VkImageView depthImageView;
 
         class EntityManager* entityManager;
         class InputManager* inputManager;
         class UIManager* uiManager;
         class TextureManager* textureManager;
         class ShaderManager* shaderManager;
+        class SceneManager* sceneManager;
 
         bool cursorLocked;
 
@@ -132,17 +214,23 @@ namespace engine {
         void createImageViews();
         void createRenderPasses();
         void createCommandPool();
-        void createTextureSamplers();
+        void createMainTextureSampler();
         void createFinalDescriptorSets();
         void createColorResources();
         void createDepthResources();
         void createCommandBuffers();
         void createSyncObjects();
 
+        void drawFrame();
+
+        VkCommandBuffer beginSingleTimeCommands();
+        void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+        void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
+        VkShaderModule createShaderModule(const std::vector<char>& code);
+
         std::vector<RenderPass> renderPasses;
 
-        std::pair<VkImage, VkDeviceMemory> createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, uint32_t arrayLayers, VkImageCreateFlags flags = 0);
-        VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT, uint32_t mipLevels = 1, VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D, uint32_t layerCount = 1);
         void recreateSwapChain();
 
         bool enableValidationLayers = false;
@@ -154,7 +242,7 @@ namespace engine {
         void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 
 
-        VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
+        static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
             std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
             return VK_FALSE;
         }
@@ -180,6 +268,8 @@ namespace engine {
         VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
         int rateDeviceSuitability(VkPhysicalDevice device);
         VkSampleCountFlagBits getMaxUsableSampleCount();
+        VkFormat findDepthFormat();
+        VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
         static void processInput(GLFWwindow* window);
         static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
