@@ -83,21 +83,11 @@ void engine::TextureManager::init() {
                 format = VK_FORMAT_R8G8B8A8_SRGB;
                 pixelSize = static_cast<VkDeviceSize>(texWidth) * static_cast<VkDeviceSize>(texHeight) * 4 * sizeof(uint8_t);
             }
-            VkBuffer stagingBuffer;
-            VkDeviceMemory stagingBufferMemory;
-            std::tie(stagingBuffer, stagingBufferMemory) = renderer->createBuffer(
-                pixelSize,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            );
-            void* data;
-            vkMapMemory(renderer->getDevice(), stagingBufferMemory, 0, pixelSize, 0, &data);
-            memcpy(data, pixels, static_cast<size_t>(pixelSize));
-            vkUnmapMemory(renderer->getDevice(), stagingBufferMemory);
-            stbi_image_free(pixels);
             VkImage textureImage;
             VkDeviceMemory textureImageMemory;
-            std::tie(textureImage, textureImageMemory) = renderer->createImage(
+            std::tie(textureImage, textureImageMemory) = renderer->createImageFromPixels(
+                pixels,
+                pixelSize,
                 texWidth,
                 texHeight,
                 1,
@@ -106,13 +96,10 @@ void engine::TextureManager::init() {
                 VK_IMAGE_TILING_OPTIMAL,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                1
+                1,
+                0
             );
-            renderer->transitionImageLayout(textureImage, format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, 1);
-            renderer->copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-            renderer->transitionImageLayout(textureImage, format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, 1);
-            vkDestroyBuffer(renderer->getDevice(), stagingBuffer, nullptr);
-            vkFreeMemory(renderer->getDevice(), stagingBufferMemory, nullptr);
+            stbi_image_free(pixels);
             VkImageView textureImageView = renderer->createImageView(textureImage, format);
             VkSampler textureSampler;
             textureSampler = renderer->createTextureSampler(

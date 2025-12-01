@@ -28,6 +28,7 @@ namespace engine {
 
         std::string getName() const { return name; }
         Entity* getParent() const { return parent; }
+        void setParent(Entity* parent) { this->parent = parent; }
         glm::mat4 getTransform() const { return transform; }
         glm::mat4 getWorldTransform() const { return worldTransform; }
         std::string getShader() const { return shader; }

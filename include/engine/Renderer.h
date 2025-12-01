@@ -120,6 +120,20 @@ namespace engine {
             VkBorderColor borderColor,
             VkBool32 unnormalizedCoordinates
         );
+        std::pair<VkImage, VkDeviceMemory> createImageFromPixels(
+            void* pixels,
+            VkDeviceSize pixelSize,
+            uint32_t width,
+            uint32_t height,
+            uint32_t mipLevels,
+            VkSampleCountFlagBits samples,
+            VkFormat format,
+            VkImageTiling tiling,
+            VkImageUsageFlags usage,
+            VkMemoryPropertyFlags properties,
+            uint32_t arrayLayers,
+            VkImageCreateFlags flags
+        );
 
         void createGraphicsDescriptorSetLayout(GraphicsShader& shader);
         void createGraphicsPipeline(GraphicsShader& shader);

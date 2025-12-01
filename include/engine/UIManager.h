@@ -7,23 +7,30 @@
 #include <engine/Renderer.h>
 #include <engine/TextureManager.h>
 #include <engine/ShaderManager.h>
+#include <external/freetype/include/ft2build.h>
+#include FT_FREETYPE_H
+#include <engine/io.h>
+#include <variant>
+#include <functional>
 #include <string>
 #include <vector>
 #include <map>
 
 namespace engine {
+    enum class Corner {
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+        Center
+    };
     class UIObject {
     public:
-        enum class Corner {
-            TopLeft,
-            TopRight,
-            BottomLeft,
-            BottomRight,
-            Center
-        };
-        UIObject(glm::mat4 transform, std::string name, std::string texture, Corner anchorCorner = Corner::Center)
-            : transform(transform), name(name), texture(texture), anchorCorner(anchorCorner) {}
-        virtual ~UIObject() = default;
+        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr)
+            : uiManager(uiManager), transform(transform), name(name), texture(texture), anchorCorner(anchorCorner), onHover(onHover) {
+            uiManager->addObject(this);
+        }
+        ~UIObject();
 
         const std::string& getName() const { return name; }
         const glm::mat4& getTransform() const { return transform; }
@@ -35,38 +42,110 @@ namespace engine {
         void setDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets) { this->descriptorSets = descriptorSets; }
 
         void addChild(UIObject* child);
+        void addChild(TextObject* child);
         void removeChild(UIObject* child);
-        const std::vector<UIObject*>& getChildren() const { return children; }
+        void removeChild(TextObject* child);
+        const std::vector<std::variant<UIObject*, TextObject*>>& getChildren() const { return children; }
         UIObject* getParent() const { return parent; }
+        void setParent(UIObject* parent) { this->parent = parent; }
 
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
 
     private:
+        UIManager* uiManager;
         std::string name;
         glm::mat4 transform;
         Corner anchorCorner;
         std::string texture;
         std::vector<VkDescriptorSet> descriptorSets;
         UIObject* parent = nullptr;
-        std::vector<UIObject*> children;
+        std::vector<std::variant<UIObject*, TextObject*>> children;
+        std::function<void()>* onHover;
+        bool enabled = true;
+    };
+
+    class ButtonObject : public UIObject {
+    public:
+        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
+            : UIObject(uiManager, transform, name, texture, anchorCorner), onClick(onClick) {
+            TextObject* textObj = new TextObject(uiManager, transform, name + "_text", text, font, Corner::Center);
+            this->addChild(textObj);
+        }
+
+        void click() {
+            if (onClick) {
+                onClick();
+            }
+        }
+
+    private:
+        std::function<void()> onClick;
+    };
+
+    struct Character {
+        glm::ivec2 size;
+        glm::ivec2 bearing;
+        unsigned int advance;
+        Texture* texture;
+        std::vector<VkDescriptorSet> descriptorSets;
+    };
+    struct Font {
+        std::string name;
+        int fontSize = 0;
+        int ascent = 0;
+        int descent = 0;
+        int lineHeight = 0;
+        int maxGlyphHeight = 0;
+        std::map<char, Character> characters;
+    };
+
+    class TextObject {
+    public:
+        TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, std::string text, std::string font, Corner anchorCorner = Corner::Center)
+            : uiManager(uiManager), name(name), text(text), font(font), transform(transform), anchorCorner(anchorCorner) {
+            uiManager->addObject(this);
+        }
+        ~TextObject() = default;
+
+        const std::string& getText() const { return text; }
+        void setText(const std::string& text) { this->text = text; }
+        const glm::mat4& getTransform() const { return transform; }
+        void setTransform(const glm::mat4& transform) { this->transform = transform; }
+        UIObject* getParent() const { return parent; }
+        void setParent(UIObject* parent) { this->parent = parent; }
+        const std::string& getFont() const { return font; }
+
+    private:
+        UIManager* uiManager;
+        std::string name;
+        std::string text;
+        std::string font;
+        glm::mat4 transform;
+        Corner anchorCorner;
+        UIObject* parent = nullptr;
         bool enabled = true;
     };
 
     class UIManager {
     public:
-        UIManager(Renderer* renderer);
+        UIManager(Renderer* renderer, std::string& fontDirectory);
         ~UIManager();
 
         void addObject(UIObject* object);
+        void addObject(TextObject* object);
         void removeObject(const std::string& name);
         UIObject* getObject(const std::string& name);
-        std::map<std::string, UIObject*>& getObjects() { return objects; }
+        TextObject* getTextObject(const std::string& name);
+        std::map<std::string, std::variant<UIObject*, TextObject*>>& getObjects() { return objects; }
         void clear();
         void loadTextures();
+        void loadFonts();
 
     private:
         Renderer* renderer;
-        std::map<std::string, UIObject*> objects;
+        std::map<std::string, std::variant<UIObject*, TextObject*>> objects;
+        std::map<std::string, Font> fonts;
+        std::string fontDirectory = "";
     };
 };

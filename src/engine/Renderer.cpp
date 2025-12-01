@@ -67,6 +67,7 @@ void engine::Renderer::initVulkan() {
     sceneManager->setActiveScene(0);
     textureManager->init();
     uiManager->loadTextures();
+    uiManager->loadFonts();
     entityManager->loadTextures();
     createCommandBuffers();
     createSyncObjects();
@@ -527,6 +528,65 @@ void engine::Renderer::copyBufferToImage(
         &region
     );
     endSingleTimeCommands(commandBuffer);
+}
+
+std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImageFromPixels(
+    void* pixels,
+    VkDeviceSize pixelSize,
+    uint32_t width,
+    uint32_t height,
+    uint32_t mipLevels,
+    VkSampleCountFlagBits samples,
+    VkFormat format,
+    VkImageTiling tiling,
+    VkImageUsageFlags usage,
+    VkMemoryPropertyFlags properties,
+    uint32_t arrayLayers,
+    VkImageCreateFlags flags
+) {
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    std::tie(stagingBuffer, stagingBufferMemory) = createBuffer(
+        pixelSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    void* data;
+    vkMapMemory(device, stagingBufferMemory, 0, pixelSize, 0, &data);
+    memcpy(data, pixels, static_cast<size_t>(pixelSize));
+    vkUnmapMemory(device, stagingBufferMemory);
+    VkImage textureImage;
+    VkDeviceMemory textureImageMemory;
+    std::tie(textureImage, textureImageMemory) = createImage(
+        width,
+        height,
+        mipLevels,
+        samples,
+        format,
+        tiling,
+        usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        properties,
+        arrayLayers,
+        flags
+    );
+    transitionImageLayout(
+        textureImage,
+        format,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        mipLevels,
+        arrayLayers
+    );
+    copyBufferToImage(
+        stagingBuffer,
+        textureImage,
+        width,
+        height,
+        arrayLayers
+    );
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+    return std::make_pair(textureImage, textureImageMemory);
 }
 
 VkImageView engine::Renderer::createImageView(

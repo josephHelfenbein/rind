@@ -27,17 +27,17 @@ void engine::Entity::updateWorldTransform() {
 }
 
 void engine::Entity::addChild(Entity* child) {
-    if (child->parent) {
-        child->parent->removeChild(child);
+    if (child->getParent()) {
+        child->getParent()->removeChild(child);
     }
     entityManager->removeRootEntry(child);
     children.push_back(child);
-    child->parent = this;
+    child->setParent(this);
 }
 
 void engine::Entity::removeChild(Entity* child) {
     children.erase(std::remove(children.begin(), children.end(), child), children.end());
-    child->parent = nullptr;
+    child->setParent(nullptr);
     entityManager->addRootEntry(child);
 }
 
