@@ -148,6 +148,8 @@ namespace engine {
         VkExtent2D getSwapChainExtent() { return swapChainExtent; }
         float getUIScale() { return uiScale; }
         std::pair<VkBuffer, VkBuffer> getUIBuffers() { return { uiVertexBuffer, uiIndexBuffer }; }
+        UIObject* getHoveredObject() { return hoveredObject; }
+        void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -227,6 +229,7 @@ namespace engine {
         class SceneManager* sceneManager;
 
         bool cursorLocked;
+        UIObject* hoveredObject = nullptr;
 
         void createInstance();
         void setupDebugMessenger();

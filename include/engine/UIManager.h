@@ -27,11 +27,11 @@ namespace engine {
     };
     class UIObject {
     public:
-        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr)
-            : uiManager(uiManager), transform(transform), name(name), tint(tint), texture(texture), anchorCorner(anchorCorner), onHover(onHover) {
+        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr, std::function<void()>* onStopHover = nullptr)
+            : uiManager(uiManager), transform(transform), name(name), tint(tint), texture(texture), anchorCorner(anchorCorner), onHover(onHover), onStopHover(onStopHover) {
             uiManager->addObject(this);
         }
-        ~UIObject();
+        virtual ~UIObject();
 
         const std::string& getName() const { return name; }
         const glm::mat4& getTransform() const { return transform; }
@@ -54,6 +54,8 @@ namespace engine {
         bool isEnabled() const { return enabled; }
         glm::vec3 getTint() const { return tint; }
         Corner getAnchorCorner() const { return anchorCorner; }
+        std::function<void()>* getOnHover() const { return onHover; }
+        std::function<void()>* getOnStopHover() const { return onStopHover; }
 
     private:
         UIManager* uiManager;
@@ -66,14 +68,15 @@ namespace engine {
         UIObject* parent = nullptr;
         std::vector<std::variant<UIObject*, TextObject*>> children;
         std::function<void()>* onHover;
+        std::function<void()>* onStopHover;
         bool enabled = true;
     };
 
     class ButtonObject : public UIObject {
     public:
-        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
+        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, glm::vec3 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
             : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
-            TextObject* textObj = new TextObject(uiManager, transform, name + "_text", text, font, Corner::Center);
+            TextObject* textObj = new TextObject(uiManager, transform, name + "_text", textColor, text, font, Corner::Center);
             this->addChild(textObj);
         }
 
@@ -137,6 +140,11 @@ namespace engine {
         bool enabled = true;
     };
 
+    struct LayoutRect {
+        glm::vec2 position;
+        glm::vec2 size;
+    };
+
     class UIManager {
     public:
         UIManager(Renderer* renderer, std::string& fontDirectory);
@@ -152,6 +160,10 @@ namespace engine {
         void clear();
         void loadTextures();
         void loadFonts();
+        UIObject* processMouseMovement(GLFWwindow* window, double xpos, double ypos);
+
+        LayoutRect resolveDesignRect(std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect);
+        LayoutRect toPixelRect(const LayoutRect& designRect, const glm::vec2& canvasOrigin, float layoutScale);
 
     private:
         Renderer* renderer;

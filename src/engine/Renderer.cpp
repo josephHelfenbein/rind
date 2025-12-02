@@ -1495,6 +1495,11 @@ VkFormat engine::Renderer::findSupportedFormat(const std::vector<VkFormat>& cand
 
 void engine::Renderer::processInput(GLFWwindow* window) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
+    if (renderer->getHoveredObject() && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        if (ButtonObject* button = dynamic_cast<ButtonObject*>(renderer->getHoveredObject())) {
+            button->click();
+        }
+    }
     if (renderer && renderer->inputManager) {
         renderer->inputManager->processInput(window);
     }
@@ -1507,5 +1512,5 @@ void engine::Renderer::framebufferResizeCallback(GLFWwindow* window, int width, 
 
 void engine::Renderer::mouseMoveCallback(GLFWwindow* window, double xpos, double ypos) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
-    // Handle mouse movement
+    renderer->setHoveredObject(renderer->getUIManager()->processMouseMovement(window, xpos, ypos));
 }

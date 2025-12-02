@@ -288,6 +288,52 @@ void engine::UIManager::loadFonts() {
     scanAndLoadFonts(fontDirectory, "");
 }
 
+engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) {
+    glm::vec2 size, position;
+    Corner anchor;
+    if (std::holds_alternative<TextObject*>(node)) {
+        TextObject* textObj = std::get<TextObject*>(node);
+        float textWidth = 0.0f;
+        for (const char& c : textObj->getText()) {
+            const Character& ch = fonts[textObj->getFont()].characters[c];
+            textWidth += (ch.advance) * textObj->getScale().x;
+        }
+        size = glm::vec2(textWidth, fonts[textObj->getFont()].lineHeight * textObj->getScale().y);
+        position = glm::vec2(textObj->getTransform()[3][0], textObj->getTransform()[3][1]);
+        anchor = textObj->getAnchorCorner();
+    } else {
+        UIObject* uiObj = std::get<UIObject*>(node);
+        size = glm::vec2(uiObj->getTransform()[0][0], uiObj->getTransform()[1][1]);
+        position = glm::vec2(uiObj->getTransform()[3][0], uiObj->getTransform()[3][1]);
+        anchor = uiObj->getAnchorCorner();
+    }
+    switch (anchor) {
+        case Corner::TopLeft:
+            position += glm::vec2(0.0f, 0.0f);
+            break;
+        case Corner::TopRight:
+            position += glm::vec2(parentRect.size.x - size.x, 0.0f);
+            break;
+        case Corner::BottomLeft:
+            position += glm::vec2(0.0f, parentRect.size.y - size.y);
+            break;
+        case Corner::BottomRight:
+            position += glm::vec2(parentRect.size.x - size.x, parentRect.size.y - size.y);
+            break;
+        case Corner::Center:
+            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, (parentRect.size.y - size.y) / 2.0f);
+            break;
+    }
+    position += parentRect.position;
+    return LayoutRect{ position, size };
+};
+
+engine::LayoutRect engine::UIManager::toPixelRect(const LayoutRect& designRect, const glm::vec2& canvasOrigin, float layoutScale) {
+    glm::vec2 pixelPosition = canvasOrigin + designRect.position * layoutScale;
+    glm::vec2 pixelSize = designRect.size * layoutScale;
+    return LayoutRect{ pixelPosition, pixelSize };
+};
+
 void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
     constexpr glm::vec2 designResolution(800.0f, 600.0f);
@@ -304,11 +350,6 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vb, offsets);
     vkCmdBindIndexBuffer(commandBuffer, ib, 0, VK_INDEX_TYPE_UINT32);
-
-    struct LayoutRect {
-        glm::vec2 position;
-        glm::vec2 size;
-    };
 
     std::function<void(UIObject*, const LayoutRect&)> drawUIObject = [&](UIObject* object, const LayoutRect& rect) {
         if (!object->isEnabled()) return;
@@ -346,27 +387,11 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
             glm::vec3 tint;
             glm::mat4 model;
         } pushConstants;
-        float textWidth = 0.0f;
-        const std::string& text = object->getText();
-        if (fonts.find(object->getFont()) == fonts.end()) {
-            std::cout << std::format("Warning: Font {} not found for TextObject {}\n", object->getFont(), text);
-            return;
-        }
-        for (const char& c : text) {
-            const Character& ch = fonts[object->getFont()].characters[c];
-            textWidth += (ch.advance) * object->getScale().x;
-        }
 
         float x = rect.position.x;
         float y = rect.position.y + (fonts[object->getFont()].ascent);
 
-        Corner anchor = object->getAnchorCorner();
-        if (anchor == Corner::TopRight || anchor == Corner::BottomRight) {
-            x -= textWidth;
-        } else if (anchor == Corner::Center) {
-            x -= textWidth / 2.0f;
-        }
-
+        const std::string& text = object->getText();
         for (const char& c : text) {
             const Character& ch = fonts[object->getFont()].characters[c];
             float xpos = x + ch.bearing.x * object->getScale().x;
@@ -392,71 +417,11 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
             vkCmdDraw(commandBuffer, 6, 1, 0, 0);
             x += (ch.advance) * object->getScale().x;
         };
-        std::function<LayoutRect(std::variant<UIObject*, TextObject*>, const LayoutRect&)> resolveDesignRect = [&](std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) -> LayoutRect {
-            glm::vec2 size, position;
-            if (std::holds_alternative<TextObject*>(node)) {
-                TextObject* textObj = std::get<TextObject*>(node);
-                float textWidth = 0.0f;
-                for (const char& c : textObj->getText()) {
-                    const Character& ch = fonts[textObj->getFont()].characters[c];
-                    textWidth += (ch.advance) * textObj->getScale().x;
-                }
-                size = glm::vec2(textWidth, fonts[textObj->getFont()].lineHeight * textObj->getScale().y);
-                
-                Corner anchor = textObj->getAnchorCorner();
-                switch (anchor) {
-                    case Corner::TopLeft:
-                        position = glm::vec2(0.0f, 0.0f);
-                        break;
-                    case Corner::TopRight:
-                        position = glm::vec2(parentRect.size.x, 0.0f);
-                        break;
-                    case Corner::BottomLeft:
-                        position = glm::vec2(0.0f, parentRect.size.y - size.y);
-                        break;
-                    case Corner::BottomRight:
-                        position = glm::vec2(parentRect.size.x, parentRect.size.y - size.y);
-                        break;
-                    case Corner::Center:
-                        position = glm::vec2(parentRect.size.x / 2.0f, (parentRect.size.y - size.y) / 2.0f);
-                        break;
-                }
-            } else {
-                UIObject* uiObj = std::get<UIObject*>(node);
-                size = glm::vec2(uiObj->getTransform()[0][0], uiObj->getTransform()[1][1]);
-                position = glm::vec2(uiObj->getTransform()[3][0], uiObj->getTransform()[3][1]);
-                
-                Corner anchor = uiObj->getAnchorCorner();
-                switch (anchor) {
-                    case Corner::TopLeft:
-                        position += glm::vec2(0.0f, 0.0f);
-                        break;
-                    case Corner::TopRight:
-                        position += glm::vec2(parentRect.size.x - size.x, 0.0f);
-                        break;
-                    case Corner::BottomLeft:
-                        position += glm::vec2(0.0f, parentRect.size.y - size.y);
-                        break;
-                    case Corner::BottomRight:
-                        position += glm::vec2(parentRect.size.x - size.x, parentRect.size.y - size.y);
-                        break;
-                    case Corner::Center:
-                        position += glm::vec2((parentRect.size.x - size.x) / 2.0f, (parentRect.size.y - size.y) / 2.0f);
-                        break;
-                }
-            }
-            position += parentRect.position;
-            return LayoutRect{ position, size };
-        };
-        std::function<LayoutRect(const LayoutRect&)> toPixelRect = [&](const LayoutRect& designRect) -> LayoutRect {
-            glm::vec2 pixelPosition = canvasOrigin + designRect.position * layoutScale;
-            glm::vec2 pixelSize = designRect.size * layoutScale;
-            return LayoutRect{ pixelPosition, pixelSize };
-        };
+        
         std::function<void(std::variant<UIObject*, TextObject*>, const LayoutRect&)> traverse = [&](std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) {
             if (std::holds_alternative<UIObject*>(node)) {
                 LayoutRect designRect = resolveDesignRect(std::get<UIObject*>(node), parentRect);
-                LayoutRect pixelRect = toPixelRect(designRect);
+                LayoutRect pixelRect = toPixelRect(designRect, canvasOrigin, layoutScale);
                 UIObject* obj = std::get<UIObject*>(node);
                 drawUIObject(obj, pixelRect);
                 for (const auto& child : obj->getChildren()) {
@@ -464,7 +429,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
                 }
             } else if (std::holds_alternative<TextObject*>(node)) {
                 LayoutRect designRect = resolveDesignRect(std::get<TextObject*>(node), parentRect);
-                LayoutRect pixelRect = toPixelRect(designRect);
+                LayoutRect pixelRect = toPixelRect(designRect, canvasOrigin, layoutScale);
                 TextObject* obj = std::get<TextObject*>(node);
                 drawTextObject(obj, designRect, pixelRect);
             }
@@ -480,4 +445,54 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
             }
         }
     };
+}
+
+engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, double xpos, double ypos) {
+    const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
+    constexpr glm::vec2 designResolution(800.0f, 600.0f);
+    float layoutScale = std::max(renderer->getUIScale(), 0.0001f);
+    glm::vec2 canvasSize = designResolution * layoutScale;
+    glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
+    float xscale = 1.0f, yscale = 1.0f;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    glm::vec2 mousePosF(static_cast<float>(xpos) * std::max(xscale, 1.0f), static_cast<float>(ypos) * std::max(yscale, 1.0f));
+    mousePosF.y = swapExtentF.y - mousePosF.y;
+
+    bool foundHover = false;
+    UIObject* hoveredObject = nullptr;
+    UIObject* lastHovered = renderer->getHoveredObject();
+    std::function<void(UIObject*, const LayoutRect&)> traverse = [&](UIObject* node, const LayoutRect& parentRect) {
+        if(!node || !node->isEnabled()) return;
+        LayoutRect designRect = resolveDesignRect(node, parentRect);
+        const float invLayout = layoutScale > 0.0f ? 1.0f / layoutScale : 0.0f;
+        glm::vec2 mouseDesign = (mousePosF - canvasOrigin) * invLayout;
+        if (mouseDesign.x >= designRect.position.x
+        && mouseDesign.x <= designRect.position.x + designRect.size.x
+        && mouseDesign.y >= designRect.position.y
+        && mouseDesign.y <= designRect.position.y + designRect.size.y) {
+            hoveredObject = node;
+            foundHover = true;
+            return;
+        }
+        for (const auto& child : node->getChildren()) {
+            if (std::holds_alternative<UIObject*>(child)) {
+                traverse(std::get<UIObject*>(child), designRect);
+            }
+        }
+    };
+    LayoutRect rootRect = {
+        .position = glm::vec2(0.0f, 0.0f),
+        .size = designResolution
+    };
+    for (auto& [name, obj] : objects) {
+        if (std::holds_alternative<UIObject*>(obj) && std::get<UIObject*>(obj)->getParent() == nullptr) {
+            traverse(std::get<UIObject*>(obj), rootRect);
+        }
+    }
+    if (hoveredObject && hoveredObject != lastHovered) {
+        hoveredObject->getOnHover() ? (*hoveredObject->getOnHover())() : void();
+    } else if (!hoveredObject && lastHovered) {
+        lastHovered->getOnStopHover() ? (*lastHovered->getOnStopHover())() : void();
+    }
+    return hoveredObject;
 }
