@@ -4,6 +4,7 @@
 
 #include <glfw/include/GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <engine/Renderer.h>
 #include <engine/TextureManager.h>
 #include <engine/ShaderManager.h>
@@ -26,8 +27,8 @@ namespace engine {
     };
     class UIObject {
     public:
-        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr)
-            : uiManager(uiManager), transform(transform), name(name), texture(texture), anchorCorner(anchorCorner), onHover(onHover) {
+        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr)
+            : uiManager(uiManager), transform(transform), name(name), tint(tint), texture(texture), anchorCorner(anchorCorner), onHover(onHover) {
             uiManager->addObject(this);
         }
         ~UIObject();
@@ -51,10 +52,13 @@ namespace engine {
 
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
+        glm::vec3 getTint() const { return tint; }
+        Corner getAnchorCorner() const { return anchorCorner; }
 
     private:
         UIManager* uiManager;
         std::string name;
+        glm::vec3 tint;
         glm::mat4 transform;
         Corner anchorCorner;
         std::string texture;
@@ -67,8 +71,8 @@ namespace engine {
 
     class ButtonObject : public UIObject {
     public:
-        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
-            : UIObject(uiManager, transform, name, texture, anchorCorner), onClick(onClick) {
+        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
+            : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
             TextObject* textObj = new TextObject(uiManager, transform, name + "_text", text, font, Corner::Center);
             this->addChild(textObj);
         }
@@ -102,8 +106,8 @@ namespace engine {
 
     class TextObject {
     public:
-        TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, std::string text, std::string font, Corner anchorCorner = Corner::Center)
-            : uiManager(uiManager), name(name), text(text), font(font), transform(transform), anchorCorner(anchorCorner) {
+        TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string text, std::string font, Corner anchorCorner = Corner::Center)
+            : uiManager(uiManager), name(name), tint(tint), text(text), font(font), transform(transform), anchorCorner(anchorCorner) {
             uiManager->addObject(this);
         }
         ~TextObject() = default;
@@ -115,10 +119,16 @@ namespace engine {
         UIObject* getParent() const { return parent; }
         void setParent(UIObject* parent) { this->parent = parent; }
         const std::string& getFont() const { return font; }
+        bool isEnabled() const { return enabled; }
+        void setEnabled(bool enabled) { this->enabled = enabled; }
+        glm::vec3 getTint() const { return tint; }
+        Corner getAnchorCorner() const { return anchorCorner; }
+        glm::vec2 getScale() const;
 
     private:
         UIManager* uiManager;
         std::string name;
+        glm::vec3 tint;
         std::string text;
         std::string font;
         glm::mat4 transform;
@@ -138,6 +148,7 @@ namespace engine {
         UIObject* getObject(const std::string& name);
         TextObject* getTextObject(const std::string& name);
         std::map<std::string, std::variant<UIObject*, TextObject*>>& getObjects() { return objects; }
+        void renderUI(VkCommandBuffer commandBuffer);
         void clear();
         void loadTextures();
         void loadFonts();

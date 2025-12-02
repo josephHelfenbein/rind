@@ -69,6 +69,12 @@ void engine::UIManager::addObject(TextObject* object) {
     objects[object->getText()] = object;
 }
 
+glm::vec2 engine::TextObject::getScale() const {
+    float scaleX = transform[0][0];
+    float scaleY = transform[1][1];
+    return glm::vec2(scaleX, scaleY);
+}
+
 void engine::UIManager::removeObject(const std::string& name) {
     auto it = objects.find(name);
     if (it != objects.end()) {
@@ -280,4 +286,198 @@ void engine::UIManager::loadFonts() {
         }
     };
     scanAndLoadFonts(fontDirectory, "");
+}
+
+void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
+    const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
+    constexpr glm::vec2 designResolution(800.0f, 600.0f);
+    float layoutScale = std::max(renderer->getUIScale(), 0.0001f);
+    glm::vec2 canvasSize = designResolution * layoutScale;
+    glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
+    glm::mat4 pixelToNdc(1.0f);
+    pixelToNdc[0][0] = 2.0f / std::max(swapExtentF.x, 0.0001f);
+    pixelToNdc[1][1] = -2.0f / std::max(swapExtentF.y, 0.0001f);
+    pixelToNdc[3][0] = -1.0f;
+    pixelToNdc[3][1] = 1.0f;
+    VkBuffer vb, ib;
+    std::tie(vb, ib) = renderer->getUIBuffers();
+    VkDeviceSize offsets[] = { 0 };
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vb, offsets);
+    vkCmdBindIndexBuffer(commandBuffer, ib, 0, VK_INDEX_TYPE_UINT32);
+
+    struct LayoutRect {
+        glm::vec2 position;
+        glm::vec2 size;
+    };
+
+    std::function<void(UIObject*, const LayoutRect&)> drawUIObject = [&](UIObject* object, const LayoutRect& rect) {
+        if (!object->isEnabled()) return;
+        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
+        struct PushConstantData {
+            glm::vec3 tint;
+            glm::mat4 model;
+        } pushConstants;
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+        const auto& descriptorSets = object->getDescriptorSets();
+        vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            shader->pipelineLayout,
+            0,
+            static_cast<uint32_t>(descriptorSets.size()),
+            descriptorSets.data(),
+            0,
+            nullptr
+        );
+        glm::vec2 center = rect.position + 0.5f * rect.size;
+        glm::mat4 pixelModel(1.0f);
+        pixelModel = glm::translate(pixelModel, glm::vec3(center, 0.0f));
+        pixelModel = glm::scale(pixelModel, glm::vec3(rect.size, 1.0f));
+        pushConstants.tint = object->getTint();
+        pushConstants.model = pixelToNdc * pixelModel;
+        vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &pushConstants);
+        vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+    };
+    std::function<void(TextObject*, const LayoutRect&, const LayoutRect&)> drawTextObject = [&](TextObject* object, const LayoutRect& rect, const LayoutRect& pixelRect) {
+        if (!object->isEnabled() || object->getText().empty()) return;
+        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("text");
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+        struct PushConstantData {
+            glm::vec3 tint;
+            glm::mat4 model;
+        } pushConstants;
+        float textWidth = 0.0f;
+        const std::string& text = object->getText();
+        if (fonts.find(object->getFont()) == fonts.end()) {
+            std::cout << std::format("Warning: Font {} not found for TextObject {}\n", object->getFont(), text);
+            return;
+        }
+        for (const char& c : text) {
+            const Character& ch = fonts[object->getFont()].characters[c];
+            textWidth += (ch.advance) * object->getScale().x;
+        }
+
+        float x = rect.position.x;
+        float y = rect.position.y + (fonts[object->getFont()].ascent);
+
+        Corner anchor = object->getAnchorCorner();
+        if (anchor == Corner::TopRight || anchor == Corner::BottomRight) {
+            x -= textWidth;
+        } else if (anchor == Corner::Center) {
+            x -= textWidth / 2.0f;
+        }
+
+        for (const char& c : text) {
+            const Character& ch = fonts[object->getFont()].characters[c];
+            float xpos = x + ch.bearing.x * object->getScale().x;
+            float ypos = y - (ch.size.y - ch.bearing.y) * object->getScale().y;
+            float w = ch.size.x * object->getScale().x;
+            float h = ch.size.y * object->getScale().y;
+            glm::mat4 pixelModel(1.0f);
+            pixelModel = glm::translate(pixelModel, glm::vec3(xpos + w / 2.0f, ypos + h / 2.0f, 0.0f));
+            pixelModel = glm::scale(pixelModel, glm::vec3(w, h, 1.0f));
+            pushConstants.tint = object->getTint();
+            pushConstants.model = pixelToNdc * pixelModel;
+            vkCmdBindDescriptorSets(
+                commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                shader->pipelineLayout,
+                0,
+                static_cast<uint32_t>(ch.descriptorSets.size()),
+                ch.descriptorSets.data(),
+                0,
+                nullptr
+            );
+            vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &pushConstants);
+            vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+            x += (ch.advance) * object->getScale().x;
+        };
+        std::function<LayoutRect(std::variant<UIObject*, TextObject*>, const LayoutRect&)> resolveDesignRect = [&](std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) -> LayoutRect {
+            glm::vec2 size, position;
+            if (std::holds_alternative<TextObject*>(node)) {
+                TextObject* textObj = std::get<TextObject*>(node);
+                float textWidth = 0.0f;
+                for (const char& c : textObj->getText()) {
+                    const Character& ch = fonts[textObj->getFont()].characters[c];
+                    textWidth += (ch.advance) * textObj->getScale().x;
+                }
+                size = glm::vec2(textWidth, fonts[textObj->getFont()].lineHeight * textObj->getScale().y);
+                
+                Corner anchor = textObj->getAnchorCorner();
+                switch (anchor) {
+                    case Corner::TopLeft:
+                        position = glm::vec2(0.0f, 0.0f);
+                        break;
+                    case Corner::TopRight:
+                        position = glm::vec2(parentRect.size.x, 0.0f);
+                        break;
+                    case Corner::BottomLeft:
+                        position = glm::vec2(0.0f, parentRect.size.y - size.y);
+                        break;
+                    case Corner::BottomRight:
+                        position = glm::vec2(parentRect.size.x, parentRect.size.y - size.y);
+                        break;
+                    case Corner::Center:
+                        position = glm::vec2(parentRect.size.x / 2.0f, (parentRect.size.y - size.y) / 2.0f);
+                        break;
+                }
+            } else {
+                UIObject* uiObj = std::get<UIObject*>(node);
+                size = glm::vec2(uiObj->getTransform()[0][0], uiObj->getTransform()[1][1]);
+                position = glm::vec2(uiObj->getTransform()[3][0], uiObj->getTransform()[3][1]);
+                
+                Corner anchor = uiObj->getAnchorCorner();
+                switch (anchor) {
+                    case Corner::TopLeft:
+                        position += glm::vec2(0.0f, 0.0f);
+                        break;
+                    case Corner::TopRight:
+                        position += glm::vec2(parentRect.size.x - size.x, 0.0f);
+                        break;
+                    case Corner::BottomLeft:
+                        position += glm::vec2(0.0f, parentRect.size.y - size.y);
+                        break;
+                    case Corner::BottomRight:
+                        position += glm::vec2(parentRect.size.x - size.x, parentRect.size.y - size.y);
+                        break;
+                    case Corner::Center:
+                        position += glm::vec2((parentRect.size.x - size.x) / 2.0f, (parentRect.size.y - size.y) / 2.0f);
+                        break;
+                }
+            }
+            position += parentRect.position;
+            return LayoutRect{ position, size };
+        };
+        std::function<LayoutRect(const LayoutRect&)> toPixelRect = [&](const LayoutRect& designRect) -> LayoutRect {
+            glm::vec2 pixelPosition = canvasOrigin + designRect.position * layoutScale;
+            glm::vec2 pixelSize = designRect.size * layoutScale;
+            return LayoutRect{ pixelPosition, pixelSize };
+        };
+        std::function<void(std::variant<UIObject*, TextObject*>, const LayoutRect&)> traverse = [&](std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) {
+            if (std::holds_alternative<UIObject*>(node)) {
+                LayoutRect designRect = resolveDesignRect(std::get<UIObject*>(node), parentRect);
+                LayoutRect pixelRect = toPixelRect(designRect);
+                UIObject* obj = std::get<UIObject*>(node);
+                drawUIObject(obj, pixelRect);
+                for (const auto& child : obj->getChildren()) {
+                    traverse(child, designRect);
+                }
+            } else if (std::holds_alternative<TextObject*>(node)) {
+                LayoutRect designRect = resolveDesignRect(std::get<TextObject*>(node), parentRect);
+                LayoutRect pixelRect = toPixelRect(designRect);
+                TextObject* obj = std::get<TextObject*>(node);
+                drawTextObject(obj, designRect, pixelRect);
+            }
+        };
+        LayoutRect rootRect = {
+            .position = glm::vec2(0.0f, 0.0f),
+            .size = designResolution
+        };
+        for (auto& [name, obj] : objects) {
+            bool traversing = std::holds_alternative<TextObject*>(obj) ? (std::get<TextObject*>(obj)->getParent() == nullptr) : (std::get<UIObject*>(obj)->getParent() == nullptr);
+            if (traversing) {
+                traverse(obj, rootRect);
+            }
+        }
+    };
 }

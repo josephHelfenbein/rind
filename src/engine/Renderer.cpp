@@ -71,6 +71,7 @@ void engine::Renderer::initVulkan() {
     entityManager->loadTextures();
     createCommandBuffers();
     createSyncObjects();
+    createQuadResources();
 }
 
 void engine::Renderer::mainLoop() {
@@ -1247,6 +1248,39 @@ void engine::Renderer::createSyncObjects() {
             throw std::runtime_error("Failed to create synchronization objects for a frame!");
         }
     }
+}
+
+void engine::Renderer::createQuadResources() {
+    float vertices[] = {
+        // positions        // texCoords
+        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, 0.0f, 0.0f, 1.0f
+    };
+    uint16_t indices[] = {
+        0, 1, 2, 2, 3, 0
+    };
+    VkDeviceSize vertexBufferSize = sizeof(vertices);
+    VkDeviceSize indexBufferSize = sizeof(indices);
+    std::tie(uiVertexBuffer, uiVertexBufferMemory) = createBuffer(
+        vertexBufferSize,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    void* vertexData;
+    vkMapMemory(device, uiVertexBufferMemory, 0, vertexBufferSize, 0, &vertexData);
+    memcpy(vertexData, vertices, static_cast<size_t>(vertexBufferSize));
+    vkUnmapMemory(device, uiVertexBufferMemory);
+    std::tie(uiIndexBuffer, uiIndexBufferMemory) = createBuffer(
+        indexBufferSize,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    void* indexData;
+    vkMapMemory(device, uiIndexBufferMemory, 0, indexBufferSize, 0, &indexData);
+    memcpy(indexData, indices, static_cast<size_t>(indexBufferSize));
+    vkUnmapMemory(device, uiIndexBufferMemory);
 }
 
 VkResult engine::Renderer::createDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {

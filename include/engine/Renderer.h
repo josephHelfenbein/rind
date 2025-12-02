@@ -145,6 +145,9 @@ namespace engine {
 
         VkDevice getDevice() { return device; }
         uint32_t getFramesInFlight() { return MAX_FRAMES_IN_FLIGHT; }
+        VkExtent2D getSwapChainExtent() { return swapChainExtent; }
+        float getUIScale() { return uiScale; }
+        std::pair<VkBuffer, VkBuffer> getUIBuffers() { return { uiVertexBuffer, uiIndexBuffer }; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -188,6 +191,7 @@ namespace engine {
 
         float deltaTime = 0.0f;
         float lastFrameTime = 0.0f;
+        float uiScale = 1.0f;
 
         VkQueue graphicsQueue;
         VkQueue presentQueue;
@@ -198,6 +202,11 @@ namespace engine {
         std::vector<VkImageView> swapChainImageViews;
         VkCommandPool commandPool;
         VkSampler mainTextureSampler;
+
+        VkBuffer uiVertexBuffer;
+        VkDeviceMemory uiVertexBufferMemory;
+        VkBuffer uiIndexBuffer;
+        VkDeviceMemory uiIndexBufferMemory;
 
         std::vector<VkFence> inFlightFences;
         std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -234,6 +243,7 @@ namespace engine {
         void createDepthResources();
         void createCommandBuffers();
         void createSyncObjects();
+        void createQuadResources();
 
         void drawFrame();
 
