@@ -69,6 +69,11 @@ void engine::Renderer::initVulkan() {
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
+    std::vector<GraphicsShader> defaultShaders = shaderManager->createDefaultShaders();
+    for (const auto& shader : defaultShaders) {
+        shaderManager->addGraphicsShader(shader.name, shader.vertex, shader.fragment, shader.config);
+    }
+    shaderManager->loadAllShaders();
     createCommandBuffers();
     createSyncObjects();
     createQuadResources();

@@ -1,5 +1,6 @@
 #include <engine/ShaderManager.h>
 #include <engine/io.h>
+#include <glm/glm.hpp>
 
 #include <format>
 #include <iostream>
@@ -145,4 +146,186 @@ std::string engine::ShaderManager::getShaderFilePath(const std::string& name) {
         return it->second;
     }
     return "";
+}
+
+namespace {
+    struct Vertex {
+        glm::vec3 pos;
+        glm::vec3 normal;
+        glm::vec2 texCoord;
+        glm::vec3 tangent;
+    };
+
+    struct UIVertex {
+        glm::vec2 pos;
+        glm::vec2 texCoord;
+    };
+
+    struct GBufferPC {
+        glm::mat4 model;
+        glm::mat4 view;
+        glm::mat4 projection;
+        glm::vec3 camPos;
+    };
+
+    struct LightingPC {
+        glm::mat4 invView;
+        glm::mat4 invProj;
+        glm::vec3 camPos;
+    };
+
+    struct UIPC {
+        glm::vec3 tint;
+        float _pad;
+        glm::mat4 model;
+    };
+}
+
+std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders() {
+    std::vector<GraphicsShader> shaders;
+
+    // GBuffer
+    {
+        GraphicsShader shader;
+        shader.name = "gbuffer";
+        shader.vertex = { "gbuffer.vert", VK_SHADER_STAGE_VERTEX_BIT };
+        shader.fragment = { "gbuffer.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        shader.config.setPushConstant<GBufferPC>(VK_SHADER_STAGE_VERTEX_BIT);
+
+        shader.config.colorAttachmentCount = 3;
+        shader.config.depthWrite = true;
+        shader.config.enableDepth = true;
+        shader.config.cullMode = VK_CULL_MODE_BACK_BIT;
+        shader.config.vertexBitBindings = 1;
+        shader.config.getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
+            binding.binding = 0;
+            binding.stride = sizeof(Vertex);
+            binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+            attributes.resize(4);
+            attributes[0].binding = 0;
+            attributes[0].location = 0;
+            attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attributes[0].offset = offsetof(Vertex, pos);
+
+            attributes[1].binding = 0;
+            attributes[1].location = 1;
+            attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attributes[1].offset = offsetof(Vertex, normal);
+
+            attributes[2].binding = 0;
+            attributes[2].location = 2;
+            attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
+            attributes[2].offset = offsetof(Vertex, texCoord);
+
+            attributes[3].binding = 0;
+            attributes[3].location = 3;
+            attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attributes[3].offset = offsetof(Vertex, tangent);
+        };
+        shaders.push_back(shader);
+    }
+
+    // Lighting
+    {
+        GraphicsShader shader;
+        shader.name = "lighting";
+        shader.vertex = { "lighting.vert", VK_SHADER_STAGE_VERTEX_BIT };
+        shader.fragment = { "lighting.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        
+        shader.config.colorAttachmentCount = 1;
+        shader.config.depthWrite = false;
+        shader.config.enableDepth = false;
+        shader.config.cullMode = VK_CULL_MODE_NONE;
+        shader.config.vertexBitBindings = 0;
+        
+        shaders.push_back(shader);
+    }
+
+    // UI
+    {
+        GraphicsShader shader;
+        shader.name = "ui";
+        shader.vertex = { "ui.vert", VK_SHADER_STAGE_VERTEX_BIT };
+        shader.fragment = { "ui.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        
+        shader.config.colorAttachmentCount = 1;
+        shader.config.depthWrite = false;
+        shader.config.enableDepth = false;
+        shader.config.cullMode = VK_CULL_MODE_NONE;
+        shader.config.vertexBitBindings = 1;
+        shader.config.getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
+            binding.binding = 0;
+            binding.stride = sizeof(UIVertex);
+            binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+            attributes.resize(2);
+            attributes[0].binding = 0;
+            attributes[0].location = 0;
+            attributes[0].format = VK_FORMAT_R32G32_SFLOAT;
+            attributes[0].offset = offsetof(UIVertex, pos);
+
+            attributes[1].binding = 0;
+            attributes[1].location = 1;
+            attributes[1].format = VK_FORMAT_R32G32_SFLOAT;
+            attributes[1].offset = offsetof(UIVertex, texCoord);
+        };
+        shaders.push_back(shader);
+    }
+
+    // Text
+    {
+        GraphicsShader shader;
+        shader.name = "text";
+        shader.vertex = { "text.vert", VK_SHADER_STAGE_VERTEX_BIT };
+        shader.fragment = { "text.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        
+        shader.config.colorAttachmentCount = 1;
+        shader.config.depthWrite = false;
+        shader.config.enableDepth = false;
+        shader.config.cullMode = VK_CULL_MODE_NONE;
+        shader.config.vertexBitBindings = 1;
+        shader.config.getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
+            binding.binding = 0;
+            binding.stride = sizeof(UIVertex);
+            binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+            attributes.resize(2);
+            attributes[0].binding = 0;
+            attributes[0].location = 0;
+            attributes[0].format = VK_FORMAT_R32G32_SFLOAT;
+            attributes[0].offset = offsetof(UIVertex, pos);
+
+            attributes[1].binding = 0;
+            attributes[1].location = 1;
+            attributes[1].format = VK_FORMAT_R32G32_SFLOAT;
+            attributes[1].offset = offsetof(UIVertex, texCoord);
+        };
+        shaders.push_back(shader);
+    }
+
+    // Composite
+    {
+        GraphicsShader shader;
+        shader.name = "composite";
+        shader.vertex = { "composite.vert", VK_SHADER_STAGE_VERTEX_BIT };
+        shader.fragment = { "composite.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
+
+        shader.config.colorAttachmentCount = 1;
+        shader.config.depthWrite = false;
+        shader.config.enableDepth = false;
+        shader.config.cullMode = VK_CULL_MODE_NONE;
+        shader.config.vertexBitBindings = 0;
+        
+        shaders.push_back(shader);
+    }
+
+    return shaders;
 }

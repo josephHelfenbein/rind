@@ -71,7 +71,7 @@ list(APPEND SOURCES ${ENGINE_SOURCES} ${GAME_SOURCES})
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 if(IS_MACOS)
-    find_program(GLSLC_EXECUTABLE glslc
+    find_program(DXC_EXECUTABLE dxc
         HINTS
             ${VK_SDK_PATH}/macOS/bin
             /usr/local/bin
@@ -80,13 +80,13 @@ if(IS_MACOS)
             /Users/$ENV{USER}/VulkanSDK/*/macOS/bin
     )
 elseif(IS_WINDOWS)
-    find_program(GLSLC_EXECUTABLE glslc
+    find_program(DXC_EXECUTABLE dxc
         HINTS
             ${VK_SDK_PATH}/Bin
             $ENV{VULKAN_SDK}/Bin
     )
 else() # Linux
-    find_program(GLSLC_EXECUTABLE glslc
+    find_program(DXC_EXECUTABLE dxc
         HINTS
             ${VK_SDK_PATH}/bin
             $ENV{VULKAN_SDK}/bin
@@ -95,31 +95,43 @@ else() # Linux
     )
 endif()
 
-if(NOT GLSLC_EXECUTABLE)
-    message(FATAL_ERROR "glslc not found! Please install Vulkan SDK.")
+if(NOT DXC_EXECUTABLE)
+    message(FATAL_ERROR "dxc not found! Please install Vulkan SDK.")
 endif()
 
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled)
 
-file(GLOB_RECURSE GLSL_SOURCE_FILES
-    "${CMAKE_SOURCE_DIR}/src/assets/shaders/glsl/*.frag"
-    "${CMAKE_SOURCE_DIR}/src/assets/shaders/glsl/*.vert"
-    "${CMAKE_SOURCE_DIR}/src/assets/shaders/glsl/*.comp"
+file(GLOB_RECURSE HLSL_SOURCE_FILES
+    "${CMAKE_SOURCE_DIR}/src/assets/shaders/hlsl/*.hlsl"
 )
 
 set(SPIRV_BINARY_FILES)
 
-foreach(GLSL ${GLSL_SOURCE_FILES})
-    get_filename_component(FILE_NAME ${GLSL} NAME)
-    set(SPIRV "${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled/${FILE_NAME}.spv")
+foreach(HLSL ${HLSL_SOURCE_FILES})
+    get_filename_component(FILE_NAME ${HLSL} NAME)
+    
+    if(FILE_NAME MATCHES "\\.vert\\.hlsl$")
+        set(SHADER_PROFILE "vs_6_0")
+    elseif(FILE_NAME MATCHES "\\.frag\\.hlsl$")
+        set(SHADER_PROFILE "ps_6_0")
+    elseif(FILE_NAME MATCHES "\\.comp\\.hlsl$")
+        set(SHADER_PROFILE "cs_6_0")
+    else()
+        message(WARNING "Could not determine shader stage for ${FILE_NAME}")
+        continue()
+    endif()
+
+    string(REPLACE ".hlsl" ".spv" SPIRV_NAME ${FILE_NAME})
+    set(SPIRV "${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled/${SPIRV_NAME}")
+    
     add_custom_command(
         OUTPUT ${SPIRV}
-        COMMAND ${GLSLC_EXECUTABLE} ${GLSL} -o ${SPIRV}
-        DEPENDS ${GLSL}
-        COMMENT "Compiling ${FILE_NAME}"
+        COMMAND ${DXC_EXECUTABLE} -spirv -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
+        DEPENDS ${HLSL}
+        COMMENT "Compiling ${FILE_NAME} to SPIR-V"
     )
     list(APPEND SPIRV_BINARY_FILES ${SPIRV})
-endforeach(GLSL)
+endforeach(HLSL)
 
 add_custom_target(
     Shaders

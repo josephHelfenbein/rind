@@ -10,6 +10,7 @@
 #include <fstream>
 #include <vector>
 #include <memory>
+#include <typeindex>
 
 namespace engine {
 
@@ -38,6 +39,15 @@ namespace engine {
             VkRenderPass renderPassToUse = VK_NULL_HANDLE;
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
+            std::type_index pushConstantType = std::type_index(typeid(void));
+
+            template<typename T>
+            void setPushConstant(VkShaderStageFlags stageFlags) {
+                pushConstantRange.stageFlags = stageFlags;
+                pushConstantRange.offset = 0;
+                pushConstantRange.size = sizeof(T);
+                pushConstantType = std::type_index(typeid(T));
+            }
         } config;
 
         VkPipeline pipeline{};
@@ -83,6 +93,8 @@ namespace engine {
         ComputeShader* getComputeShader(const std::string& name);
 
         std::string getShaderFilePath(const std::string& name);
+
+        static std::vector<GraphicsShader> createDefaultShaders();
 
     private:
         std::vector<std::unique_ptr<GraphicsShader>> graphicsShaders;
