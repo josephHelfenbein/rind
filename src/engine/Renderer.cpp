@@ -69,7 +69,7 @@ void engine::Renderer::initVulkan() {
     createRenderPasses();
     createCommandPool();
     createMainTextureSampler();
-    createFinalDescriptorSets();
+    createPostProcessDescriptorSets();
     createColorResources();
     createDepthResources();
     sceneManager->setActiveScene(0);
@@ -334,7 +334,7 @@ void engine::Renderer::recreateSwapChain() {
     createSwapChain();
     createImageViews();
     createRenderPasses();
-    createFinalDescriptorSets();
+    createPostProcessDescriptorSets();
 }
 
 void engine::Renderer::createImageViews() {
@@ -1317,8 +1317,83 @@ void engine::Renderer::createMainTextureSampler() {
     }
 }
 
-void engine::Renderer::createFinalDescriptorSets() {
-    // Final descriptor sets creation logic
+void engine::Renderer::createPostProcessDescriptorSets() {
+    auto shaders = shaderManager->getGraphicsShaders();
+    for (const auto& shaderCopy : shaders) {
+        if (shaderCopy.config.inputBindings.empty()) continue;
+
+        auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
+        if (!shader) continue;
+
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader->descriptorSetLayout);
+        VkDescriptorSetAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = shader->descriptorPool,
+            .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+            .pSetLayouts = layouts.data()
+        };
+
+        shader->descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(device, &allocInfo, shader->descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error(std::format("Failed to allocate descriptor sets for shader '{}'!", shader->name));
+        }
+
+        std::vector<VkDescriptorImageInfo> imageInfos;
+        imageInfos.reserve(MAX_FRAMES_IN_FLIGHT * shader->config.inputBindings.size());
+        
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
+        descriptorWrites.reserve(MAX_FRAMES_IN_FLIGHT * shader->config.inputBindings.size());
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            for (const auto& binding : shader->config.inputBindings) {
+                auto sourceShader = shaderManager->getGraphicsShader(binding.sourceShaderName);
+                if (!sourceShader) {
+                    std::cout << std::format("Warning: Source shader '{}' for binding {} in shader '{}' not found.\n", 
+                        binding.sourceShaderName, binding.binding, shader->name);
+                    continue;
+                }
+
+                auto renderPass = sourceShader->config.renderPass;
+                if (!renderPass || !renderPass->images.has_value()) {
+                    std::cout << std::format("Warning: Render pass for shader '{}' has no images.\n", binding.sourceShaderName);
+                    continue;
+                }
+
+                VkImageView imageView = VK_NULL_HANDLE;
+                for (const auto& img : renderPass->images.value()) {
+                    if (img.name == binding.attachmentName) {
+                        imageView = img.imageView;
+                        break;
+                    }
+                }
+
+                if (imageView == VK_NULL_HANDLE) {
+                    std::cout << std::format("Warning: Attachment '{}' not found in shader '{}'.\n", binding.attachmentName, binding.sourceShaderName);
+                    continue;
+                }
+
+                imageInfos.push_back({
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    .imageView = imageView,
+                    .sampler = mainTextureSampler
+                });
+
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = shader->descriptorSets[i],
+                    .dstBinding = binding.binding,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &imageInfos.back()
+                });
+            }
+        }
+
+        if (!descriptorWrites.empty()) {
+            vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
+    }
 }
 
 void engine::Renderer::createColorResources() {

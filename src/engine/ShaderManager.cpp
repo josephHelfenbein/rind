@@ -238,23 +238,23 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     // GBuffer Images
     {
         std::vector<RenderPassImage> images;
-        // Position
+        // Albedo (Target 0)
         images.push_back({
-            .name = "Position",
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .name = "Albedo",
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
         });
-        // Normal
+        // Normal (Target 1)
         images.push_back({
             .name = "Normal",
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
         });
-        // Albedo/Spec
+        // Material (Target 2)
         images.push_back({
-            .name = "Albedo",
+            .name = "Material",
             .format = VK_FORMAT_R8G8B8A8_UNORM,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
@@ -281,6 +281,46 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         subpass.hasDepth = true;
         subpass.description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         gbufferPass->subpasses.push_back(subpass);
+    }
+
+    // Lighting Pass
+    auto lightingPass = std::make_shared<RenderPassInfo>();
+    lightingPass->name = "LightingPass";
+    lightingPass->usesSwapchain = false;
+    {
+        std::vector<RenderPassImage> images;
+        images.push_back({
+            .name = "SceneColor",
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        lightingPass->images = images;
+        
+        SubpassDefinition subpass;
+        subpass.colorAttachments = { { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } };
+        subpass.description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        lightingPass->subpasses.push_back(subpass);
+    }
+
+    // UI Pass
+    auto uiPass = std::make_shared<RenderPassInfo>();
+    uiPass->name = "UIPass";
+    uiPass->usesSwapchain = false;
+    {
+        std::vector<RenderPassImage> images;
+        images.push_back({
+            .name = "UIColor",
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        uiPass->images = images;
+
+        SubpassDefinition subpass;
+        subpass.colorAttachments = { { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } };
+        subpass.description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        uiPass->subpasses.push_back(subpass);
     }
 
     auto mainPass = std::make_shared<RenderPassInfo>();
@@ -348,14 +388,21 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "lighting.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "lighting.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
-        shader.config.renderPass = mainPass;
+        shader.config.renderPass = lightingPass;
         shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         
         shader.config.colorAttachmentCount = 1;
         shader.config.depthWrite = false;
         shader.config.enableDepth = false;
         shader.config.cullMode = VK_CULL_MODE_NONE;
-        shader.config.vertexBitBindings = 0;
+        shader.config.vertexBitBindings = 1;
+        shader.config.fragmentBitBindings = 5;
+        shader.config.inputBindings = {
+            { 1, "gbuffer", "Albedo" },
+            { 2, "gbuffer", "Normal" },
+            { 3, "gbuffer", "Material" },
+            { 4, "gbuffer", "Depth" }
+        };
         
         shaders.push_back(shader);
     }
@@ -367,14 +414,15 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "ui.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "ui.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
-        shader.config.renderPass = mainPass;
+        shader.config.renderPass = uiPass;
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         
         shader.config.colorAttachmentCount = 1;
         shader.config.depthWrite = false;
         shader.config.enableDepth = false;
         shader.config.cullMode = VK_CULL_MODE_NONE;
-        shader.config.vertexBitBindings = 1;
+        shader.config.vertexBitBindings = 0;
+        shader.config.fragmentBitBindings = 1;
         shader.config.getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
             binding.binding = 0;
             binding.stride = sizeof(UIVertex);
@@ -401,14 +449,15 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "text.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "text.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
-        shader.config.renderPass = mainPass;
+        shader.config.renderPass = uiPass;
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         
         shader.config.colorAttachmentCount = 1;
         shader.config.depthWrite = false;
         shader.config.enableDepth = false;
         shader.config.cullMode = VK_CULL_MODE_NONE;
-        shader.config.vertexBitBindings = 1;
+        shader.config.vertexBitBindings = 0;
+        shader.config.fragmentBitBindings = 1;
         shader.config.getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
             binding.binding = 0;
             binding.stride = sizeof(UIVertex);
@@ -441,6 +490,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.config.enableDepth = false;
         shader.config.cullMode = VK_CULL_MODE_NONE;
         shader.config.vertexBitBindings = 0;
+        shader.config.fragmentBitBindings = 2;
+        shader.config.inputBindings = {
+            { 0, "lighting", "SceneColor" },
+            { 1, "ui", "UIColor" }
+        };
         
         shaders.push_back(shader);
     }

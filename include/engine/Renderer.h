@@ -249,7 +249,7 @@ namespace engine {
         void createRenderPasses();
         void createCommandPool();
         void createMainTextureSampler();
-        void createFinalDescriptorSets();
+        void createPostProcessDescriptorSets();
         void createColorResources();
         void createDepthResources();
         void createCommandBuffers();

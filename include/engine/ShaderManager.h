@@ -82,6 +82,13 @@ namespace engine {
             int colorAttachmentCount = 1;
             std::type_index pushConstantType = std::type_index(typeid(void));
 
+            struct InputBinding {
+                uint32_t binding;
+                std::string sourceShaderName;
+                std::string attachmentName;
+            };
+            std::vector<InputBinding> inputBindings;
+
             template<typename T>
             void setPushConstant(VkShaderStageFlags stageFlags) {
                 pushConstantRange.stageFlags = stageFlags;
@@ -95,6 +102,7 @@ namespace engine {
         VkPipelineLayout pipelineLayout{};
         VkDescriptorSetLayout descriptorSetLayout{};
         VkDescriptorPool descriptorPool{};
+        std::vector<VkDescriptorSet> descriptorSets;
     };
 
     struct ComputeShader {
