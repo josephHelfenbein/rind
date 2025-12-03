@@ -11,12 +11,53 @@
 #include <vector>
 #include <memory>
 #include <typeindex>
+#include <optional>
 
 namespace engine {
 
     struct ShaderStageInfo {
         std::string path;
         VkShaderStageFlagBits stage;
+    };
+
+    struct RenderPassImage {
+        std::string name;
+        // 0 uses swapchain dimensions
+        uint32_t width = 0;
+        uint32_t height = 0;
+
+        VkClearValue clearValue = {};
+        uint32_t mipLevels = 1;
+        VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+        VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+        VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+        VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        uint32_t arrayLayers = 1;
+        VkImageCreateFlags flags = 0;
+
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkImageView imageView = VK_NULL_HANDLE;
+    };
+    struct SubpassDefinition {
+        VkSubpassDescription description{};
+        std::vector<VkAttachmentReference> inputAttachments;
+        std::vector<VkAttachmentReference> colorAttachments;
+        std::vector<VkAttachmentReference> resolveAttachments;
+        VkAttachmentReference depthStencilAttachment{};
+        bool hasDepth = false;
+    };
+    struct RenderPassInfo {
+        std::string name;
+        VkRenderPass renderPass = VK_NULL_HANDLE;
+        std::vector<VkFramebuffer> framebuffers;
+        std::vector<VkAttachmentDescription> attachmentDescriptions;
+        std::vector<SubpassDefinition> subpasses;
+        std::vector<VkSubpassDependency> subpassDependencies;
+
+        bool usesSwapchain = false;
+        std::optional<std::vector<RenderPassImage>> images = std::nullopt;
     };
 
     struct GraphicsShader {
@@ -36,7 +77,7 @@ namespace engine {
             bool depthWrite = true;
             VkCompareOp depthCompare = VK_COMPARE_OP_LESS;
             bool enableDepth = true;
-            VkRenderPass renderPassToUse = VK_NULL_HANDLE;
+            std::shared_ptr<RenderPassInfo> renderPass = nullptr;
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
             std::type_index pushConstantType = std::type_index(typeid(void));
@@ -78,9 +119,11 @@ namespace engine {
         ShaderManager(engine::Renderer* renderer, std::string shaderDirectory = "src/assets/shaders/compiled/");
         ~ShaderManager();
 
-        void addGraphicsShader(const std::string& name, const ShaderStageInfo& vertex, const ShaderStageInfo& fragment, const GraphicsShader::Config& config = {});
+        void addGraphicsShader(GraphicsShader shader);
+        void addComputeShader(ComputeShader shader);
 
-        void addComputeShader(const std::string& name, const ShaderStageInfo& compute, const ComputeShader::Config& config = {});
+        std::vector<GraphicsShader> getGraphicsShaders();
+        std::vector<ComputeShader> getComputeShaders();
 
         void loadAllShaders();
         void loadGraphicsShader(const std::string& name);

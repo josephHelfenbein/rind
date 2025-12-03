@@ -8,7 +8,11 @@
 #include <engine/SceneManager.h>
 #include <engine/io.h>
 
-engine::Renderer::Renderer(std::string windowTitle, std::vector<RenderPass> renderPasses) : windowTitle(windowTitle), renderPasses(renderPasses) {}
+#include <utility>
+#include <unordered_set>
+#include <format>
+
+engine::Renderer::Renderer(std::string windowTitle) : windowTitle(windowTitle) {}
 
 engine::Renderer::~Renderer() {
     cleanup();
@@ -58,6 +62,10 @@ void engine::Renderer::initVulkan() {
     createLogicalDevice();
     createSwapChain();
     createImageViews();
+    std::vector<GraphicsShader> defaultShaders = shaderManager->createDefaultShaders();
+    for (auto& shader : defaultShaders) {
+        shaderManager->addGraphicsShader(std::move(shader));
+    }
     createRenderPasses();
     createCommandPool();
     createMainTextureSampler();
@@ -69,10 +77,6 @@ void engine::Renderer::initVulkan() {
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
-    std::vector<GraphicsShader> defaultShaders = shaderManager->createDefaultShaders();
-    for (const auto& shader : defaultShaders) {
-        shaderManager->addGraphicsShader(shader.name, shader.vertex, shader.fragment, shader.config);
-    }
     shaderManager->loadAllShaders();
     createCommandBuffers();
     createSyncObjects();
@@ -746,53 +750,193 @@ std::vector<VkDescriptorSet> engine::Renderer::createDescriptorSets(GraphicsShad
 }
 
 void engine::Renderer::createRenderPasses() {
-    for (auto& renderPass : renderPasses) {
-        for (auto& imageResource : renderPass.imageResources) {
-            int width = imageResource.width == 0 ? swapChainExtent.width : imageResource.width;
-            int height = imageResource.height == 0 ? swapChainExtent.height : imageResource.height;
-            std::tie(imageResource.image, imageResource.memory) = createImage(
-                width,
-                height,
-                imageResource.mipLevels,
-                imageResource.samples,
-                imageResource.format,
-                imageResource.tiling,
-                imageResource.usage,
-                imageResource.properties,
-                imageResource.arrayLayers
-            );
-            imageResource.imageView = createImageView(
-                imageResource.image,
-                imageResource.format,
-                imageResource.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
-                imageResource.mipLevels,
-                VK_IMAGE_VIEW_TYPE_2D,
-                imageResource.arrayLayers
-            );
-        }
-        if (vkCreateRenderPass(device, &renderPass.createInfo, nullptr, &renderPass.renderPass) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create render pass!");
-        }
-        if (vkCreateSampler(device, &renderPass.samplerInfo, nullptr, &renderPass.sampler) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create texture sampler!");
-        }
-        renderPass.framebuffers.resize(swapChainImageViews.size());
-        for (size_t i = 0; i < swapChainImageViews.size(); ++i) {
-            std::vector<VkImageView> attachments;
-            for (const auto& imageResource : renderPass.imageResources) {
-                attachments.push_back(imageResource.imageView);
+    auto destroyPassResources = [this](RenderPassInfo& pass) {
+        for (auto framebuffer : pass.framebuffers) {
+            if (framebuffer != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device, framebuffer, nullptr);
             }
+        }
+        pass.framebuffers.clear();
+        if (pass.renderPass != VK_NULL_HANDLE) {
+            vkDestroyRenderPass(device, pass.renderPass, nullptr);
+            pass.renderPass = VK_NULL_HANDLE;
+        }
+        if (pass.images.has_value()) {
+            for (auto& image : pass.images.value()) {
+                if (image.imageView != VK_NULL_HANDLE) {
+                    vkDestroyImageView(device, image.imageView, nullptr);
+                    image.imageView = VK_NULL_HANDLE;
+                }
+                if (image.image != VK_NULL_HANDLE) {
+                    vkDestroyImage(device, image.image, nullptr);
+                    image.image = VK_NULL_HANDLE;
+                }
+                if (image.memory != VK_NULL_HANDLE) {
+                    vkFreeMemory(device, image.memory, nullptr);
+                    image.memory = VK_NULL_HANDLE;
+                }
+            }
+        }
+    };
+    std::vector<GraphicsShader> shaders = shaderManager->getGraphicsShaders();
+    managedRenderPasses.clear();
+    managedRenderPasses.reserve(shaders.size());
+    std::unordered_set<RenderPassInfo*> processedPasses;
+    for (auto& shader : shaders) {
+        auto renderPassPtr = shader.config.renderPass;
+        if (!renderPassPtr) {
+            continue;
+        }
+        RenderPassInfo* rawPtr = renderPassPtr.get();
+        if (!processedPasses.insert(rawPtr).second) {
+            continue;
+        }
+        managedRenderPasses.push_back(renderPassPtr);
+        auto& renderPass = *renderPassPtr;
+        destroyPassResources(renderPass);
+        std::vector<VkAttachmentDescription> attachments;
+        const size_t additionalAttachmentCount = renderPass.images.has_value() ? renderPass.images->size() : 0;
+        attachments.reserve((renderPass.usesSwapchain ? 1 : 0) + additionalAttachmentCount);
+        if (renderPass.usesSwapchain) {
+            VkAttachmentDescription swapchainAttachment = {
+                .format = swapChainImageFormat,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+            };
+            attachments.push_back(swapchainAttachment);
+        }
+        if (renderPass.images.has_value()) {
+            auto& images = renderPass.images.value();
+            for (auto& image : images) {
+                const uint32_t width = image.width == 0 ? swapChainExtent.width : image.width;
+                const uint32_t height = image.height == 0 ? swapChainExtent.height : image.height;
+                VkImage createdImage;
+                VkDeviceMemory createdMemory;
+                std::tie(createdImage, createdMemory) = createImage(
+                    width,
+                    height,
+                    image.mipLevels,
+                    image.samples,
+                    image.format,
+                    image.tiling,
+                    image.usage,
+                    image.properties,
+                    image.arrayLayers,
+                    image.flags
+                );
+                image.image = createdImage;
+                image.memory = createdMemory;
+                VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                if (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+                    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                    if (hasStencilComponent(image.format)) {
+                        aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+                    }
+                }
+                image.imageView = createImageView(
+                    image.image,
+                    image.format,
+                    aspectMask,
+                    image.mipLevels,
+                    VK_IMAGE_VIEW_TYPE_2D,
+                    image.arrayLayers
+                );
+
+                VkAttachmentDescription attachment = {
+                    .format = image.format,
+                    .samples = image.samples,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    .stencilLoadOp = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                    .stencilStoreOp = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .finalLayout = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                        ? (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+                            ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                            : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        : (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+                            ? (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+                                ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                            : VK_IMAGE_LAYOUT_GENERAL
+                };
+                attachments.push_back(attachment);
+            }
+        } else if (!renderPass.usesSwapchain) {
+            throw std::runtime_error(std::format("Render pass '{}' has no attachments defined.", renderPass.name));
+        }
+        renderPass.attachmentDescriptions = std::move(attachments);
+        if (renderPass.subpasses.empty()) {
+            throw std::runtime_error(std::format("Render pass '{}' must define at least one subpass.", renderPass.name));
+        }
+        std::vector<VkSubpassDescription> subpassDescriptions;
+        subpassDescriptions.reserve(renderPass.subpasses.size());
+        for (auto& subpass : renderPass.subpasses) {
+            subpass.description.colorAttachmentCount = static_cast<uint32_t>(subpass.colorAttachments.size());
+            subpass.description.pColorAttachments = subpass.colorAttachments.empty() ? nullptr : subpass.colorAttachments.data();
+            subpass.description.pResolveAttachments = subpass.resolveAttachments.empty() ? nullptr : subpass.resolveAttachments.data();
+            subpass.description.inputAttachmentCount = static_cast<uint32_t>(subpass.inputAttachments.size());
+            subpass.description.pInputAttachments = subpass.inputAttachments.empty() ? nullptr : subpass.inputAttachments.data();
+            subpass.description.pDepthStencilAttachment = subpass.hasDepth ? &subpass.depthStencilAttachment : nullptr;
+            subpassDescriptions.push_back(subpass.description);
+        }
+
+        VkRenderPassCreateInfo renderPassInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+            .attachmentCount = static_cast<uint32_t>(renderPass.attachmentDescriptions.size()),
+            .pAttachments = renderPass.attachmentDescriptions.data(),
+            .subpassCount = static_cast<uint32_t>(subpassDescriptions.size()),
+            .pSubpasses = subpassDescriptions.data(),
+            .dependencyCount = static_cast<uint32_t>(renderPass.subpassDependencies.size()),
+            .pDependencies = renderPass.subpassDependencies.empty() ? nullptr : renderPass.subpassDependencies.data()
+        };
+
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass.renderPass) != VK_SUCCESS) {
+            throw std::runtime_error(std::format("Failed to create render pass '{}'.", renderPass.name));
+        }
+
+        const uint32_t baseWidth = renderPass.usesSwapchain
+            ? swapChainExtent.width
+            : (renderPass.images.has_value() && !renderPass.images->empty()
+                ? (renderPass.images->front().width == 0 ? swapChainExtent.width : renderPass.images->front().width)
+                : swapChainExtent.width);
+        const uint32_t baseHeight = renderPass.usesSwapchain
+            ? swapChainExtent.height
+            : (renderPass.images.has_value() && !renderPass.images->empty()
+                ? (renderPass.images->front().height == 0 ? swapChainExtent.height : renderPass.images->front().height)
+                : swapChainExtent.height);
+
+        const size_t framebufferCount = renderPass.usesSwapchain ? swapChainImageViews.size() : 1;
+        renderPass.framebuffers.resize(framebufferCount);
+        for (size_t i = 0; i < framebufferCount; ++i) {
+            std::vector<VkImageView> framebufferAttachments;
+            framebufferAttachments.reserve((renderPass.usesSwapchain ? 1 : 0) + additionalAttachmentCount);
+            if (renderPass.usesSwapchain) {
+                framebufferAttachments.push_back(swapChainImageViews[i]);
+            }
+            if (renderPass.images.has_value()) {
+                for (const auto& image : renderPass.images.value()) {
+                    framebufferAttachments.push_back(image.imageView);
+                }
+            }
+
             VkFramebufferCreateInfo framebufferInfo = {
                 .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 .renderPass = renderPass.renderPass,
-                .attachmentCount = static_cast<uint32_t>(attachments.size()),
-                .pAttachments = attachments.data(),
-                .width = swapChainExtent.width,
-                .height = swapChainExtent.height,
+                .attachmentCount = static_cast<uint32_t>(framebufferAttachments.size()),
+                .pAttachments = framebufferAttachments.data(),
+                .width = baseWidth,
+                .height = baseHeight,
                 .layers = 1
             };
+
             if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &renderPass.framebuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create framebuffer!");
+                throw std::runtime_error(std::format("Failed to create framebuffer for render pass '{}'.", renderPass.name));
             }
         }
     }
@@ -1003,6 +1147,9 @@ void engine::Renderer::createGraphicsPipeline(GraphicsShader& shader) {
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &shader.pipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout!");
     }
+    if (!shader.config.renderPass) {
+        throw std::runtime_error(std::format("Graphics shader '{}' has no render pass assigned!", shader.name));
+    }
     VkGraphicsPipelineCreateInfo pipelineInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = shaderStageCount,
@@ -1016,7 +1163,7 @@ void engine::Renderer::createGraphicsPipeline(GraphicsShader& shader) {
         .pColorBlendState = &colorBlending,
         .pDynamicState = &dynamicState,
         .layout = shader.pipelineLayout,
-        .renderPass = shader.config.renderPassToUse,
+        .renderPass = shader.config.renderPass->renderPass,
         .subpass = 0u,
         .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = -1

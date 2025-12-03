@@ -4,6 +4,8 @@
 
 #include <format>
 #include <iostream>
+#include <utility>
+#include <unordered_set>
 
 engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string shaderDirectory) : renderer(renderer) {
     std::vector<std::string> shaderFiles = engine::scanDirectory(shaderDirectory);
@@ -21,6 +23,7 @@ engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string sha
 }
 
 engine::ShaderManager::~ShaderManager() {
+    std::unordered_set<RenderPassInfo*> processedPasses;
     for (auto& shader : graphicsShaders) {
         if (shader->pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(renderer->getDevice(), shader->pipeline, nullptr);
@@ -33,6 +36,32 @@ engine::ShaderManager::~ShaderManager() {
         }
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             vkDestroyDescriptorPool(renderer->getDevice(), shader->descriptorPool, nullptr);
+        }
+        if (shader->config.renderPass) {
+            RenderPassInfo* pass = shader->config.renderPass.get();
+            if (processedPasses.insert(pass).second) {
+                for (auto framebuffer : pass->framebuffers) {
+                    if (framebuffer != VK_NULL_HANDLE) {
+                        vkDestroyFramebuffer(renderer->getDevice(), framebuffer, nullptr);
+                    }
+                }
+                if (pass->renderPass != VK_NULL_HANDLE) {
+                    vkDestroyRenderPass(renderer->getDevice(), pass->renderPass, nullptr);
+                }
+                if (pass->images.has_value()) {
+                    for (auto& image : pass->images.value()) {
+                        if (image.imageView != VK_NULL_HANDLE) {
+                            vkDestroyImageView(renderer->getDevice(), image.imageView, nullptr);
+                        }
+                        if (image.image != VK_NULL_HANDLE) {
+                            vkDestroyImage(renderer->getDevice(), image.image, nullptr);
+                        }
+                        if (image.memory != VK_NULL_HANDLE) {
+                            vkFreeMemory(renderer->getDevice(), image.memory, nullptr);
+                        }
+                    }
+                }
+            }
         }
     }
     for (auto& shader : computeShaders) {
@@ -84,27 +113,28 @@ void engine::ShaderManager::loadComputeShader(const std::string& name) {
     }
 }
 
-void engine::ShaderManager::addGraphicsShader(const std::string& name, const ShaderStageInfo& vertex, const ShaderStageInfo& fragment, const GraphicsShader::Config& config) {
-    auto shader = std::make_unique<GraphicsShader>(new GraphicsShader{
-        .name = name,
-        .vertex = vertex,
-        .fragment = fragment,
-        .config = config
-    });
-
-    graphicsShaderMap[name] = shader.get();
-    graphicsShaders.push_back(std::move(shader));
+void engine::ShaderManager::addGraphicsShader(GraphicsShader shader) {
+    const std::string name = shader.name;
+    if (graphicsShaderMap.contains(name)) {
+        std::cout << std::format("Warning: Graphics shader {} already added. Skipping duplicate.\n", name);
+        return;
+    }
+    auto shaderPtr = std::make_unique<GraphicsShader>(std::move(shader));
+    GraphicsShader* rawPtr = shaderPtr.get();
+    graphicsShaders.push_back(std::move(shaderPtr));
+    graphicsShaderMap[name] = rawPtr;
 }
 
-void engine::ShaderManager::addComputeShader(const std::string& name, const ShaderStageInfo& compute, const ComputeShader::Config& config) {
-    auto shader = std::make_unique<ComputeShader>(new ComputeShader{
-        .name = name,
-        .compute = compute,
-        .config = config
-    });
-
-    computeShaderMap[name] = shader.get();
-    computeShaders.push_back(std::move(shader));
+void engine::ShaderManager::addComputeShader(ComputeShader shader) {
+    const std::string name = shader.name;
+    if (computeShaderMap.contains(name)) {
+        std::cout << std::format("Warning: Compute shader {} already added. Skipping duplicate.\n", name);
+        return;
+    }
+    auto shaderPtr = std::make_unique<ComputeShader>(std::move(shader));
+    ComputeShader* rawPtr = shaderPtr.get();
+    computeShaders.push_back(std::move(shaderPtr));
+    computeShaderMap[name] = rawPtr;
 }
 
 void engine::ShaderManager::editGraphicsShader(const std::string& name, const ShaderStageInfo& newVertex, const ShaderStageInfo& newFragment) {
@@ -148,6 +178,22 @@ std::string engine::ShaderManager::getShaderFilePath(const std::string& name) {
     return "";
 }
 
+std::vector<engine::GraphicsShader> engine::ShaderManager::getGraphicsShaders() {
+    std::vector<GraphicsShader> shaders;
+    for (const auto& shaderPtr : graphicsShaders) {
+        shaders.push_back(*shaderPtr);
+    }
+    return shaders;
+}
+
+std::vector<engine::ComputeShader> engine::ShaderManager::getComputeShaders() {
+    std::vector<ComputeShader> shaders;
+    for (const auto& shaderPtr : computeShaders) {
+        shaders.push_back(*shaderPtr);
+    }
+    return shaders;
+}
+
 namespace {
     struct Vertex {
         glm::vec3 pos;
@@ -184,6 +230,73 @@ namespace {
 std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders() {
     std::vector<GraphicsShader> shaders;
 
+    // Define Render Passes
+    auto gbufferPass = std::make_shared<RenderPassInfo>();
+    gbufferPass->name = "GBuffer";
+    gbufferPass->usesSwapchain = false;
+    
+    // GBuffer Images
+    {
+        std::vector<RenderPassImage> images;
+        // Position
+        images.push_back({
+            .name = "Position",
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        // Normal
+        images.push_back({
+            .name = "Normal",
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        // Albedo/Spec
+        images.push_back({
+            .name = "Albedo",
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        // Depth
+        images.push_back({
+            .name = "Depth",
+            .format = VK_FORMAT_D32_SFLOAT,
+            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .depthStencil = { 1.0f, 0 } }
+        });
+        gbufferPass->images = images;
+    }
+
+    // GBuffer Subpass
+    {
+        SubpassDefinition subpass;
+        subpass.colorAttachments = {
+            { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL },
+            { 1, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL },
+            { 2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL }
+        };
+        subpass.depthStencilAttachment = { 3, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+        subpass.hasDepth = true;
+        subpass.description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        gbufferPass->subpasses.push_back(subpass);
+    }
+
+    auto mainPass = std::make_shared<RenderPassInfo>();
+    mainPass->name = "Main";
+    mainPass->usesSwapchain = true;
+    
+    // Main Subpass
+    {
+        SubpassDefinition subpass;
+        subpass.colorAttachments = {
+            { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL }
+        };
+        subpass.description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        mainPass->subpasses.push_back(subpass);
+    }
+
     // GBuffer
     {
         GraphicsShader shader;
@@ -191,6 +304,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "gbuffer.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "gbuffer.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
+        shader.config.renderPass = gbufferPass;
         shader.config.setPushConstant<GBufferPC>(VK_SHADER_STAGE_VERTEX_BIT);
 
         shader.config.colorAttachmentCount = 3;
@@ -234,6 +348,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "lighting.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "lighting.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
+        shader.config.renderPass = mainPass;
         shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         
         shader.config.colorAttachmentCount = 1;
@@ -252,6 +367,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "ui.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "ui.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
+        shader.config.renderPass = mainPass;
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         
         shader.config.colorAttachmentCount = 1;
@@ -285,6 +401,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "text.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "text.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
+        shader.config.renderPass = mainPass;
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         
         shader.config.colorAttachmentCount = 1;
@@ -318,6 +435,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shader.vertex = { "composite.vert", VK_SHADER_STAGE_VERTEX_BIT };
         shader.fragment = { "composite.frag", VK_SHADER_STAGE_FRAGMENT_BIT };
 
+        shader.config.renderPass = mainPass;
         shader.config.colorAttachmentCount = 1;
         shader.config.depthWrite = false;
         shader.config.enableDepth = false;

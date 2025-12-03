@@ -8,8 +8,15 @@
 #include <vector>
 #include <iostream>
 #include <set>
+#include <memory>
 
 namespace engine {
+    struct GraphicsShader;
+    struct ComputeShader;
+    struct RenderPassInfo;
+    class Texture;
+    class UIObject;
+
     class Renderer {
     private:
         struct ImageResource {
@@ -37,7 +44,7 @@ namespace engine {
             VkSampler sampler;
         };
     public:
-        Renderer(std::string windowTitle, std::vector<RenderPass> renderPasses);
+        Renderer(std::string windowTitle);
         ~Renderer();
         void run();
 
@@ -202,6 +209,7 @@ namespace engine {
         VkFormat swapChainImageFormat;
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
+        std::vector<std::shared_ptr<RenderPassInfo>> managedRenderPasses;
         VkCommandPool commandPool;
         VkSampler mainTextureSampler;
 
@@ -255,8 +263,6 @@ namespace engine {
         void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
         VkShaderModule createShaderModule(const std::vector<char>& code);
-
-        std::vector<RenderPass> renderPasses;
 
         void recreateSwapChain();
 
