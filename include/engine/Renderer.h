@@ -2,7 +2,8 @@
 
 #include <vulkan/vulkan.h>
 
-#include <glfw/include/GLFW/glfw3.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 #include <string>
 #include <vector>
@@ -66,12 +67,16 @@ namespace engine {
         void registerSceneManager(class SceneManager* sceneManager) {
             this->sceneManager = sceneManager;
         }
+        void registerModelManager(class ModelManager* modelManager) {
+            this->modelManager = modelManager;
+        }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
         class TextureManager* getTextureManager() { return textureManager; }
         class ShaderManager* getShaderManager() { return shaderManager; }
         class SceneManager* getSceneManager() { return sceneManager; }
+        class ModelManager* getModelManager() { return modelManager; }
 
         std::vector<VkDescriptorSet> createDescriptorSets(class GraphicsShader* shader, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
         std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
@@ -109,6 +114,12 @@ namespace engine {
             uint32_t width,
             uint32_t height,
             uint32_t layerCount = 1
+        );
+        void copyDataToBuffer(
+            void* data,
+            VkDeviceSize size,
+            VkBuffer buffer,
+            VkDeviceMemory bufferMemory
         );
         VkSampler createTextureSampler(
             VkFilter magFilter,
@@ -235,6 +246,7 @@ namespace engine {
         class TextureManager* textureManager;
         class ShaderManager* shaderManager;
         class SceneManager* sceneManager;
+        class ModelManager* modelManager;
 
         bool cursorLocked;
         UIObject* hoveredObject = nullptr;

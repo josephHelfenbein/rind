@@ -13,6 +13,14 @@ engine::Entity::~Entity() {
     entityManager->unregisterEntity(name);
 }
 
+void engine::Entity::setModel(engine::Model* model) {
+    this->model = model;
+}
+
+engine::Model* engine::Entity::getModel() const {
+    return model;
+}
+
 void engine::Entity::updateWorldTransform() {
     glm::mat4 transform(1.0f);
     std::vector<Entity*> hierarchy;

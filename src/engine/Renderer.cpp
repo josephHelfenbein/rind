@@ -6,6 +6,7 @@
 #include <engine/TextureManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/SceneManager.h>
+#include <engine/ModelManager.h>
 #include <engine/io.h>
 
 #include <utility>
@@ -78,6 +79,7 @@ void engine::Renderer::initVulkan() {
     uiManager->loadFonts();
     entityManager->loadTextures();
     shaderManager->loadAllShaders();
+    modelManager->init();
     createCommandBuffers();
     createSyncObjects();
     createQuadResources();
@@ -508,6 +510,35 @@ void engine::Renderer::transitionImageLayout(
         1, &barrier
     );
     endSingleTimeCommands(commandBuffer);
+}
+
+void engine::Renderer::copyDataToBuffer(
+    void* data,
+    VkDeviceSize size,
+    VkBuffer buffer,
+    VkDeviceMemory bufferMemory
+) {
+    void* mappedData;
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    std::tie(stagingBuffer, stagingBufferMemory) = createBuffer(
+        size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    vkMapMemory(device, stagingBufferMemory, 0, size, 0, &mappedData);
+    memcpy(mappedData, data, static_cast<size_t>(size));
+    vkUnmapMemory(device, stagingBufferMemory);
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+    VkBufferCopy copyRegion = {
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = size
+    };
+    vkCmdCopyBuffer(commandBuffer, stagingBuffer, buffer, 1, &copyRegion);
+    endSingleTimeCommands(commandBuffer);
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void engine::Renderer::copyBufferToImage(

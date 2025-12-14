@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glfw/include/GLFW/glfw3.h>
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
 #include <engine/Renderer.h>

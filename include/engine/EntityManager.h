@@ -3,6 +3,7 @@
 #include <engine/Renderer.h>
 #include <engine/ShaderManager.h>
 #include <engine/TextureManager.h>
+#include <engine/ModelManager.h>
 #include <string>
 #include <map>
 #include <vector>
@@ -22,6 +23,9 @@ namespace engine {
 
         void addChild(Entity* child);
         void removeChild(Entity* child);
+
+        void setModel(Model* model);
+        Model* getModel() const;
 
         bool getIsMovable() const { return isMovable; }
         void setIsMovable(bool isMovable);
@@ -59,6 +63,8 @@ namespace engine {
         size_t uniformBufferStride = 0;
 
         EntityManager* entityManager;
+
+        Model* model = nullptr;
 
         std::vector<Entity*> children;
         Entity* parent = nullptr;

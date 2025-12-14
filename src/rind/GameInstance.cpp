@@ -14,6 +14,7 @@ rind::GameInstance::GameInstance() {
     textureManager = std::make_unique<engine::TextureManager>(renderer.get(), "src/assets/textures/");
     shaderManager = std::make_unique<engine::ShaderManager>(renderer.get(), "src/assets/shaders/compiled/");
     uiManager = std::make_unique<engine::UIManager>(renderer.get(), std::string("src/assets/fonts/"));
+    modelManager = std::make_unique<engine::ModelManager>(renderer.get(), "src/assets/models/");
 }
 
 rind::GameInstance::~GameInstance() {
