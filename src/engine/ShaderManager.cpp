@@ -23,7 +23,7 @@ engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string sha
 }
 
 engine::ShaderManager::~ShaderManager() {
-    std::unordered_set<RenderPassInfo*> processedPasses;
+    std::unordered_set<PassInfo*> processedPasses;
     for (auto& shader : graphicsShaders) {
         if (shader->pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(renderer->getDevice(), shader->pipeline, nullptr);
@@ -37,17 +37,9 @@ engine::ShaderManager::~ShaderManager() {
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             vkDestroyDescriptorPool(renderer->getDevice(), shader->descriptorPool, nullptr);
         }
-        if (shader->config.renderPass) {
-            RenderPassInfo* pass = shader->config.renderPass.get();
+        if (shader->config.passInfo) {
+            PassInfo* pass = shader->config.passInfo.get();
             if (processedPasses.insert(pass).second) {
-                for (auto framebuffer : pass->framebuffers) {
-                    if (framebuffer != VK_NULL_HANDLE) {
-                        vkDestroyFramebuffer(renderer->getDevice(), framebuffer, nullptr);
-                    }
-                }
-                if (pass->renderPass != VK_NULL_HANDLE) {
-                    vkDestroyRenderPass(renderer->getDevice(), pass->renderPass, nullptr);
-                }
                 if (pass->images.has_value()) {
                     for (auto& image : pass->images.value()) {
                         if (image.imageView != VK_NULL_HANDLE) {
@@ -231,13 +223,13 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     std::vector<GraphicsShader> shaders;
 
     // Define Render Passes
-    auto gbufferPass = std::make_shared<RenderPassInfo>();
+    auto gbufferPass = std::make_shared<PassInfo>();
     gbufferPass->name = "GBuffer";
     gbufferPass->usesSwapchain = false;
     
     // GBuffer Images
     {
-        std::vector<RenderPassImage> images;
+        std::vector<PassImage> images;
         // Albedo (Target 0)
         images.push_back({
             .name = "Albedo",
@@ -269,27 +261,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         gbufferPass->images = images;
     }
 
-    // GBuffer Subpass
-    {
-        SubpassDefinition subpass = {
-            .depthStencilAttachment = { 3, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL },
-            .hasDepth = true,
-            .colorAttachments = {
-                { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL },
-                { 1, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL },
-                { 2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL }
-            },
-            .description = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS }
-        };
-        gbufferPass->subpasses.push_back(subpass);
-    }
-
     // Lighting Pass
-    auto lightingPass = std::make_shared<RenderPassInfo>();
+    auto lightingPass = std::make_shared<PassInfo>();
     lightingPass->name = "LightingPass";
     lightingPass->usesSwapchain = false;
     {
-        std::vector<RenderPassImage> images;
+        std::vector<PassImage> images;
         images.push_back({
             .name = "SceneColor",
             .format = VK_FORMAT_R8G8B8A8_UNORM,
@@ -297,20 +274,14 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
         });
         lightingPass->images = images;
-
-        SubpassDefinition subpass = {
-            .colorAttachments = { { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } },
-            .description = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS }
-        };
-        lightingPass->subpasses.push_back(subpass);
     }
 
     // UI Pass
-    auto uiPass = std::make_shared<RenderPassInfo>();
+    auto uiPass = std::make_shared<PassInfo>();
     uiPass->name = "UIPass";
     uiPass->usesSwapchain = false;
     {
-        std::vector<RenderPassImage> images;
+        std::vector<PassImage> images;
         images.push_back({
             .name = "UIColor",
             .format = VK_FORMAT_R8G8B8A8_UNORM,
@@ -318,26 +289,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
         });
         uiPass->images = images;
-
-        SubpassDefinition subpass = {
-            .colorAttachments = { { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } },
-            .description = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS }
-        };
-        uiPass->subpasses.push_back(subpass);
     }
 
-    auto mainPass = std::make_shared<RenderPassInfo>();
+    auto mainPass = std::make_shared<PassInfo>();
     mainPass->name = "Main";
     mainPass->usesSwapchain = true;
-    
-    // Main Subpass
-    {
-        SubpassDefinition subpass = {
-            .colorAttachments = { { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } },
-            .description = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS }
-        };
-        mainPass->subpasses.push_back(subpass);
-    }
 
     // GBuffer
     {
@@ -346,7 +302,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { "gbuffer.vert", VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { "gbuffer.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .renderPass = gbufferPass,
+                .passInfo = gbufferPass,
                 .colorAttachmentCount = 3,
                 .depthWrite = true,
                 .enableDepth = true,
@@ -391,7 +347,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { "lighting.vert", VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { "lighting.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .renderPass = lightingPass,
+                .passInfo = lightingPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,
@@ -417,7 +373,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { "ui.vert", VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { "ui.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .renderPass = uiPass,
+                .passInfo = uiPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,
@@ -452,7 +408,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { "text.vert", VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { "text.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .renderPass = uiPass,
+                .passInfo = uiPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,
@@ -487,7 +443,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { "composite.vert", VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { "composite.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .renderPass = mainPass,
+                .passInfo = mainPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,

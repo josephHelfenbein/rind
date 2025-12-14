@@ -13,7 +13,7 @@
 namespace engine {
     struct GraphicsShader;
     struct ComputeShader;
-    struct RenderPassInfo;
+    struct PassInfo;
     class Texture;
     class UIObject;
 
@@ -209,7 +209,7 @@ namespace engine {
         VkFormat swapChainImageFormat;
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
-        std::vector<std::shared_ptr<RenderPassInfo>> managedRenderPasses;
+        std::vector<std::shared_ptr<PassInfo>> managedRenderPasses;
         VkCommandPool commandPool;
         VkSampler mainTextureSampler;
 
@@ -246,7 +246,7 @@ namespace engine {
         void createLogicalDevice();
         void createSwapChain();
         void createImageViews();
-        void createRenderPasses();
+        void createAttachmentResources();
         void createCommandPool();
         void createMainTextureSampler();
         void createPostProcessDescriptorSets();

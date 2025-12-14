@@ -20,7 +20,7 @@ namespace engine {
         VkShaderStageFlagBits stage;
     };
 
-    struct RenderPassImage {
+    struct PassImage {
         std::string name;
         // 0 uses swapchain dimensions
         uint32_t width = 0;
@@ -40,24 +40,15 @@ namespace engine {
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
     };
-    struct SubpassDefinition {
-        VkSubpassDescription description{};
-        std::vector<VkAttachmentReference> inputAttachments;
-        std::vector<VkAttachmentReference> colorAttachments;
-        std::vector<VkAttachmentReference> resolveAttachments;
-        VkAttachmentReference depthStencilAttachment{};
-        bool hasDepth = false;
-    };
-    struct RenderPassInfo {
+
+    struct PassInfo {
         std::string name;
-        VkRenderPass renderPass = VK_NULL_HANDLE;
-        std::vector<VkFramebuffer> framebuffers;
         std::vector<VkAttachmentDescription> attachmentDescriptions;
-        std::vector<SubpassDefinition> subpasses;
-        std::vector<VkSubpassDependency> subpassDependencies;
+        std::vector<VkFormat> attachmentFormats;
+        VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
 
         bool usesSwapchain = false;
-        std::optional<std::vector<RenderPassImage>> images = std::nullopt;
+        std::optional<std::vector<PassImage>> images = std::nullopt;
     };
 
     struct GraphicsShader {
@@ -77,7 +68,7 @@ namespace engine {
             bool depthWrite = true;
             VkCompareOp depthCompare = VK_COMPARE_OP_LESS;
             bool enableDepth = true;
-            std::shared_ptr<RenderPassInfo> renderPass = nullptr;
+            std::shared_ptr<PassInfo> passInfo = nullptr;
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
             std::type_index pushConstantType = std::type_index(typeid(void));

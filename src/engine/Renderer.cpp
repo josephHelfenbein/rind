@@ -66,7 +66,7 @@ void engine::Renderer::initVulkan() {
     for (auto& shader : defaultShaders) {
         shaderManager->addGraphicsShader(std::move(shader));
     }
-    createRenderPasses();
+    createAttachmentResources();
     createCommandPool();
     createMainTextureSampler();
     createPostProcessDescriptorSets();
@@ -146,8 +146,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("Failed to begin recording command buffer!");
     }
-    
-    // renderpasses info, begin render passes
+    // Begin pass and vkCmdBeginRendering goes here
 
     // Recording drawing commands goes here
     vkCmdEndRenderPass(commandBuffer);
@@ -229,6 +228,10 @@ void engine::Renderer::createLogicalDevice() {
     VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomicFloatFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT
     };
+    VkPhysicalDeviceVulkan13Features dynamicRenderingFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .dynamicRendering = VK_TRUE
+    };
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &atomicFloatFeatures
@@ -242,11 +245,13 @@ void engine::Renderer::createLogicalDevice() {
     VkDeviceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-        .pQueueCreateInfos = queueCreateInfos.data()
+        .pQueueCreateInfos = queueCreateInfos.data(),
+        .pNext = &dynamicRenderingFeatures
     };
     VkPhysicalDeviceFeatures2 enabledFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .features = deviceFeatures
+        .features = deviceFeatures,
+        .pNext = &dynamicRenderingFeatures
     };
     VkPhysicalDeviceShaderAtomicFloatFeaturesEXT enabledAtomicFloat{};
     if (!useCASAdvection && enableAtomicFloatExt && canUseBufferFloat32AtomicAdd) {
@@ -254,6 +259,7 @@ void engine::Renderer::createLogicalDevice() {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,
             .shaderBufferFloat32AtomicAdd = VK_TRUE
         };
+        enabledAtomicFloat.pNext = enabledFeatures2.pNext;
         enabledFeatures2.pNext = &enabledAtomicFloat;
     }
     createInfo.pNext = &enabledFeatures2;
@@ -333,7 +339,7 @@ void engine::Renderer::recreateSwapChain() {
     vkDeviceWaitIdle(device);
     createSwapChain();
     createImageViews();
-    createRenderPasses();
+    createAttachmentResources();
     createPostProcessDescriptorSets();
 }
 
@@ -749,18 +755,8 @@ std::vector<VkDescriptorSet> engine::Renderer::createDescriptorSets(GraphicsShad
     return descriptorSets;
 }
 
-void engine::Renderer::createRenderPasses() {
-    auto destroyPassResources = [this](RenderPassInfo& pass) {
-        for (auto framebuffer : pass.framebuffers) {
-            if (framebuffer != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(device, framebuffer, nullptr);
-            }
-        }
-        pass.framebuffers.clear();
-        if (pass.renderPass != VK_NULL_HANDLE) {
-            vkDestroyRenderPass(device, pass.renderPass, nullptr);
-            pass.renderPass = VK_NULL_HANDLE;
-        }
+void engine::Renderer::createAttachmentResources() {
+    auto destroyPassResources = [this](PassInfo& pass) {
         if (pass.images.has_value()) {
             for (auto& image : pass.images.value()) {
                 if (image.imageView != VK_NULL_HANDLE) {
@@ -781,34 +777,25 @@ void engine::Renderer::createRenderPasses() {
     std::vector<GraphicsShader> shaders = shaderManager->getGraphicsShaders();
     managedRenderPasses.clear();
     managedRenderPasses.reserve(shaders.size());
-    std::unordered_set<RenderPassInfo*> processedPasses;
+    std::unordered_set<PassInfo*> processedPasses;
     for (auto& shader : shaders) {
-        auto renderPassPtr = shader.config.renderPass;
+        auto renderPassPtr = shader.config.passInfo;
         if (!renderPassPtr) {
             continue;
         }
-        RenderPassInfo* rawPtr = renderPassPtr.get();
+        PassInfo* rawPtr = renderPassPtr.get();
         if (!processedPasses.insert(rawPtr).second) {
             continue;
         }
         managedRenderPasses.push_back(renderPassPtr);
         auto& renderPass = *renderPassPtr;
         destroyPassResources(renderPass);
-        std::vector<VkAttachmentDescription> attachments;
-        const size_t additionalAttachmentCount = renderPass.images.has_value() ? renderPass.images->size() : 0;
-        attachments.reserve((renderPass.usesSwapchain ? 1 : 0) + additionalAttachmentCount);
+        
+        renderPass.attachmentFormats.clear();
+        renderPass.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+
         if (renderPass.usesSwapchain) {
-            VkAttachmentDescription swapchainAttachment = {
-                .format = swapChainImageFormat,
-                .samples = VK_SAMPLE_COUNT_1_BIT,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-            };
-            attachments.push_back(swapchainAttachment);
+            renderPass.attachmentFormats.push_back(swapChainImageFormat);
         }
         if (renderPass.images.has_value()) {
             auto& images = renderPass.images.value();
@@ -837,6 +824,9 @@ void engine::Renderer::createRenderPasses() {
                     if (hasStencilComponent(image.format)) {
                         aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
                     }
+                    renderPass.depthAttachmentFormat = image.format;
+                } else {
+                    renderPass.attachmentFormats.push_back(image.format);
                 }
                 image.imageView = createImageView(
                     image.image,
@@ -846,97 +836,6 @@ void engine::Renderer::createRenderPasses() {
                     VK_IMAGE_VIEW_TYPE_2D,
                     image.arrayLayers
                 );
-
-                VkAttachmentDescription attachment = {
-                    .format = image.format,
-                    .samples = image.samples,
-                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp = (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    .stencilLoadOp = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                    .stencilStoreOp = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                    .finalLayout = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-                        ? (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-                            ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                            : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                        : (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-                            ? (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-                                ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-                            : VK_IMAGE_LAYOUT_GENERAL
-                };
-                attachments.push_back(attachment);
-            }
-        } else if (!renderPass.usesSwapchain) {
-            throw std::runtime_error(std::format("Render pass '{}' has no attachments defined.", renderPass.name));
-        }
-        renderPass.attachmentDescriptions = std::move(attachments);
-        if (renderPass.subpasses.empty()) {
-            throw std::runtime_error(std::format("Render pass '{}' must define at least one subpass.", renderPass.name));
-        }
-        std::vector<VkSubpassDescription> subpassDescriptions;
-        subpassDescriptions.reserve(renderPass.subpasses.size());
-        for (auto& subpass : renderPass.subpasses) {
-            subpass.description.colorAttachmentCount = static_cast<uint32_t>(subpass.colorAttachments.size());
-            subpass.description.pColorAttachments = subpass.colorAttachments.empty() ? nullptr : subpass.colorAttachments.data();
-            subpass.description.pResolveAttachments = subpass.resolveAttachments.empty() ? nullptr : subpass.resolveAttachments.data();
-            subpass.description.inputAttachmentCount = static_cast<uint32_t>(subpass.inputAttachments.size());
-            subpass.description.pInputAttachments = subpass.inputAttachments.empty() ? nullptr : subpass.inputAttachments.data();
-            subpass.description.pDepthStencilAttachment = subpass.hasDepth ? &subpass.depthStencilAttachment : nullptr;
-            subpassDescriptions.push_back(subpass.description);
-        }
-
-        VkRenderPassCreateInfo renderPassInfo = {
-            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-            .attachmentCount = static_cast<uint32_t>(renderPass.attachmentDescriptions.size()),
-            .pAttachments = renderPass.attachmentDescriptions.data(),
-            .subpassCount = static_cast<uint32_t>(subpassDescriptions.size()),
-            .pSubpasses = subpassDescriptions.data(),
-            .dependencyCount = static_cast<uint32_t>(renderPass.subpassDependencies.size()),
-            .pDependencies = renderPass.subpassDependencies.empty() ? nullptr : renderPass.subpassDependencies.data()
-        };
-
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass.renderPass) != VK_SUCCESS) {
-            throw std::runtime_error(std::format("Failed to create render pass '{}'.", renderPass.name));
-        }
-
-        const uint32_t baseWidth = renderPass.usesSwapchain
-            ? swapChainExtent.width
-            : (renderPass.images.has_value() && !renderPass.images->empty()
-                ? (renderPass.images->front().width == 0 ? swapChainExtent.width : renderPass.images->front().width)
-                : swapChainExtent.width);
-        const uint32_t baseHeight = renderPass.usesSwapchain
-            ? swapChainExtent.height
-            : (renderPass.images.has_value() && !renderPass.images->empty()
-                ? (renderPass.images->front().height == 0 ? swapChainExtent.height : renderPass.images->front().height)
-                : swapChainExtent.height);
-
-        const size_t framebufferCount = renderPass.usesSwapchain ? swapChainImageViews.size() : 1;
-        renderPass.framebuffers.resize(framebufferCount);
-        for (size_t i = 0; i < framebufferCount; ++i) {
-            std::vector<VkImageView> framebufferAttachments;
-            framebufferAttachments.reserve((renderPass.usesSwapchain ? 1 : 0) + additionalAttachmentCount);
-            if (renderPass.usesSwapchain) {
-                framebufferAttachments.push_back(swapChainImageViews[i]);
-            }
-            if (renderPass.images.has_value()) {
-                for (const auto& image : renderPass.images.value()) {
-                    framebufferAttachments.push_back(image.imageView);
-                }
-            }
-
-            VkFramebufferCreateInfo framebufferInfo = {
-                .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-                .renderPass = renderPass.renderPass,
-                .attachmentCount = static_cast<uint32_t>(framebufferAttachments.size()),
-                .pAttachments = framebufferAttachments.data(),
-                .width = baseWidth,
-                .height = baseHeight,
-                .layers = 1
-            };
-
-            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &renderPass.framebuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error(std::format("Failed to create framebuffer for render pass '{}'.", renderPass.name));
             }
         }
     }
@@ -1147,9 +1046,13 @@ void engine::Renderer::createGraphicsPipeline(GraphicsShader& shader) {
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &shader.pipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout!");
     }
-    if (!shader.config.renderPass) {
-        throw std::runtime_error(std::format("Graphics shader '{}' has no render pass assigned!", shader.name));
-    }
+    VkPipelineRenderingCreateInfo pipelineRenderingInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .colorAttachmentCount = static_cast<uint32_t>(shader.config.colorAttachmentCount),
+        .pColorAttachmentFormats = shader.config.passInfo->attachmentFormats.data(),
+        .depthAttachmentFormat = shader.config.enableDepth ? shader.config.passInfo->depthAttachmentFormat : VK_FORMAT_UNDEFINED,
+        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
+    };
     VkGraphicsPipelineCreateInfo pipelineInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = shaderStageCount,
@@ -1163,10 +1066,10 @@ void engine::Renderer::createGraphicsPipeline(GraphicsShader& shader) {
         .pColorBlendState = &colorBlending,
         .pDynamicState = &dynamicState,
         .layout = shader.pipelineLayout,
-        .renderPass = shader.config.renderPass->renderPass,
         .subpass = 0u,
         .basePipelineHandle = VK_NULL_HANDLE,
-        .basePipelineIndex = -1
+        .basePipelineIndex = -1,
+        .pNext = &pipelineRenderingInfo
     };
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &shader.pipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline!");
@@ -1353,7 +1256,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     continue;
                 }
 
-                auto renderPass = sourceShader->config.renderPass;
+                auto renderPass = sourceShader->config.passInfo;
                 if (!renderPass || !renderPass->images.has_value()) {
                     std::cout << std::format("Warning: Render pass for shader '{}' has no images.\n", binding.sourceShaderName);
                     continue;
