@@ -18,7 +18,7 @@ namespace engine {
     class Model {
     public:
         Model(std::string name, Renderer* renderer);
-        ~Model() = default;
+        ~Model();
         void loadFromFile(std::string filepath);
         std::pair<VkBuffer, VkDeviceMemory> getVertexBuffer() const { return {vertexBuffer, vertexBufferMemory}; }
         std::pair<VkBuffer, VkDeviceMemory> getIndexBuffer() const { return {indexBuffer, indexBufferMemory}; }
@@ -27,8 +27,6 @@ namespace engine {
     private:
         std::string name;
         Renderer* renderer;
-        std::vector<float> tempVertices;
-        std::vector<uint32_t> tempIndices;
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
         VkBuffer indexBuffer = VK_NULL_HANDLE;

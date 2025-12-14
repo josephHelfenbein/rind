@@ -2,6 +2,21 @@
 
 engine::Model::Model(std::string name, Renderer* renderer) : name(name), renderer(renderer) {}
 
+engine::Model::~Model() {
+    if (vertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(renderer->getDevice(), vertexBuffer, nullptr);
+    }
+    if (vertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(renderer->getDevice(), vertexBufferMemory, nullptr);
+    }
+    if (indexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(renderer->getDevice(), indexBuffer, nullptr);
+    }
+    if (indexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(renderer->getDevice(), indexBufferMemory, nullptr);
+    }
+}
+
 void engine::Model::loadFromFile(std::string filepath) {
     const std::filesystem::path pathObj(filepath);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(pathObj);
@@ -24,6 +39,8 @@ void engine::Model::loadFromFile(std::string filepath) {
         throw std::runtime_error("Mesh contains no primitives: " + filepath);
     }
     constexpr std::size_t floatsPerVertex = 11; // pos(3), normal(3), uv(2), tangent(4)
+    std::vector<float> tempVertices;
+    std::vector<uint32_t> tempIndices;
     for (const auto& primitive : mesh.primitives) {
         if (!primitive.indicesAccessor.has_value()) {
             std::cerr<<std::format("Warning: Primitive in model {} has no indices. Skipping.\n", filepath);
@@ -117,33 +134,12 @@ void engine::Model::loadFromFile(std::string filepath) {
                 const std::size_t b0 = startFloat + i0 * floatsPerVertex;
                 const std::size_t b1 = startFloat + i1 * floatsPerVertex;
                 const std::size_t b2 = startFloat + i2 * floatsPerVertex;
-                const glm::vec3 v0(
-                    tempVertices[b0 + 0],
-                    tempVertices[b0 + 1],
-                    tempVertices[b0 + 2]
-                );
-                const glm::vec3 v1(
-                    tempVertices[b1 + 0],
-                    tempVertices[b1 + 1],
-                    tempVertices[b1 + 2]
-                );
-                const glm::vec3 v2(
-                    tempVertices[b2 + 0],
-                    tempVertices[b2 + 1],
-                    tempVertices[b2 + 2]
-                );
-                const glm::vec2 uv0(
-                    tempVertices[b0 + 6],
-                    tempVertices[b0 + 7]
-                );
-                const glm::vec2 uv1(
-                    tempVertices[b1 + 6],
-                    tempVertices[b1 + 7]
-                );
-                const glm::vec2 uv2(
-                    tempVertices[b2 + 6],
-                    tempVertices[b2 + 7]
-                );
+                const glm::vec3 v0(tempVertices[b0 + 0], tempVertices[b0 + 1], tempVertices[b0 + 2]);
+                const glm::vec3 v1(tempVertices[b1 + 0], tempVertices[b1 + 1], tempVertices[b1 + 2]);
+                const glm::vec3 v2(tempVertices[b2 + 0], tempVertices[b2 + 1], tempVertices[b2 + 2]);
+                const glm::vec2 uv0(tempVertices[b0 + 6], tempVertices[b0 + 7]);
+                const glm::vec2 uv1(tempVertices[b1 + 6], tempVertices[b1 + 7]);
+                const glm::vec2 uv2(tempVertices[b2 + 6], tempVertices[b2 + 7]);
                 const glm::vec3 edge1 = v1 - v0;
                 const glm::vec3 edge2 = v2 - v0;
                 const glm::vec2 deltaUV1 = uv1 - uv0;
@@ -202,8 +198,6 @@ void engine::Model::loadFromFile(std::string filepath) {
         indexBufferMemory
     );
     indexCount = static_cast<uint32_t>(tempIndices.size());
-    tempVertices.clear();
-    tempIndices.clear();
 }
 
 engine::ModelManager::ModelManager(Renderer* renderer, std::string modelDirectory) :  renderer(renderer), modelDirectory(modelDirectory) {
@@ -212,18 +206,7 @@ engine::ModelManager::ModelManager(Renderer* renderer, std::string modelDirector
 
 engine::ModelManager::~ModelManager() {
     for (auto& [name, model] : models) {
-        VkBuffer vertexBuffer, indexBuffer;
-        VkDeviceMemory vertexBufferMemory, indexBufferMemory;
-        std::tie(vertexBuffer, vertexBufferMemory) = model->getVertexBuffer();
-        if (vertexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(renderer->getDevice(), vertexBuffer, nullptr);
-            vkFreeMemory(renderer->getDevice(), vertexBufferMemory, nullptr);
-        }
-        std::tie(indexBuffer, indexBufferMemory) = model->getIndexBuffer();
-        if (indexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(renderer->getDevice(), indexBuffer, nullptr);
-            vkFreeMemory(renderer->getDevice(), indexBufferMemory, nullptr);
-        }
+        delete model;
     }
     models.clear();
 }
