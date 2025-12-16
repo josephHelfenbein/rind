@@ -1,8 +1,13 @@
 #include <engine/EntityManager.h>
+#include <engine/Camera.h>
+#include <engine/Light.h>
 
-engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, int renderPass, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
-    : entityManager(entityManager), name(name), shader(shader), renderPass(renderPass), transform(transform), textures(textures), isMovable(isMovable) {
+engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
+    : entityManager(entityManager), name(name), shader(shader), transform(transform), textures(textures), isMovable(isMovable) {
     entityManager->addEntity(name, this);
+    if (Camera* cam = dynamic_cast<Camera*>(this)) {
+        entityManager->setCamera(cam);
+    }
 }
 
 engine::Entity::~Entity() {
@@ -32,6 +37,10 @@ void engine::Entity::updateWorldTransform() {
         transform = transform * current->transform;
     }
     worldTransform = transform;
+}
+
+glm::vec3 engine::Entity::getWorldPosition() const {
+    return glm::vec3(worldTransform[3]);
 }
 
 void engine::Entity::addChild(Entity* child) {
@@ -148,6 +157,12 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
         if (entity->getParent() == nullptr) {
             removeRootEntry(entity);
         }
+        if (Light* light = dynamic_cast<Light*>(entity)) {
+            lights.erase(std::remove(lights.begin(), lights.end(), light), lights.end());
+        }
+        if (getCamera() == entity) {
+            setCamera(nullptr);
+        }
         entities.erase(it);
     }
 }
@@ -158,6 +173,19 @@ void engine::EntityManager::clear() {
     }
     rootEntities.clear();
     movableEntities.clear();
+    for (auto& buffer : lightsBuffers) {
+        if (buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(renderer->getDevice(), buffer, nullptr);
+        }
+    }
+    for (auto& memory : lightsBuffersMemory) {
+        if (memory != VK_NULL_HANDLE) {
+            vkFreeMemory(renderer->getDevice(), memory, nullptr);
+        }
+    }
+    lightsBuffers.clear();
+    lightsBuffersMemory.clear();
+    lights.clear();
 }
 
 void engine::EntityManager::loadTextures() {
@@ -204,13 +232,57 @@ void engine::EntityManager::loadTextures() {
                 }
             }
         }
-        if (texturePtrs.size() < shader->config.fragmentBitBindings) {
-            std::cout << std::format("Error: Not enough textures for Entity {}. Expected {}, got {}. Skipping descriptor set creation.\n", name, shader->config.fragmentBitBindings, texturePtrs.size());
+        const int fragmentBindings = std::max(shader->config.fragmentBitBindings, 0);
+        auto getFragmentType = [&](int index) {
+            if (!shader->config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < shader->config.fragmentDescriptorTypes.size()) {
+                return shader->config.fragmentDescriptorTypes[static_cast<size_t>(index)];
+            }
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        };
+        auto getFragmentCount = [&](int index) {
+            if (!shader->config.fragmentDescriptorCounts.empty() && shader->config.fragmentDescriptorCounts.size() == static_cast<size_t>(fragmentBindings)) {
+                return std::max(shader->config.fragmentDescriptorCounts[static_cast<size_t>(index)], 1u);
+            }
+            return 1u;
+        };
+        size_t requiredTextures = 0;
+        for (int i = 0; i < fragmentBindings; ++i) {
+            VkDescriptorType type = getFragmentType(i);
+            if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+                requiredTextures += getFragmentCount(i);
+            }
+        }
+        if (texturePtrs.size() < requiredTextures) {
+            std::cout << std::format("Error: Not enough textures for Entity {}. Expected {} image bindings, got {}. Skipping descriptor set creation.\n", name, requiredTextures, texturePtrs.size());
             continue;
         }
         entity->ensureUniformBuffers(renderer, shader);
         entity->setDescriptorSets(renderer->createDescriptorSets(shader, texturePtrs, entity->getUniformBuffers()));
     }
+}
+
+void engine::EntityManager::createLightsUBO() {
+    const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
+    lightsBuffers.resize(frames, VK_NULL_HANDLE);
+    lightsBuffersMemory.resize(frames, VK_NULL_HANDLE);
+    for (size_t frame = 0; frame < frames; ++frame) {
+        std::tie(lightsBuffers[frame], lightsBuffersMemory[frame]) = renderer->createBuffer(
+            sizeof(engine::LightsUBO),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+    }
+}
+
+void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
+    engine::LightsUBO lightsUBO{};
+    auto lights = getLights();
+    uint32_t count = std::min<uint32_t>(lights.size(), 64);
+    for (uint32_t i = 0; i < count; ++i) {
+        lightsUBO.pointLights[i] = lights[i]->getPointLightData();
+    }
+    lightsUBO.numPointLights = glm::uvec4(count, 0, 0, 0);
+    renderer->copyDataToBuffer(&lightsUBO, sizeof(lightsUBO), lightsBuffers[frameIndex], lightsBuffersMemory[frameIndex]);
 }
 
 void engine::EntityManager::updateAll(float deltaTime) {

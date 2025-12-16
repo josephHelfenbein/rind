@@ -7,10 +7,13 @@
 #include <engine/ShaderManager.h>
 #include <engine/SceneManager.h>
 #include <engine/ModelManager.h>
+#include <engine/Camera.h>
 #include <engine/io.h>
+#include <engine/PushConstants.h>
 
 #include <utility>
 #include <unordered_set>
+#include <unordered_map>
 #include <format>
 
 engine::Renderer::Renderer(std::string windowTitle) : windowTitle(windowTitle) {}
@@ -67,6 +70,7 @@ void engine::Renderer::initVulkan() {
     for (auto& shader : defaultShaders) {
         shaderManager->addGraphicsShader(std::move(shader));
     }
+    shaderManager->resolveRenderGraphShaders();
     createAttachmentResources();
     createCommandPool();
     createMainTextureSampler();
@@ -78,6 +82,7 @@ void engine::Renderer::initVulkan() {
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
+    entityManager->createLightsUBO();
     shaderManager->loadAllShaders();
     modelManager->init();
     createCommandBuffers();
@@ -148,12 +153,257 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("Failed to begin recording command buffer!");
     }
-    // Begin pass and vkCmdBeginRendering goes here
+    auto& renderGraph = shaderManager->getRenderGraph();
+    const size_t nodeCount = renderGraph.size();
 
-    // Recording drawing commands goes here
-    vkCmdEndRenderPass(commandBuffer);
+    for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
+        auto& node = renderGraph[nodeIdx];
+        std::vector<VkImageMemoryBarrier2> preBarriers;
+        std::vector<VkImageMemoryBarrier2> postBarriers;
+
+        if (node.passInfo->usesSwapchain) {
+            preBarriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                .srcAccessMask = VK_ACCESS_2_NONE,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = swapChainImages[imageIndex],
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            });
+            postBarriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                .dstAccessMask = VK_ACCESS_2_NONE,
+                .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = swapChainImages[imageIndex],
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            });
+        }
+        if (node.passInfo->images.has_value()) {
+            for (auto& image : node.passInfo->images.value()) {
+                const bool isDepth = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+                const VkImageAspectFlags aspect = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+                const VkImageLayout attachmentLayout = isDepth
+                    ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+                preBarriers.push_back({
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                    .srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                    .dstStageMask = isDepth
+                        ? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+                        : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    .dstAccessMask = isDepth
+                        ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+                        : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .newLayout = attachmentLayout,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = image.image,
+                    .subresourceRange = {
+                        .aspectMask = aspect,
+                        .baseMipLevel = 0,
+                        .levelCount = image.mipLevels,
+                        .baseArrayLayer = 0,
+                        .layerCount = image.arrayLayers
+                    }
+                });
+                const bool isSampled = (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0;
+                if (isSampled) {
+                    postBarriers.push_back({
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                        .srcStageMask = isDepth
+                            ? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        .srcAccessMask = isDepth
+                            ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                        .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                        .oldLayout = attachmentLayout,
+                        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = image.image,
+                        .subresourceRange = {
+                            .aspectMask = aspect,
+                            .baseMipLevel = 0,
+                            .levelCount = image.mipLevels,
+                            .baseArrayLayer = 0,
+                            .layerCount = image.arrayLayers
+                        }
+                    });
+                }
+            }
+        }
+        if (!preBarriers.empty()) {
+            VkDependencyInfo depInfo = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .imageMemoryBarrierCount = static_cast<uint32_t>(preBarriers.size()),
+                .pImageMemoryBarriers = preBarriers.data()
+            };
+            vkCmdPipelineBarrier2(commandBuffer, &depInfo);
+        }
+        VkRenderingInfo renderingInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = {
+                .offset = {0, 0},
+                .extent = swapChainExtent
+            },
+            .layerCount = 1
+        };
+        VkRenderingAttachmentInfo swapColor{};
+        if (node.passInfo->usesSwapchain) {
+            swapColor = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = swapChainImageViews[imageIndex],
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = { .color = {0.0f, 0.0f, 0.0f, 1.0f} }
+            };
+            renderingInfo.colorAttachmentCount = 1;
+            renderingInfo.pColorAttachments = &swapColor;
+        } else {
+            renderingInfo.colorAttachmentCount = static_cast<uint32_t>(node.passInfo->colorAttachments.size());
+            renderingInfo.pColorAttachments = node.passInfo->colorAttachments.data();
+            renderingInfo.pDepthAttachment = node.passInfo->hasDepthAttachment ? &node.passInfo->depthAttachment.value() : nullptr;
+            if (node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
+                const auto& firstImage = (*node.passInfo->images)[0];
+                renderingInfo.renderArea.extent = {
+                    .width = firstImage.width == 0 ? swapChainExtent.width : firstImage.width,
+                    .height = firstImage.height == 0 ? swapChainExtent.height : firstImage.height
+                };
+            }
+        }
+
+        vkCmdBeginRendering(commandBuffer, &renderingInfo);
+        if (node.is2D 
+        && (node.shaders.find(shaderManager->getGraphicsShader("ui")) != node.shaders.end()
+        || node.shaders.find(shaderManager->getGraphicsShader("text")) != node.shaders.end())
+        ) {
+            uiManager->renderUI(commandBuffer, node);
+        } else if (node.is2D) {
+            draw2DPass(commandBuffer, node);
+        } else {
+            drawEntities(commandBuffer, node);
+        }
+        vkCmdEndRendering(commandBuffer);
+
+        if (!postBarriers.empty()) {
+            VkDependencyInfo depInfo = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .imageMemoryBarrierCount = static_cast<uint32_t>(postBarriers.size()),
+                .pImageMemoryBarriers = postBarriers.data()
+            };
+            vkCmdPipelineBarrier2(commandBuffer, &depInfo);
+        }
+    }
+
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Failed to record command buffer!");
+    }
+    entityManager->updateAll(deltaTime);
+    entityManager->updateLightsUBO(currentFrame);
+}
+
+void engine::Renderer::drawEntities(VkCommandBuffer commandBuffer, RenderNode& node) {
+    std::vector<Entity*> rootEntities = entityManager->getRootEntities();
+    std::set<GraphicsShader*>& shaders = node.shaders;
+    Camera* camera = entityManager->getCamera();
+
+    std::function<void(Entity*)> drawEntity = [&](Entity* entity) {
+        if (!entity->getModel()) return;
+        if (!entity->getShader().empty() || shaders.find(shaderManager->getGraphicsShader(entity->getShader())) != shaders.end()) {
+            Model* model = entity->getModel();
+            GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+            VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
+            
+            std::type_index type = shader->config.pushConstantType;
+            if (type == std::type_index(typeid(GBufferPC))) {
+                if (camera) {
+                    GBufferPC pc = {
+                        .model = entity->getWorldTransform(),
+                        .view = camera->getViewMatrix(),
+                        .projection = camera->getProjectionMatrix(),
+                        .camPos = camera->getWorldPosition()
+                    };
+                    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
+                }
+            } else if (type == std::type_index(typeid(LightingPC))) {
+                if (camera) {
+                    LightingPC pc = {
+                        .invView = glm::inverse(camera->getViewMatrix()),
+                        .invProj = glm::inverse(camera->getProjectionMatrix()),
+                        .camPos = camera->getWorldPosition()
+                    };
+                    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(LightingPC), &pc);
+                }
+            } else if (type == std::type_index(typeid(UIPC))) {
+                UIPC pc = {
+                    .tint = glm::vec3(1.0f),
+                    .model = entity->getWorldTransform()
+                };
+                vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(UIPC), &pc);
+            }
+            std::vector<VkDescriptorSet> descriptorSets = entity->getDescriptorSets();
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+
+            vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
+        }
+        for (Entity* child : entity->getChildren()) {
+            drawEntity(child);
+        }
+    };
+    for (Entity* entity : rootEntities) {
+        drawEntity(entity);
+    }
+}
+
+void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node) {
+    for (GraphicsShader* shader : node.shaders) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+        if (!shader->descriptorSets.empty()) {
+            vkCmdBindDescriptorSets(
+                commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                shader->pipelineLayout,
+                0,
+                static_cast<uint32_t>(shader->descriptorSets.size()),
+                shader->descriptorSets.data(),
+                0,
+                nullptr
+            );
+        }
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
     }
 }
 
@@ -730,16 +980,48 @@ std::vector<VkDescriptorSet> engine::Renderer::createDescriptorSets(GraphicsShad
     if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate descriptor sets!");
     }
+    const int vertexBindings = std::max(shader->config.vertexBitBindings, 0);
+    const int fragmentBindings = std::max(shader->config.fragmentBitBindings, 0);
+    const size_t expectedBuffers = static_cast<size_t>(vertexBindings) * MAX_FRAMES_IN_FLIGHT;
+    if (buffers.size() < expectedBuffers && vertexBindings > 0) {
+        throw std::runtime_error("Insufficient uniform buffers for descriptor set creation!");
+    }
+
+    auto getFragmentType = [&](int index) {
+        if (!shader->config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < shader->config.fragmentDescriptorTypes.size()) {
+            return shader->config.fragmentDescriptorTypes[static_cast<size_t>(index)];
+        }
+        return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    };
+    auto getFragmentCount = [&](int index) {
+        if (!shader->config.fragmentDescriptorCounts.empty() && shader->config.fragmentDescriptorCounts.size() == static_cast<size_t>(fragmentBindings)) {
+            return std::max(shader->config.fragmentDescriptorCounts[static_cast<size_t>(index)], 1u);
+        }
+        return 1u;
+    };
+
+    size_t requiredTextureBindings = 0;
+    for (int i = 0; i < fragmentBindings; ++i) {
+        const VkDescriptorType type = getFragmentType(i);
+        if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+            requiredTextureBindings += getFragmentCount(i);
+        }
+    }
+    if (textures.size() < requiredTextureBindings) {
+        throw std::runtime_error("Insufficient textures for descriptor set creation!");
+    }
+
     std::vector<VkDescriptorImageInfo> imageInfos;
     std::vector<VkDescriptorBufferInfo> bufferInfos;
-    bufferInfos.reserve(buffers.size());
-    imageInfos.reserve(textures.size() * MAX_FRAMES_IN_FLIGHT);
+    imageInfos.reserve(requiredTextureBindings * MAX_FRAMES_IN_FLIGHT + fragmentBindings * MAX_FRAMES_IN_FLIGHT);
+    bufferInfos.reserve(expectedBuffers);
     std::vector<VkWriteDescriptorSet> descriptorWrites;
-    descriptorWrites.reserve((textures.size() + buffers.size()) * MAX_FRAMES_IN_FLIGHT);
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        for (size_t j = 0; j < textures.size(); ++j) {
-            const size_t bufferIndex = i * textures.size() + j;
-            VkBuffer bufferHandle = buffers[j];
+    descriptorWrites.reserve(static_cast<size_t>(vertexBindings + fragmentBindings) * MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+        for (int binding = 0; binding < vertexBindings; ++binding) {
+            const size_t bufferIndex = frame * static_cast<size_t>(vertexBindings) + static_cast<size_t>(binding);
+            VkBuffer bufferHandle = buffers[bufferIndex];
             if (bufferHandle == VK_NULL_HANDLE) {
                 throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");
             }
@@ -750,38 +1032,96 @@ std::vector<VkDescriptorSet> engine::Renderer::createDescriptorSets(GraphicsShad
             });
             descriptorWrites.push_back({
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptorSets[i],
-                .dstBinding = static_cast<uint32_t>(j),
+                .dstSet = descriptorSets[frame],
+                .dstBinding = static_cast<uint32_t>(binding),
                 .dstArrayElement = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .pBufferInfo = &bufferInfos.back()
             });
         }
-        for (size_t j = 0; j < textures.size(); ++j) {
-            Texture* texture = textures[j];
-            if (!texture || !texture->imageView) {
-                throw std::runtime_error("Invalid texture provided for descriptor set creation!");
+
+        size_t textureIndex = 0;
+        for (int frag = 0; frag < fragmentBindings; ++frag) {
+            const VkDescriptorType type = getFragmentType(frag);
+            const uint32_t descriptorCount = getFragmentCount(frag);
+            const uint32_t bindingIndex = static_cast<uint32_t>(vertexBindings + frag);
+
+            size_t startIndex = imageInfos.size();
+            switch (type) {
+                case VK_DESCRIPTOR_TYPE_SAMPLER: {
+                    VkSampler sampler = mainTextureSampler;
+                    if (!textures.empty() && textures.front() && textures.front()->imageSampler != VK_NULL_HANDLE) {
+                        sampler = textures.front()->imageSampler;
+                    }
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        imageInfos.push_back({
+                            .sampler = sampler
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = descriptorSets[frame],
+                        .dstBinding = bindingIndex,
+                        .dstArrayElement = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                        .descriptorCount = descriptorCount,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    break;
+                }
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        Texture* texture = textures.at(textureIndex++);
+                        if (!texture || !texture->imageView) {
+                            throw std::runtime_error("Invalid texture provided for sampled image descriptor!");
+                        }
+                        imageInfos.push_back({
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .imageView = texture->imageView,
+                            .sampler = VK_NULL_HANDLE
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = descriptorSets[frame],
+                        .dstBinding = bindingIndex,
+                        .dstArrayElement = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                        .descriptorCount = descriptorCount,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    break;
+                }
+                default: {
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        Texture* texture = textures.at(textureIndex++);
+                        if (!texture || !texture->imageView) {
+                            throw std::runtime_error("Invalid texture provided for combined image sampler descriptor!");
+                        }
+                        imageInfos.push_back({
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .imageView = texture->imageView,
+                            .sampler = texture->imageSampler
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = descriptorSets[frame],
+                        .dstBinding = bindingIndex,
+                        .dstArrayElement = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .descriptorCount = descriptorCount,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    break;
+                }
             }
-            imageInfos.push_back({
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = texture->imageView,
-                .sampler = texture->imageSampler
-            });
-            descriptorWrites.push_back({
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptorSets[i],
-                .dstBinding = static_cast<uint32_t>(buffers.size() + j),
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pImageInfo = &imageInfos[i * textures.size() + j]
-            });
         }
     }
+
     if (!descriptorWrites.empty()) {
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-        descriptorWrites.clear();
     }
     return descriptorSets;
 }
@@ -824,49 +1164,71 @@ void engine::Renderer::createAttachmentResources() {
         
         renderPass.attachmentFormats.clear();
         renderPass.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+        renderPass.colorAttachments.clear();
+        renderPass.depthAttachment.reset();
+        renderPass.hasDepthAttachment = false;
 
         if (renderPass.usesSwapchain) {
             renderPass.attachmentFormats.push_back(swapChainImageFormat);
         }
-        if (renderPass.images.has_value()) {
-            auto& images = renderPass.images.value();
-            for (auto& image : images) {
-                const uint32_t width = image.width == 0 ? swapChainExtent.width : image.width;
-                const uint32_t height = image.height == 0 ? swapChainExtent.height : image.height;
-                VkImage createdImage;
-                VkDeviceMemory createdMemory;
-                std::tie(createdImage, createdMemory) = createImage(
-                    width,
-                    height,
-                    image.mipLevels,
-                    image.samples,
-                    image.format,
-                    image.tiling,
-                    image.usage,
-                    image.properties,
-                    image.arrayLayers,
-                    image.flags
-                );
-                image.image = createdImage;
-                image.memory = createdMemory;
-                VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                if (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-                    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                    if (hasStencilComponent(image.format)) {
-                        aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-                    }
-                    renderPass.depthAttachmentFormat = image.format;
-                } else {
-                    renderPass.attachmentFormats.push_back(image.format);
-                }
-                image.imageView = createImageView(
-                    image.image,
-                    image.format,
-                    aspectMask,
-                    image.mipLevels,
-                    VK_IMAGE_VIEW_TYPE_2D,
-                    image.arrayLayers
-                );
+
+        if (!renderPass.images.has_value()) {
+            continue;
+        }
+
+        auto& images = renderPass.images.value();
+        renderPass.colorAttachments.reserve(images.size());
+        for (auto& image : images) {
+            const uint32_t width = image.width == 0 ? swapChainExtent.width : image.width;
+            const uint32_t height = image.height == 0 ? swapChainExtent.height : image.height;
+            VkImage createdImage;
+            VkDeviceMemory createdMemory;
+            std::tie(createdImage, createdMemory) = createImage(
+                width,
+                height,
+                image.mipLevels,
+                image.samples,
+                image.format,
+                image.tiling,
+                image.usage,
+                image.properties,
+                image.arrayLayers,
+                image.flags
+            );
+            image.image = createdImage;
+            image.memory = createdMemory;
+
+            const bool isDepthAttachment = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+            VkImageAspectFlags aspectMask = isDepthAttachment ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+            if (isDepthAttachment && hasStencilComponent(image.format)) {
+                aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
+
+            image.imageView = createImageView(
+                image.image,
+                image.format,
+                aspectMask,
+                image.mipLevels,
+                VK_IMAGE_VIEW_TYPE_2D,
+                image.arrayLayers
+            );
+
+            VkRenderingAttachmentInfo attachmentInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = image.imageView,
+                .imageLayout = isDepthAttachment ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = image.clearValue
+            };
+
+            if (isDepthAttachment) {
+                renderPass.hasDepthAttachment = true;
+                renderPass.depthAttachmentFormat = image.format;
+                renderPass.depthAttachment = attachmentInfo;
+            } else {
+                renderPass.attachmentFormats.push_back(image.format);
+                renderPass.colorAttachments.push_back(attachmentInfo);
             }
         }
     }
@@ -1259,6 +1621,21 @@ void engine::Renderer::createPostProcessDescriptorSets() {
         auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
         if (!shader) continue;
 
+        const int vertexBindings = std::max(shader->config.vertexBitBindings, 0);
+        const int fragmentBindings = std::max(shader->config.fragmentBitBindings, 0);
+        auto getFragmentType = [&](int index) {
+            if (!shader->config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < shader->config.fragmentDescriptorTypes.size()) {
+                return shader->config.fragmentDescriptorTypes[static_cast<size_t>(index)];
+            }
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        };
+        auto getFragmentCount = [&](int index) {
+            if (!shader->config.fragmentDescriptorCounts.empty() && shader->config.fragmentDescriptorCounts.size() == static_cast<size_t>(fragmentBindings)) {
+                return std::max(shader->config.fragmentDescriptorCounts[static_cast<size_t>(index)], 1u);
+            }
+            return 1u;
+        };
+
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader->descriptorSetLayout);
         VkDescriptorSetAllocateInfo allocInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1276,9 +1653,26 @@ void engine::Renderer::createPostProcessDescriptorSets() {
         imageInfos.reserve(MAX_FRAMES_IN_FLIGHT * shader->config.inputBindings.size());
         
         std::vector<VkWriteDescriptorSet> descriptorWrites;
+        std::vector<VkDescriptorBufferInfo> bufferInfos;
         descriptorWrites.reserve(MAX_FRAMES_IN_FLIGHT * shader->config.inputBindings.size());
-
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            std::vector<bool> fragmentBindingWritten(static_cast<size_t>(fragmentBindings), false);
+            if (shader->name == "lighting") {
+                bufferInfos.push_back({
+                    .buffer = entityManager->getLightsBuffers()[i],
+                    .offset = 0,
+                    .range = sizeof(engine::LightsUBO)
+                });
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = shader->descriptorSets[i],
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &bufferInfos.back()
+                });
+            }
             for (const auto& binding : shader->config.inputBindings) {
                 auto sourceShader = shaderManager->getGraphicsShader(binding.sourceShaderName);
                 if (!sourceShader) {
@@ -1306,20 +1700,69 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     continue;
                 }
 
-                imageInfos.push_back({
-                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    .imageView = imageView,
-                    .sampler = mainTextureSampler
-                });
+                const int fragIndex = static_cast<int>(binding.binding) - vertexBindings;
+                VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                uint32_t descriptorCount = 1;
+                if (fragIndex >= 0 && fragIndex < fragmentBindings) {
+                    descriptorType = getFragmentType(fragIndex);
+                    descriptorCount = getFragmentCount(fragIndex);
+                    fragmentBindingWritten[static_cast<size_t>(fragIndex)] = true;
+                }
+
+                const size_t startIndex = imageInfos.size();
+                switch (descriptorType) {
+                    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                        imageInfos.push_back({
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .imageView = imageView,
+                            .sampler = VK_NULL_HANDLE
+                        });
+                        break;
+                    }
+                    case VK_DESCRIPTOR_TYPE_SAMPLER: {
+                        for (uint32_t c = 0; c < descriptorCount; ++c) {
+                            imageInfos.push_back({ .sampler = mainTextureSampler });
+                        }
+                        break;
+                    }
+                    default: {
+                        imageInfos.push_back({
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .imageView = imageView,
+                            .sampler = mainTextureSampler
+                        });
+                        break;
+                    }
+                }
 
                 descriptorWrites.push_back({
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstSet = shader->descriptorSets[i],
                     .dstBinding = binding.binding,
                     .dstArrayElement = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .pImageInfo = &imageInfos.back()
+                    .descriptorType = descriptorType,
+                    .descriptorCount = descriptorCount,
+                    .pImageInfo = &imageInfos[startIndex]
+                });
+            }
+
+            for (int frag = 0; frag < fragmentBindings; ++frag) {
+                if (fragmentBindingWritten[static_cast<size_t>(frag)]) continue;
+                VkDescriptorType type = getFragmentType(frag);
+                if (type != VK_DESCRIPTOR_TYPE_SAMPLER) continue;
+                const uint32_t descriptorCount = getFragmentCount(frag);
+                const size_t startIndex = imageInfos.size();
+                for (uint32_t c = 0; c < descriptorCount; ++c) {
+                    imageInfos.push_back({ .sampler = mainTextureSampler });
+                }
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = shader->descriptorSets[i],
+                    .dstBinding = static_cast<uint32_t>(vertexBindings + frag),
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                    .descriptorCount = descriptorCount,
+                    .pImageInfo = &imageInfos[startIndex]
                 });
             }
         }
@@ -1413,11 +1856,11 @@ void engine::Renderer::createSyncObjects() {
 
 void engine::Renderer::createQuadResources() {
     float vertices[] = {
-        // positions        // texCoords
-        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f, 0.0f, 0.0f, 1.0f
+        // positions   // texCoords
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f,
+        -1.0f,  1.0f,  0.0f, 1.0f
     };
     uint16_t indices[] = {
         0, 1, 2, 2, 3, 0

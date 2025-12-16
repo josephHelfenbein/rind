@@ -12,23 +12,22 @@ struct GBufferOutput {
 };
 
 [[vk::binding(0)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> albedoTexture;
 
 [[vk::binding(1)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> metallicTexture;
 
 [[vk::binding(2)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> roughnessTexture;
 
 [[vk::binding(3)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> normalTexture;
 
-[[vk::binding(0)]]
-[[vk::combinedImageSampler]]
+[[vk::binding(4)]]
 SamplerState sampleSampler;
 
 float3 getNormalFromMap(float3 normalMap, float3x3 TBN) {

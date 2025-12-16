@@ -3,11 +3,10 @@ struct VSOutput {
 };
 
 [[vk::binding(0)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> sampleTexture;
 
-[[vk::binding(0)]]
-[[vk::combinedImageSampler]]
+[[vk::binding(1)]]
 SamplerState sampleSampler;
 
 struct PushConstants {

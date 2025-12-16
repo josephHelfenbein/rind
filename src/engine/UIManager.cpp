@@ -334,7 +334,8 @@ engine::LayoutRect engine::UIManager::toPixelRect(const LayoutRect& designRect, 
     return LayoutRect{ pixelPosition, pixelSize };
 };
 
-void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
+void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node) {
+    std::set<GraphicsShader*>& shaders = node.shaders;
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
     constexpr glm::vec2 designResolution(800.0f, 600.0f);
     float layoutScale = std::max(renderer->getUIScale(), 0.0001f);
@@ -354,10 +355,10 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
     std::function<void(UIObject*, const LayoutRect&)> drawUIObject = [&](UIObject* object, const LayoutRect& rect) {
         if (!object->isEnabled()) return;
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
-        struct PushConstantData {
-            glm::vec3 tint;
-            glm::mat4 model;
-        } pushConstants;
+        if (shaders.find(shader) == shaders.end()) {
+            return;
+        }
+        
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
         const auto& descriptorSets = object->getDescriptorSets();
         vkCmdBindDescriptorSets(
@@ -374,20 +375,21 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
         glm::mat4 pixelModel(1.0f);
         pixelModel = glm::translate(pixelModel, glm::vec3(center, 0.0f));
         pixelModel = glm::scale(pixelModel, glm::vec3(rect.size, 1.0f));
+        
+        UIPC pushConstants{};
         pushConstants.tint = object->getTint();
         pushConstants.model = pixelToNdc * pixelModel;
-        vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &pushConstants);
-        vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+        vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(UIPC), &pushConstants);
+        vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
     };
     std::function<void(TextObject*, const LayoutRect&, const LayoutRect&)> drawTextObject = [&](TextObject* object, const LayoutRect& rect, const LayoutRect& pixelRect) {
         if (!object->isEnabled() || object->getText().empty()) return;
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("text");
+        if (shaders.find(shader) == shaders.end()) {
+            return;
+        }
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
-        struct PushConstantData {
-            glm::vec3 tint;
-            glm::mat4 model;
-        } pushConstants;
-
+        
         float x = rect.position.x;
         float y = rect.position.y + (fonts[object->getFont()].ascent);
 
@@ -401,8 +403,11 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
             glm::mat4 pixelModel(1.0f);
             pixelModel = glm::translate(pixelModel, glm::vec3(xpos + w / 2.0f, ypos + h / 2.0f, 0.0f));
             pixelModel = glm::scale(pixelModel, glm::vec3(w, h, 1.0f));
+            
+            UIPC pushConstants{};
             pushConstants.tint = object->getTint();
             pushConstants.model = pixelToNdc * pixelModel;
+            
             vkCmdBindDescriptorSets(
                 commandBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -413,8 +418,8 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer) {
                 0,
                 nullptr
             );
-            vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &pushConstants);
-            vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+            vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(UIPC), &pushConstants);
+            vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
             x += (ch.advance) * object->getScale().x;
         };
         

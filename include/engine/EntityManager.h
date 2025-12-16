@@ -10,10 +10,13 @@
 #include <memory>
 #include <glm/glm.hpp>
 
+class Camera;
+class Light;
+
 namespace engine {
     class Entity {
     public:
-        Entity(EntityManager* entityManager, const std::string& name, std::string shader, int renderPass, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
+        Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
 
         ~Entity();
 
@@ -35,8 +38,8 @@ namespace engine {
         void setParent(Entity* parent) { this->parent = parent; }
         glm::mat4 getTransform() const { return transform; }
         glm::mat4 getWorldTransform() const { return worldTransform; }
+        glm::vec3 getWorldPosition() const;
         std::string getShader() const { return shader; }
-        int getRenderPass() const { return renderPass; }
 
         const std::vector<std::string>& getTextures() const { return textures; }
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
@@ -51,7 +54,6 @@ namespace engine {
     private:
         std::string name;
         std::string shader;
-        int renderPass;
         glm::mat4 transform;
         glm::mat4 worldTransform;
         std::vector<std::string> textures;
@@ -109,6 +111,17 @@ namespace engine {
             return nullptr;
         }
 
+        void setCamera(Camera* camera) { this->camera = camera; }
+        Camera* getCamera() const { return camera; }
+
+        void addLight(Light* light) {
+            lights.push_back(light);
+        }
+        const std::vector<Light*>& getLights() const { return lights; }
+        void createLightsUBO();
+        void updateLightsUBO(uint32_t frameIndex);
+        std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
+
         void updateAll(float deltaTime);
 
     private:
@@ -117,5 +130,10 @@ namespace engine {
         std::map<std::string, Entity*> entities;
         std::vector<Entity*> rootEntities;
         std::vector<Entity*> movableEntities;
+        std::vector<Light*> lights;
+
+        std::vector<VkBuffer> lightsBuffers;
+        std::vector<VkDeviceMemory> lightsBuffersMemory;
+        Camera* camera = nullptr;
     };
 };

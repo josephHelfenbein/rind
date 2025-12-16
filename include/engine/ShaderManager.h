@@ -12,6 +12,7 @@
 #include <memory>
 #include <typeindex>
 #include <optional>
+#include <set>
 
 namespace engine {
 
@@ -48,7 +49,10 @@ namespace engine {
         VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
 
         bool usesSwapchain = false;
+        bool hasDepthAttachment = false;
         std::optional<std::vector<PassImage>> images = std::nullopt;
+        std::vector<VkRenderingAttachmentInfo> colorAttachments;
+        std::optional<VkRenderingAttachmentInfo> depthAttachment;
     };
 
     struct GraphicsShader {
@@ -63,6 +67,7 @@ namespace engine {
             int fragmentBitBindings = 4;
             std::function<void(VkVertexInputBindingDescription&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
             std::vector<uint32_t> fragmentDescriptorCounts = {};
+            std::vector<VkDescriptorType> fragmentDescriptorTypes = {};
             VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
             VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
             bool depthWrite = true;
@@ -112,6 +117,16 @@ namespace engine {
         VkDescriptorSetLayout descriptorSetLayout{};
         VkDescriptorPool descriptorPool{};
     };
+
+    struct RenderNode {
+        bool is2D = false;
+        PassInfo* passInfo = nullptr;
+        std::set<GraphicsShader*> shaders;
+        std::vector<std::string> shaderNames;
+    };
+    struct RenderGraph {
+        std::vector<RenderNode> nodes;
+    };
     
     class ShaderManager {
     public:
@@ -136,7 +151,10 @@ namespace engine {
 
         std::string getShaderFilePath(const std::string& name);
 
-        static std::vector<GraphicsShader> createDefaultShaders();
+        std::vector<GraphicsShader> createDefaultShaders();
+        std::vector<RenderNode>& getRenderGraph();
+        const std::vector<RenderNode>& getRenderGraph() const;
+        void resolveRenderGraphShaders();
 
     private:
         std::vector<std::unique_ptr<GraphicsShader>> graphicsShaders;
@@ -148,5 +166,6 @@ namespace engine {
         std::map<std::string, std::string> foundShaderFiles;
 
         engine::Renderer* renderer;
+        RenderGraph renderGraph;
     };
 };

@@ -28,4 +28,14 @@ std::function<void(engine::EntityManager*)> titleScreenScene = [](engine::Entity
 
 std::function<void(engine::EntityManager*)> mainGameScene = [](engine::EntityManager* entityManager){
     // Gameplay scene logic here
+    Camera* mainCamera = new Camera(
+        entityManager,
+        "MainCamera",
+        glm::mat4(1.0f),
+        45.0f,
+        16.0f / 9.0f,
+        0.1f,
+        100.0f,
+        true
+    );
 };

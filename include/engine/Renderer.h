@@ -274,6 +274,9 @@ namespace engine {
         void endSingleTimeCommands(VkCommandBuffer commandBuffer);
         void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
+        void drawEntities(VkCommandBuffer commandBuffer, RenderNode& node);
+        void draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node);
+
         VkShaderModule createShaderModule(const std::vector<char>& code);
 
         void recreateSwapChain();

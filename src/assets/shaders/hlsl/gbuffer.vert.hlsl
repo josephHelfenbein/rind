@@ -28,10 +28,10 @@ VSOutput main(VSInput input) {
     T = normalize(T - dot(T, N) * N);
     float3 B = cross(N, T);
     VSOutput output;
-    output.gl_Position = mul(pc.projection, mul(pc.view, worldPos)),
-    output.fragPosition = worldPos.xyz,
-    output.fragNormal = N,
-    output.fragTexCoord = input.inTexCoord,
-    output.fragTBN = float3x3(T, B, N)
+    output.gl_Position = mul(pc.projection, mul(pc.view, worldPos));
+    output.fragPosition = worldPos.xyz;
+    output.fragNormal = N;
+    output.fragTexCoord = input.inTexCoord;
+    output.fragTBN = float3x3(T, B, N);
     return output;
 }

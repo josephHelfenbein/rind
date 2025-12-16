@@ -1,5 +1,6 @@
 #include <engine/ShaderManager.h>
 #include <engine/io.h>
+#include <engine/PushConstants.h>
 #include <glm/glm.hpp>
 
 #include <format>
@@ -198,25 +199,6 @@ namespace {
         glm::vec2 pos;
         glm::vec2 texCoord;
     };
-
-    struct GBufferPC {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 projection;
-        glm::vec3 camPos;
-    };
-
-    struct LightingPC {
-        glm::mat4 invView;
-        glm::mat4 invProj;
-        glm::vec3 camPos;
-    };
-
-    struct UIPC {
-        glm::vec3 tint;
-        float _pad;
-        glm::mat4 model;
-    };
 }
 
 std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders() {
@@ -291,6 +273,21 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         uiPass->images = images;
     }
 
+    // Text Pass
+    auto textPass = std::make_shared<PassInfo>();
+    textPass->name = "TextPass";
+    textPass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "TextColor",
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        textPass->images = images;
+    }
+
     auto mainPass = std::make_shared<PassInfo>();
     mainPass->name = "Main";
     mainPass->usesSwapchain = true;
@@ -308,6 +305,14 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = true,
                 .cullMode = VK_CULL_MODE_BACK_BIT,
                 .vertexBitBindings = 1,
+                .fragmentBitBindings = 5,
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(Vertex);
@@ -353,7 +358,15 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 1,
-                .fragmentBitBindings = 5,
+                .fragmentBitBindings = 6,
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
                 .inputBindings = {
                     { 1, "gbuffer", "Albedo" },
                     { 2, "gbuffer", "Normal" },
@@ -373,13 +386,17 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { "ui.vert", VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { "ui.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = uiPass,
+                .passInfo = textPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 1,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(UIVertex);
@@ -398,6 +415,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 }
             }
         };
+        shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         shaders.push_back(shader);
     }
 
@@ -414,7 +432,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 1,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(UIVertex);
@@ -433,6 +455,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 }
             }
         };
+        shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         shaders.push_back(shader);
     }
 
@@ -449,15 +472,66 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 2,
+                .fragmentBitBindings = 4,
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
-                    { 1, "ui", "UIColor" }
+                    { 1, "ui", "UIColor" },
+                    { 2, "text", "TextColor" }
                 }
             }
         };
         shaders.push_back(shader);
     }
 
+    renderGraph.nodes.clear();
+    renderGraph.nodes.reserve(5);
+
+    auto pushNode = [&](bool is2D, PassInfo* pass, std::initializer_list<const char*> shaderList) {
+        RenderNode node;
+        node.is2D = is2D;
+        node.passInfo = pass;
+        for (auto name : shaderList) {
+            node.shaderNames.emplace_back(name);
+        }
+        renderGraph.nodes.push_back(std::move(node));
+    };
+
+    pushNode(false, gbufferPass.get(), { "gbuffer" });
+    pushNode(false, lightingPass.get(), { "lighting" });
+    pushNode(true, uiPass.get(), { "ui" });
+    pushNode(true, textPass.get(), { "text" });
+    pushNode(false, mainPass.get(), { "composite" });
+
     return shaders;
+}
+
+std::vector<engine::RenderNode>& engine::ShaderManager::getRenderGraph() {
+    return renderGraph.nodes;
+}
+
+const std::vector<engine::RenderNode>& engine::ShaderManager::getRenderGraph() const {
+    return renderGraph.nodes;
+}
+
+void engine::ShaderManager::resolveRenderGraphShaders() {
+    for (auto& node : renderGraph.nodes) {
+        node.shaders.clear();
+        for (const auto& shaderName : node.shaderNames) {
+            auto it = graphicsShaderMap.find(shaderName);
+            if (it != graphicsShaderMap.end()) {
+                node.shaders.insert(it->second);
+                if (!node.passInfo && it->second->config.passInfo) {
+                    node.passInfo = it->second->config.passInfo.get();
+                }
+            } else {
+                std::cout << std::format("Warning: Render graph shader '{}' not found.\n", shaderName);
+            }
+        }
+    }
 }

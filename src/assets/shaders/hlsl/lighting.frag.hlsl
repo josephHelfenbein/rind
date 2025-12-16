@@ -18,27 +18,26 @@ uniform LightsUBO {
 } lightsUBO;
 
 [[vk::binding(1)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> gBufferAlbedo;
 
 [[vk::binding(2)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> gBufferNormal;
 
 [[vk::binding(3)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> gBufferMaterial;
 
 [[vk::binding(4)]]
-[[vk::combinedImageSampler]]
+[[vk::sampled_image]]
 Texture2D<float4> gBufferDepth;
 
 [[vk::binding(5)]]
-[[vk::structured_buffer]]
+[[vk::sampled_image]]
 TextureCubeArray<float> shadowMaps;
 
-[[vk::binding(0)]]
-[[vk::combinedImageSampler]]
+[[vk::binding(6)]]
 SamplerState sampleSampler;
 
 struct PushConstants {

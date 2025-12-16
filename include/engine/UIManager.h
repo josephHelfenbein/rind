@@ -8,6 +8,7 @@
 #include <engine/Renderer.h>
 #include <engine/TextureManager.h>
 #include <engine/ShaderManager.h>
+#include <engine/PushConstants.h>
 #include <external/freetype/include/ft2build.h>
 #include FT_FREETYPE_H
 #include <engine/io.h>
@@ -156,7 +157,7 @@ namespace engine {
         UIObject* getObject(const std::string& name);
         TextObject* getTextObject(const std::string& name);
         std::map<std::string, std::variant<UIObject*, TextObject*>>& getObjects() { return objects; }
-        void renderUI(VkCommandBuffer commandBuffer);
+        void renderUI(VkCommandBuffer commandBuffer, RenderNode& node);
         void clear();
         void loadTextures();
         void loadFonts();
