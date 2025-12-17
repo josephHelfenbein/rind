@@ -13,6 +13,7 @@
 #include <typeindex>
 #include <optional>
 #include <set>
+#include <filesystem>
 
 namespace engine {
 
@@ -40,6 +41,7 @@ namespace engine {
         VkImage image = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
+        VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
     struct PassInfo {
@@ -164,6 +166,8 @@ namespace engine {
         std::map<std::string, ComputeShader*> computeShaderMap;
 
         std::map<std::string, std::string> foundShaderFiles;
+
+        std::string shaderDirectory;
 
         engine::Renderer* renderer;
         RenderGraph renderGraph;

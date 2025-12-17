@@ -1,6 +1,9 @@
-#include <TextureManager.h>
+#include <engine/TextureManager.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
 #include <engine/io.h>
 
+#include <filesystem>
 #include <iostream>
 
 static uint16_t floatToHalf(float value) {
@@ -21,7 +24,9 @@ static uint16_t floatToHalf(float value) {
     return static_cast<uint16_t>(sign | (exponent << 10) | (mantissa >> 13));
 }
 
-engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string textureDirectory) : renderer(renderer), textureDirectory(textureDirectory) {}
+engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string textureDirectory) : renderer(renderer), textureDirectory(textureDirectory) {
+    renderer->registerTextureManager(this);
+}
 
 engine::TextureManager::~TextureManager() {
     for (auto& [name, texture] : textures) {
@@ -52,7 +57,8 @@ void engine::TextureManager::init() {
                 continue;
             }
             std::string fileName = std::filesystem::path(filePath).filename().string();
-            std::string textureName = parentPath + fileName;
+            std::string textureBaseName = std::filesystem::path(fileName).stem().string();
+            std::string textureName = parentPath + textureBaseName;
             if (textures.find(textureName) != textures.end()) {
                 std::cout << std::format("Warning: Duplicate texture name detected: {}. Skipping {}\n", textureName, filePath);
                 continue;
@@ -100,6 +106,14 @@ void engine::TextureManager::init() {
                 0
             );
             stbi_image_free(pixels);
+            renderer->transitionImageLayout(
+                textureImage,
+                format,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                1,
+                1
+            );
             VkImageView textureImageView = renderer->createImageView(textureImage, format);
             VkSampler textureSampler;
             textureSampler = renderer->createTextureSampler(

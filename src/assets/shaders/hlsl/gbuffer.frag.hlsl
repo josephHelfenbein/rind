@@ -6,25 +6,21 @@ struct VSOutput {
 };
 
 struct GBufferOutput {
-    [[vk::location(0)]] float4 outAlbedo : SV_Target0;
-    [[vk::location(1)]] float4 outNormal : SV_Target1;
-    [[vk::location(2)]] float4 outMaterial : SV_Target2;
+    [[vk::location(0)]] float4 outAlbedo;
+    [[vk::location(1)]] float4 outNormal;
+    [[vk::location(2)]] float4 outMaterial;
 };
 
 [[vk::binding(0)]]
-[[vk::sampled_image]]
 Texture2D<float4> albedoTexture;
 
 [[vk::binding(1)]]
-[[vk::sampled_image]]
 Texture2D<float4> metallicTexture;
 
 [[vk::binding(2)]]
-[[vk::sampled_image]]
 Texture2D<float4> roughnessTexture;
 
 [[vk::binding(3)]]
-[[vk::sampled_image]]
 Texture2D<float4> normalTexture;
 
 [[vk::binding(4)]]
@@ -37,9 +33,9 @@ float3 getNormalFromMap(float3 normalMap, float3x3 TBN) {
 
 GBufferOutput main(VSOutput input) : SV_Target {
     float4 baseColor = albedoTexture.Sample(sampleSampler, input.fragTexCoord);
-    float3 albedo = pow(baseColor.rgb, float3(2.2)); // Gamma correction
+    float3 albedo = pow(baseColor.rgb, 2.2f); // Gamma correction
     float alpha = baseColor.a;
-    float3 metallicRaw = metallicTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 metallicRaw = metallicTexture.Sample(sampleSampler, input.fragTexCoord);
     float mask = metallicRaw.a;
     if (mask < 0.01) discard;
     float metallic = metallicRaw.r;

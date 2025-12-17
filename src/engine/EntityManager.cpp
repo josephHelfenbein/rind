@@ -11,6 +11,7 @@ engine::Entity::Entity(EntityManager* entityManager, const std::string& name, st
 }
 
 engine::Entity::~Entity() {
+    destroyUniformBuffers(entityManager ? entityManager->getRenderer() : nullptr);
     for (auto& child : children) {
         delete child;
     }
@@ -90,7 +91,7 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
             const size_t index = frame * requiredStride + binding;
             std::tie(uniformBuffers[index], uniformBuffersMemory[index]) = renderer->createBuffer(
                 sizeof(shader->config.pushConstantRange.size),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
         }
@@ -125,6 +126,18 @@ engine::EntityManager::EntityManager(engine::Renderer* renderer) : renderer(rend
 
 engine::EntityManager::~EntityManager() {
     clear();
+    for (auto& buffer : lightsBuffers) {
+        if (buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(renderer->getDevice(), buffer, nullptr);
+        }
+    }
+    for (auto& memory : lightsBuffersMemory) {
+        if (memory != VK_NULL_HANDLE) {
+            vkFreeMemory(renderer->getDevice(), memory, nullptr);
+        }
+    }
+    lightsBuffers.clear();
+    lightsBuffersMemory.clear();
 }
 
 void engine::EntityManager::addEntity(const std::string& name, Entity* entity) {
@@ -173,18 +186,6 @@ void engine::EntityManager::clear() {
     }
     rootEntities.clear();
     movableEntities.clear();
-    for (auto& buffer : lightsBuffers) {
-        if (buffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(renderer->getDevice(), buffer, nullptr);
-        }
-    }
-    for (auto& memory : lightsBuffersMemory) {
-        if (memory != VK_NULL_HANDLE) {
-            vkFreeMemory(renderer->getDevice(), memory, nullptr);
-        }
-    }
-    lightsBuffers.clear();
-    lightsBuffersMemory.clear();
     lights.clear();
 }
 
@@ -268,13 +269,20 @@ void engine::EntityManager::createLightsUBO() {
     for (size_t frame = 0; frame < frames; ++frame) {
         std::tie(lightsBuffers[frame], lightsBuffersMemory[frame]) = renderer->createBuffer(
             sizeof(engine::LightsUBO),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
     }
 }
 
 void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
+    if (lightsBuffers.size() < static_cast<size_t>(renderer->getFramesInFlight())) {
+        createLightsUBO();
+    }
+    if (frameIndex >= lightsBuffers.size() || lightsBuffers[frameIndex] == VK_NULL_HANDLE) {
+        std::cout << std::format("Warning: Lights UBO buffer unavailable for frame {}. Skipping lights update.\n", frameIndex);
+        return;
+    }
     engine::LightsUBO lightsUBO{};
     auto lights = getLights();
     uint32_t count = std::min<uint32_t>(lights.size(), 64);

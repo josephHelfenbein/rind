@@ -19,6 +19,24 @@ set(VK_SDK_PATH $ENV{VK_SDK_PATH})
 if(NOT VK_SDK_PATH AND DEFINED ENV{VULKAN_SDK})
     set(VK_SDK_PATH $ENV{VULKAN_SDK})
 endif()
+if(APPLE AND NOT VK_SDK_PATH)
+    # Try to auto-detect a locally installed LunarG Vulkan SDK on macOS
+    set(_LUNARG_BASE "$ENV{HOME}/VulkanSDK")
+    if(IS_DIRECTORY "${_LUNARG_BASE}")
+        file(GLOB _LUNARG_SDK_CANDIDATES "${_LUNARG_BASE}/*")
+        if(_LUNARG_SDK_CANDIDATES)
+            list(SORT _LUNARG_SDK_CANDIDATES)
+            list(REVERSE _LUNARG_SDK_CANDIDATES)
+            foreach(_SDK_PATH IN LISTS _LUNARG_SDK_CANDIDATES)
+                if(IS_DIRECTORY "${_SDK_PATH}/macOS/lib")
+                    set(VK_SDK_PATH ${_SDK_PATH})
+                    message(STATUS "Detected LunarG Vulkan SDK at ${VK_SDK_PATH}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endif()
+endif()
 if(IS_WINDOWS AND NOT VK_SDK_PATH)
     message(STATUS "VK_SDK_PATH not set; will try find_package(Vulkan) on Windows")
 endif()
@@ -68,8 +86,9 @@ set(SOURCES
 
 file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp")
 file(GLOB_RECURSE GAME_SOURCES "src/game/*.cpp")
+file(GLOB_RECURSE RIND_SOURCES "src/rind/*.cpp")
 
-list(APPEND SOURCES ${ENGINE_SOURCES} ${GAME_SOURCES})
+list(APPEND SOURCES ${ENGINE_SOURCES} ${GAME_SOURCES} ${RIND_SOURCES})
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
@@ -165,6 +184,26 @@ if(IS_MACOS)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         VULKAN_HPP_NO_EXCEPTIONS
     )
+    set(_vulkan_rpaths)
+    if(VK_SDK_PATH)
+        list(APPEND _vulkan_rpaths "${VK_SDK_PATH}/macOS/lib")
+    elseif(DEFINED ENV{VULKAN_SDK})
+        list(APPEND _vulkan_rpaths "$ENV{VULKAN_SDK}/macOS/lib")
+    endif()
+    list(APPEND _vulkan_rpaths
+        "/opt/homebrew/lib"
+        "/opt/homebrew/opt/vulkan-loader/lib"
+        "/opt/homebrew/opt/vulkan-sdk/lib"
+        "/opt/homebrew/opt/molten-vk/lib"
+        "/usr/local/lib"
+    )
+    list(REMOVE_DUPLICATES _vulkan_rpaths)
+    if(_vulkan_rpaths)
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            BUILD_RPATH "${_vulkan_rpaths}"
+            INSTALL_RPATH "${_vulkan_rpaths}"
+        )
+    endif()
 elseif(IS_WINDOWS)
     if(VK_SDK_PATH)
         find_library(Vulkan_LIBRARY vulkan-1 PATHS ${VK_SDK_PATH}/Lib NO_DEFAULT_PATH)
@@ -314,10 +353,33 @@ endif()
 if(IS_MACOS)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
-        INSTALL_RPATH "@executable_path/../lib"
+        BUILD_RPATH "@executable_path/../bin/lib"
+        INSTALL_RPATH "@executable_path/../bin/lib"
     )
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin/lib
-        COMMAND ${CMAKE_COMMAND} -E echo "Copying libraries to bin directory..."
+    set(_vulkan_loader_candidates)
+    if(VK_SDK_PATH)
+        list(APPEND _vulkan_loader_candidates "${VK_SDK_PATH}/macOS/lib/libvulkan.1.dylib")
+    endif()
+    list(APPEND _vulkan_loader_candidates
+        "/opt/homebrew/opt/vulkan-loader/lib/libvulkan.1.dylib"
+        "/usr/local/opt/vulkan-loader/lib/libvulkan.1.dylib"
     )
+    set(_vulkan_loader_to_copy "")
+    foreach(_cand IN LISTS _vulkan_loader_candidates)
+        if(EXISTS "${_cand}")
+            set(_vulkan_loader_to_copy "${_cand}")
+            break()
+        endif()
+    endforeach()
+    if(_vulkan_loader_to_copy)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin/lib
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying libvulkan from ${_vulkan_loader_to_copy}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_vulkan_loader_to_copy}" "${CMAKE_SOURCE_DIR}/bin/lib/libvulkan.1.dylib"
+        )
+    else()
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Warning: libvulkan.1.dylib not found; set VK_SDK_PATH or install vulkan-loader"
+        )
+    endif()
 endif()

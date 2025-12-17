@@ -3,17 +3,23 @@
 engine::Model::Model(std::string name, Renderer* renderer) : name(name), renderer(renderer) {}
 
 engine::Model::~Model() {
+    VkDevice device = renderer ? renderer->getDevice() : VK_NULL_HANDLE;
+    if (device == VK_NULL_HANDLE) return;
     if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(renderer->getDevice(), vertexBuffer, nullptr);
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        vertexBuffer = VK_NULL_HANDLE;
     }
     if (vertexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(renderer->getDevice(), vertexBufferMemory, nullptr);
+        vkFreeMemory(device, vertexBufferMemory, nullptr);
+        vertexBufferMemory = VK_NULL_HANDLE;
     }
     if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(renderer->getDevice(), indexBuffer, nullptr);
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        indexBuffer = VK_NULL_HANDLE;
     }
     if (indexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(renderer->getDevice(), indexBufferMemory, nullptr);
+        vkFreeMemory(device, indexBufferMemory, nullptr);
+        indexBufferMemory = VK_NULL_HANDLE;
     }
 }
 

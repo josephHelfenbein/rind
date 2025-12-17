@@ -10,10 +10,9 @@
 #include <memory>
 #include <glm/glm.hpp>
 
-class Camera;
-class Light;
-
 namespace engine {
+    class Camera;
+    class Light;
     class Entity {
     public:
         Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
@@ -121,6 +120,8 @@ namespace engine {
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
+
+        Renderer* getRenderer() const { return renderer; }
 
         void updateAll(float deltaTime);
 

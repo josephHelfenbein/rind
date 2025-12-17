@@ -8,18 +8,20 @@
 #include <utility>
 #include <unordered_set>
 
-engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string shaderDirectory) : renderer(renderer) {
-    std::vector<std::string> shaderFiles = engine::scanDirectory(shaderDirectory);
+engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string shaderDirectory) : renderer(renderer), shaderDirectory(std::move(shaderDirectory)) {
+    renderer->registerShaderManager(this);
+    std::vector<std::string> shaderFiles = engine::scanDirectory(this->shaderDirectory);
     for (const auto& filePath : shaderFiles) {
         if (!std::filesystem::is_regular_file(filePath)) {
             continue;
         }
-        std::string fileName = std::filesystem::path(filePath).filename().string();
-        if (foundShaderFiles.find(fileName) != foundShaderFiles.end()) {
-            std::cout << std::format("Warning: Duplicate shader file name detected: {}. Skipping {}\n", fileName, filePath);
+        std::filesystem::path p(filePath);
+        std::string baseName = p.stem().string(); // strip trailing .spv
+        if (foundShaderFiles.find(baseName) != foundShaderFiles.end()) {
+            std::cout << std::format("Warning: Duplicate shader file name detected: {}. Skipping {}\n", baseName, filePath);
             continue;
         }
-        foundShaderFiles[fileName] = filePath;
+        foundShaderFiles[baseName] = filePath;
     }
 }
 
@@ -45,12 +47,15 @@ engine::ShaderManager::~ShaderManager() {
                     for (auto& image : pass->images.value()) {
                         if (image.imageView != VK_NULL_HANDLE) {
                             vkDestroyImageView(renderer->getDevice(), image.imageView, nullptr);
+                            image.imageView = VK_NULL_HANDLE;
                         }
                         if (image.image != VK_NULL_HANDLE) {
                             vkDestroyImage(renderer->getDevice(), image.image, nullptr);
+                            image.image = VK_NULL_HANDLE;
                         }
                         if (image.memory != VK_NULL_HANDLE) {
                             vkFreeMemory(renderer->getDevice(), image.memory, nullptr);
+                            image.memory = VK_NULL_HANDLE;
                         }
                     }
                 }
@@ -86,6 +91,14 @@ void engine::ShaderManager::loadGraphicsShader(const std::string& name) {
     auto it = graphicsShaderMap.find(name);
     if (it != graphicsShaderMap.end()) {
         GraphicsShader* shader = it->second;
+        auto resolveStage = [&](ShaderStageInfo& stage) {
+            if (!std::filesystem::exists(stage.path)) {
+                std::string mapped = getShaderFilePath(stage.path);
+                if (!mapped.empty()) stage.path = mapped;
+            }
+        };
+        resolveStage(shader->vertex);
+        resolveStage(shader->fragment);
         renderer->createGraphicsDescriptorSetLayout(*shader);
         renderer->createGraphicsPipeline(*shader);
         renderer->createGraphicsDescriptorPool(*shader);
@@ -98,6 +111,10 @@ void engine::ShaderManager::loadComputeShader(const std::string& name) {
     auto it = computeShaderMap.find(name);
     if (it != computeShaderMap.end()) {
         ComputeShader* shader = it->second;
+        if (!std::filesystem::exists(shader->compute.path)) {
+            std::string mapped = getShaderFilePath(shader->compute.path);
+            if (!mapped.empty()) shader->compute.path = mapped;
+        }
         renderer->createComputeDescriptorSetLayout(*shader);
         renderer->createComputePipeline(*shader);
         renderer->createComputeDescriptorPool(*shader);
@@ -204,6 +221,12 @@ namespace {
 std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders() {
     std::vector<GraphicsShader> shaders;
 
+    auto shaderPath = [&](const std::string& baseName) {
+        auto mapped = getShaderFilePath(baseName);
+        if (!mapped.empty()) return mapped;
+        return (std::filesystem::path(shaderDirectory) / baseName).string();
+    };
+
     // Define Render Passes
     auto gbufferPass = std::make_shared<PassInfo>();
     gbufferPass->name = "GBuffer";
@@ -296,15 +319,15 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "gbuffer",
-            .vertex = { "gbuffer.vert", VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { "gbuffer.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
+            .vertex = { shaderPath("gbuffer.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("gbuffer.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = gbufferPass,
                 .colorAttachmentCount = 3,
                 .depthWrite = true,
                 .enableDepth = true,
                 .cullMode = VK_CULL_MODE_BACK_BIT,
-                .vertexBitBindings = 1,
+                .vertexBitBindings = 0,
                 .fragmentBitBindings = 5,
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -349,8 +372,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "lighting",
-            .vertex = { "lighting.vert", VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { "lighting.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
+            .vertex = { shaderPath("lighting.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = lightingPass,
                 .colorAttachmentCount = 1,
@@ -383,16 +406,17 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "ui",
-            .vertex = { "ui.vert", VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { "ui.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
+            .vertex = { shaderPath("ui.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("ui.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = textPass,
+                .passInfo = uiPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
+                .poolMultiplier = 64,
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
@@ -423,16 +447,17 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "text",
-            .vertex = { "text.vert", VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { "text.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
+            .vertex = { shaderPath("text.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("text.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = uiPass,
+                .passInfo = textPass,
                 .colorAttachmentCount = 1,
                 .depthWrite = false,
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
+                .poolMultiplier = 256,
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
@@ -463,8 +488,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "composite",
-            .vertex = { "composite.vert", VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { "composite.frag", VK_SHADER_STAGE_FRAGMENT_BIT },
+            .vertex = { shaderPath("composite.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = mainPass,
                 .colorAttachmentCount = 1,
@@ -503,10 +528,10 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     };
 
     pushNode(false, gbufferPass.get(), { "gbuffer" });
-    pushNode(false, lightingPass.get(), { "lighting" });
+    pushNode(true, lightingPass.get(), { "lighting" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
-    pushNode(false, mainPass.get(), { "composite" });
+    pushNode(true, mainPass.get(), { "composite" });
 
     return shaders;
 }

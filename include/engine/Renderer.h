@@ -15,6 +15,7 @@ namespace engine {
     struct GraphicsShader;
     struct ComputeShader;
     struct PassInfo;
+    struct RenderNode;
     class Texture;
     class UIObject;
 
@@ -157,6 +158,9 @@ namespace engine {
         void createGraphicsPipeline(GraphicsShader& shader);
         void createGraphicsDescriptorPool(GraphicsShader& shader);
 
+        void ensureFallbackShadowCubeTexture();
+        void ensureFallback2DTexture();
+
         void createComputeDescriptorSetLayout(class ComputeShader& shader);
         void createComputePipeline(class ComputeShader& shader);
         void createComputeDescriptorPool(class ComputeShader& shader);
@@ -186,11 +190,8 @@ namespace engine {
         #endif
         // Runtime toggle: use CAS fallback when float atomicAdd isn’t available via VK_EXT_shader_atomic_float
         bool useCASAdvection = true;
-        #ifdef NDEBUG
-            const bool enableValidationLayers = false;
-        #else
-            const bool enableValidationLayers = true;
-        #endif
+        // Force validation layers on even in Release to catch descriptor issues while debugging.
+        static constexpr bool enableValidationLayers = true;
 
         void initWindow();
         void initVulkan();
@@ -209,6 +210,9 @@ namespace engine {
         int msaaSamples = VK_SAMPLE_COUNT_1_BIT;
         bool framebufferResized = false;
 
+        PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
+        PFN_vkCmdEndRendering fpCmdEndRendering = nullptr;
+
         float deltaTime = 0.0f;
         float lastFrameTime = 0.0f;
         float uiScale = 1.0f;
@@ -217,6 +221,7 @@ namespace engine {
         VkQueue presentQueue;
         VkSwapchainKHR swapChain;
         std::vector<VkImage> swapChainImages;
+        std::vector<VkImageLayout> swapChainImageLayouts;
         VkFormat swapChainImageFormat;
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
@@ -256,7 +261,7 @@ namespace engine {
         void createSurface();
         void pickPhysicalDevice();
         void createLogicalDevice();
-        void createSwapChain();
+        void createSwapChain(VkSwapchainKHR oldSwapchain);
         void createImageViews();
         void createAttachmentResources();
         void createCommandPool();
@@ -281,7 +286,6 @@ namespace engine {
 
         void recreateSwapChain();
 
-        bool enableValidationLayers = false;
         std::vector<const char*> getRequiredExtensions();
         bool checkValidationLayerSupport();
         uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);

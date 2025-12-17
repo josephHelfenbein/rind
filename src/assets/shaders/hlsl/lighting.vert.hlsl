@@ -3,7 +3,7 @@ struct VSOutput {
     [[vk::location(0)]] float2 fragTexCoord : TEXCOORD2;
 };
 
-VSOutput main(VSInput input) {
+VSOutput main(uint vertexIndex : SV_VertexID) {
     float2 positions[3] = {
         float2(-1.0, -1.0),
         float2(3.0, -1.0),
@@ -15,7 +15,7 @@ VSOutput main(VSInput input) {
         float2(0.0, 2.0)
     };
     VSOutput output;
-    output.gl_Position = float4(positions[input.vertexIndex], 0.0, 1.0);
-    output.fragTexCoord = texCoords[input.vertexIndex];
+    output.gl_Position = float4(positions[vertexIndex], 0.0, 1.0);
+    output.fragTexCoord = texCoords[vertexIndex];
     return output;
 }

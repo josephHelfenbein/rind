@@ -4,13 +4,26 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <stdexcept>
 
 namespace engine {
     static std::vector<char> readFile(const std::string& filename) {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
-        std::vector<char> buffer(file.tellg());
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open file: " + filename);
+        }
+
+        const std::streampos endPos = file.tellg();
+        if (endPos <= 0) {
+            throw std::runtime_error("File is empty or unreadable: " + filename);
+        }
+
+        std::vector<char> buffer(static_cast<size_t>(endPos));
         file.seekg(0);
         file.read(buffer.data(), buffer.size());
+        if (!file) {
+            throw std::runtime_error("Failed to read file: " + filename);
+        }
         return buffer;
     }
 

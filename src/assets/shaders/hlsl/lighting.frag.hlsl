@@ -10,31 +10,27 @@ struct PointLight {
     uint4 shadowData;
 };
 
-[[vk::binding(0)]]
-[[vk::uniform_buffer]]
-uniform LightsUBO {
+struct LightsUBO {
     PointLight pointLights[64];
     uint4 numPointLights;
-} lightsUBO;
+};
+
+[[vk::binding(0)]]
+ConstantBuffer<LightsUBO> lightsUBO;
 
 [[vk::binding(1)]]
-[[vk::sampled_image]]
 Texture2D<float4> gBufferAlbedo;
 
 [[vk::binding(2)]]
-[[vk::sampled_image]]
 Texture2D<float4> gBufferNormal;
 
 [[vk::binding(3)]]
-[[vk::sampled_image]]
 Texture2D<float4> gBufferMaterial;
 
 [[vk::binding(4)]]
-[[vk::sampled_image]]
 Texture2D<float4> gBufferDepth;
 
 [[vk::binding(5)]]
-[[vk::sampled_image]]
 TextureCubeArray<float> shadowMaps;
 
 [[vk::binding(6)]]
@@ -59,7 +55,8 @@ float3 reconstructPosition(float2 uv, float depth) {
 
 float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness) {
     cosTheta = clamp(cosTheta, 0.0, 1.0);
-    return F0 + (max(float3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+    float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
+    return F0 + (max(oneMinusR, F0) - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
 float distributionGGX(float3 N, float3 H, float roughness) {
@@ -111,7 +108,7 @@ const float3 sampleOffsetDirections[20] = {
 float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, float3 lightDir) {
     if (light.shadowData.y == 0) return 1.0;
     uint shadowIndex = light.shadowData.x;
-    if (shadowIndex == INVALID_SHADOW_INDEX || shadowIndex >= shadowMaps.size()) return 1.0;
+    if (shadowIndex == INVALID_SHADOW_INDEX) return 1.0;
     float3 lightPos = light.positionRadius.xyz;
     float3 toFrag = fragPos - lightPos;
     float currentDepth = length(toFrag);
@@ -120,7 +117,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     if (currentDepth > farPlane) return 1.0;
 
     float3 sampleDir = normalize(toFrag);
-    float depthSample = shadowMaps[shadowIndex].Sample(sampleSampler, sampleDir).r;
+    float depthSample = shadowMaps.Sample(sampleSampler, float4(sampleDir, shadowIndex)).r;
     if (depthSample >= 0.9999) return 1.0;
     uint samples = 30;
     float viewDistance = length(pc.camPos - fragPos);
@@ -130,7 +127,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
         float3 offsetDir = sampleOffsetDirections[i % 20];
         float3 sampleVec = sampleDir + offsetDir * diskRadius;
         sampleVec = normalize(sampleVec);
-        float depthSample = shadowMaps[shadowIndex].Sample(sampleSampler, sampleVec).r;
+        float depthSample = shadowMaps.Sample(sampleSampler, float4(sampleVec, shadowIndex)).r;
         float closestDepth = depthSample * farPlane;
         
         float NoLGeom = max(dot(geomNormal, lightDir), 0.0);

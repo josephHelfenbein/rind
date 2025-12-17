@@ -14,7 +14,8 @@ namespace rind {
     class GameInstance {
     public:
         GameInstance();
-        ~GameInstance();
+        ~GameInstance() = default;
+        void run();
     private:
         std::unique_ptr<engine::Renderer> renderer;
         std::unique_ptr<engine::SceneManager> sceneManager;

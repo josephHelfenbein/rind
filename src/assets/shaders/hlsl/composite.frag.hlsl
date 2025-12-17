@@ -3,15 +3,12 @@ struct VSOutput {
 };
 
 [[vk::binding(0)]]
-[[vk::sampled_image]]
 Texture2D<float4> sceneTexture;
 
 [[vk::binding(1)]]
-[[vk::sampled_image]]
 Texture2D<float4> uiTexture;
 
 [[vk::binding(2)]]
-[[vk::sampled_image]]
 Texture2D<float4> textTexture;
 
 [[vk::binding(3)]]
