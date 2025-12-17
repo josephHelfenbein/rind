@@ -1,6 +1,7 @@
 #include <game/GameInstance.h>
 
 #include <engine/Camera.h>
+#include <engine/Light.h>
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
@@ -33,6 +34,11 @@ static std::function<void(engine::EntityManager*, engine::UIManager*, engine::Sc
 
 static std::function<void(engine::EntityManager*, engine::UIManager*, engine::SceneManager*)> mainGameScene = [](engine::EntityManager* entityManager, engine::UIManager* uiManager, engine::SceneManager* sceneManager){
     // Gameplay scene logic here
+    engine::ModelManager* modelManager = entityManager->getRenderer()->getModelManager();
+    engine::Model* cubeModel = modelManager ? modelManager->getModel("cube") : nullptr;
+    if (!cubeModel) {
+        std::cout << "Warning: cube model not found; cubes will not render.\n";
+    }
     engine::Camera* mainCamera = new engine::Camera(
         entityManager,
         "MainCamera",
@@ -42,6 +48,34 @@ static std::function<void(engine::EntityManager*, engine::UIManager*, engine::Sc
         0.1f,
         100.0f,
         true
+    );
+    std::vector<engine::Entity*> cubes;
+    cubes.reserve(14);
+    for (int i = -1; i <= 1; ++i) {
+        for (int j = -1; j <= 1; ++j) {
+            for (int k = -1; k <= 1; ++k) {
+                if (i == 0 && j == 0 && k == 0) continue;
+                glm::vec3 translator = 5.0f * glm::vec3(static_cast<float>(i), static_cast<float>(j), static_cast<float>(k));
+                std::string name = "cube" + std::to_string(i) + std::to_string(j) + std::to_string(k);
+                engine::Entity* cube = new engine::Entity(
+                    entityManager,
+                    name,
+                    "gbuffer",
+                    glm::translate(glm::mat4(1.0), translator)
+                );
+                cube->setModel(cubeModel);
+                cubes.push_back(cube);
+            }
+        }
+    }
+    engine::Light* light = new engine::Light(
+        entityManager,
+        "light1",
+        glm::mat4(1.0f),
+        glm::vec3(1.0f),
+        50.0f,
+        50.0f,
+        false
     );
 };
 

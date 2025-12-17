@@ -327,6 +327,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .depthWrite = true,
                 .enableDepth = true,
                 .cullMode = VK_CULL_MODE_BACK_BIT,
+                .poolMultiplier = 512,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 5,
                 .fragmentDescriptorTypes = {

@@ -426,7 +426,6 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
     std::tie(vb, ib) = renderer->getUIBuffers();
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vb, offsets);
-    // UI quad indices are 16-bit; bind with the matching index type.
     vkCmdBindIndexBuffer(commandBuffer, ib, 0, VK_INDEX_TYPE_UINT16);
 
     std::function<void(UIObject*, const LayoutRect&)> drawUIObject = [&](UIObject* object, const LayoutRect& rect) {

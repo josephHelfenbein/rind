@@ -17,10 +17,7 @@
 #include <format>
 #include <iostream>
 #include <array>
-
-namespace {
-    constexpr bool DEBUG_RENDER_LOGS = false;
-}
+#include <typeindex>
 
 engine::Renderer::Renderer(std::string windowTitle) : windowTitle(windowTitle) {}
 
@@ -676,6 +673,25 @@ void engine::Renderer::drawEntities(VkCommandBuffer commandBuffer, RenderNode& n
 void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node) {
     for (GraphicsShader* shader : node.shaders) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+        std::type_index type = shader->config.pushConstantType;
+        if (type == std::type_index(typeid(LightingPC))) {
+            Camera* camera = entityManager->getCamera();
+            if (camera) {
+                LightingPC pc = {
+                    .invView = glm::inverse(camera->getViewMatrix()),
+                    .invProj = glm::inverse(camera->getProjectionMatrix()),
+                    .camPos = camera->getWorldPosition()
+                };
+                vkCmdPushConstants(
+                    commandBuffer,
+                    shader->pipelineLayout,
+                    shader->config.pushConstantRange.stageFlags,
+                    0,
+                    sizeof(LightingPC),
+                    &pc
+                );
+            }
+        }
         if (!shader->descriptorSets.empty()) {
             const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(shader->descriptorSets.size() - 1));
             if (DEBUG_RENDER_LOGS) {

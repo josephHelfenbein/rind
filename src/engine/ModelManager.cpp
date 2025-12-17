@@ -229,7 +229,8 @@ void engine::ModelManager::init() {
                 continue;
             }
             std::string fileName = std::filesystem::path(filePath).filename().string();
-            std::string modelName = parentPath + fileName;
+            std::string modelBaseName = std::filesystem::path(fileName).stem().string();
+            std::string modelName = parentPath + modelBaseName;
             if (models.find(modelName) != models.end()) {
                 std::cout << std::format("Warning: Duplicate model name detected: {}. Skipping {}\n", modelName, filePath);
                 continue;

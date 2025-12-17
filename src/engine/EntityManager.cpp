@@ -3,11 +3,8 @@
 #include <engine/Light.h>
 
 engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
-    : entityManager(entityManager), name(name), shader(shader), transform(transform), textures(textures), isMovable(isMovable) {
+    : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable) {
     entityManager->addEntity(name, this);
-    if (Camera* cam = dynamic_cast<Camera*>(this)) {
-        entityManager->setCamera(cam);
-    }
 }
 
 engine::Entity::~Entity() {
@@ -173,7 +170,8 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
         if (Light* light = dynamic_cast<Light*>(entity)) {
             lights.erase(std::remove(lights.begin(), lights.end(), light), lights.end());
         }
-        if (getCamera() == entity) {
+        Camera* currentCamera = getCamera();
+        if (currentCamera && currentCamera->getName() == entity->getName()) {
             setCamera(nullptr);
         }
         entities.erase(it);
@@ -191,14 +189,16 @@ void engine::EntityManager::clear() {
 
 void engine::EntityManager::loadTextures() {
     for (auto& [name, entity] : entities) {
-        if (entity->getTextures().empty() || !entity->getDescriptorSets().empty()) continue;
+        if (!entity->getDescriptorSets().empty()) continue;
         std::vector<std::string> textures = entity->getTextures();
         auto textureManager = renderer->getTextureManager();
         if (!textureManager) throw std::runtime_error("TextureManager not registered in Renderer");
         std::vector<engine::Texture*> texturePtrs;
         engine::GraphicsShader *shader = renderer->getShaderManager()->getGraphicsShader(entity->getShader());
         if (!shader) {
-            std::cout << std::format("Warning: Shader {} for Entity {} not found.\n", entity->getShader(), name);
+            if (!entity->getShader().empty()) {
+                std::cout << std::format("Warning: Shader {} for Entity {} not found.\n", entity->getShader(), name);
+            }
             continue;
         }
         std::vector<std::string> defaultTextures;

@@ -20,31 +20,6 @@ namespace engine {
     class UIObject;
 
     class Renderer {
-    private:
-        struct ImageResource {
-            uint32_t width;
-            uint32_t height;
-            uint32_t mipLevels;
-            VkSampleCountFlagBits samples;
-            VkFormat format;
-            VkImageTiling tiling;
-            VkImageUsageFlags usage;
-            VkMemoryPropertyFlags properties;
-            uint32_t arrayLayers;
-            VkImageCreateFlags createFlags;
-            VkImage image;
-            VkDeviceMemory memory;
-            VkImageView imageView;
-        };
-        struct RenderPass {
-            std::vector<ImageResource> imageResources;
-            std::vector<VkFramebuffer> framebuffers;
-            std::vector<VkAttachmentDescription> attachments;
-            VkRenderPassCreateInfo createInfo;
-            VkSamplerCreateInfo samplerInfo;
-            VkRenderPass renderPass;
-            VkSampler sampler;
-        };
     public:
         Renderer(std::string windowTitle);
         ~Renderer();
@@ -190,8 +165,13 @@ namespace engine {
         #endif
         // Runtime toggle: use CAS fallback when float atomicAdd isn’t available via VK_EXT_shader_atomic_float
         bool useCASAdvection = true;
-        // Force validation layers on even in Release to catch descriptor issues while debugging.
-        static constexpr bool enableValidationLayers = true;
+        #ifdef NDEBUG
+            const bool enableValidationLayers = false;
+            const bool DEBUG_RENDER_LOGS = false;
+        #else
+            const bool enableValidationLayers = true;
+            const bool DEBUG_RENDER_LOGS = true;
+        #endif
 
         void initWindow();
         void initVulkan();

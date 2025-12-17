@@ -40,6 +40,12 @@ namespace engine {
         ~ModelManager();
 
         void init();
+
+        Model* getModel(const std::string& name) {
+            auto it = models.find(name);
+            if (it != models.end()) return it->second;
+            return nullptr;
+        }
     private:
         Renderer* renderer;
         std::string modelDirectory;
