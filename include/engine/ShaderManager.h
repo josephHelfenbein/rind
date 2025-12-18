@@ -101,6 +101,12 @@ namespace engine {
         VkDescriptorSetLayout descriptorSetLayout{};
         VkDescriptorPool descriptorPool{};
         std::vector<VkDescriptorSet> descriptorSets;
+
+        std::vector<VkDescriptorSet> createDescriptorSets(engine::Renderer* renderer, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
+
+        void createDescriptorSetLayout(engine::Renderer* renderer);
+        void createPipeline(engine::Renderer* renderer);
+        void createDescriptorPool(engine::Renderer* renderer);
     };
 
     struct ComputeShader {
@@ -118,6 +124,10 @@ namespace engine {
         VkPipelineLayout pipelineLayout{};
         VkDescriptorSetLayout descriptorSetLayout{};
         VkDescriptorPool descriptorPool{};
+
+        void createDescriptorSetLayout(engine::Renderer* renderer);
+        void createPipeline(engine::Renderer* renderer);
+        void createDescriptorPool(engine::Renderer* renderer);
     };
 
     struct RenderNode {
@@ -157,6 +167,8 @@ namespace engine {
         std::vector<RenderNode>& getRenderGraph();
         const std::vector<RenderNode>& getRenderGraph() const;
         void resolveRenderGraphShaders();
+
+        static VkShaderModule createShaderModule(const std::vector<char>& code, Renderer* renderer);
 
     private:
         std::vector<std::unique_ptr<GraphicsShader>> graphicsShaders;

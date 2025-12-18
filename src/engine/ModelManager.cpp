@@ -3,8 +3,7 @@
 engine::Model::Model(std::string name, Renderer* renderer) : name(name), renderer(renderer) {}
 
 engine::Model::~Model() {
-    VkDevice device = renderer ? renderer->getDevice() : VK_NULL_HANDLE;
-    if (device == VK_NULL_HANDLE) return;
+    VkDevice device = renderer->getDevice();
     if (vertexBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(device, vertexBuffer, nullptr);
         vertexBuffer = VK_NULL_HANDLE;

@@ -63,20 +63,21 @@ engine::UIManager::UIManager(Renderer* renderer, std::string& fontDirectory)
 
 engine::UIManager::~UIManager() {
     clear();
+    VkDevice device = renderer->getDevice();
     for (auto& [name, font] : fonts) {
         for (auto& [charKey, character] : font.characters) {
             if (character.texture) {
                 if (character.texture->imageSampler != VK_NULL_HANDLE) {
-                    vkDestroySampler(renderer->getDevice(), character.texture->imageSampler, nullptr);
+                    vkDestroySampler(device, character.texture->imageSampler, nullptr);
                 }
                 if (character.texture->imageView != VK_NULL_HANDLE) {
-                    vkDestroyImageView(renderer->getDevice(), character.texture->imageView, nullptr);
+                    vkDestroyImageView(device, character.texture->imageView, nullptr);
                 }
                 if (character.texture->image != VK_NULL_HANDLE) {
-                    vkDestroyImage(renderer->getDevice(), character.texture->image, nullptr);
+                    vkDestroyImage(device, character.texture->image, nullptr);
                 }
                 if (character.texture->imageMemory != VK_NULL_HANDLE) {
-                    vkFreeMemory(renderer->getDevice(), character.texture->imageMemory, nullptr);
+                    vkFreeMemory(device, character.texture->imageMemory, nullptr);
                 }
                 delete character.texture;
             }
@@ -192,11 +193,7 @@ void engine::UIManager::loadTextures() {
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
         std::vector<Texture*> textures = { texture };
         std::vector<VkBuffer> buffers;
-        object->setDescriptorSets(renderer->createDescriptorSets(
-            shader,
-            textures,
-            buffers
-        ));
+        object->setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
     }
 }
 
@@ -323,11 +320,7 @@ void engine::UIManager::loadFonts() {
                 GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("text");
                 std::vector<Texture*> textures = { character.texture };
                 std::vector<VkBuffer> buffers;
-                character.descriptorSets = renderer->createDescriptorSets(
-                    shader,
-                    textures,
-                    buffers
-                );
+                character.descriptorSets = shader->createDescriptorSets(renderer, textures, buffers);
                 const char glyph = static_cast<char>(c);
                 const int glyphHeight = character.size.y;
                 font.characters.insert_or_assign(glyph, std::move(character));

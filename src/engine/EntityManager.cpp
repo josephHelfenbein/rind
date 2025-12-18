@@ -96,7 +96,8 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
 }
 
 void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
-    if (!renderer || renderer->getDevice() == VK_NULL_HANDLE) {
+    VkDevice device = renderer->getDevice();
+    if (device == VK_NULL_HANDLE) {
         uniformBuffers.clear();
         uniformBuffersMemory.clear();
         uniformBufferStride = 0;
@@ -104,11 +105,11 @@ void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
     }
     for (size_t i = 0; i < uniformBuffers.size(); ++i) {
         if (uniformBuffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(renderer->getDevice(), uniformBuffers[i], nullptr);
+            vkDestroyBuffer(device, uniformBuffers[i], nullptr);
             uniformBuffers[i] = VK_NULL_HANDLE;
         }
         if (i < uniformBuffersMemory.size() && uniformBuffersMemory[i] != VK_NULL_HANDLE) {
-            vkFreeMemory(renderer->getDevice(), uniformBuffersMemory[i], nullptr);
+            vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
             uniformBuffersMemory[i] = VK_NULL_HANDLE;
         }
     }
@@ -123,14 +124,15 @@ engine::EntityManager::EntityManager(engine::Renderer* renderer) : renderer(rend
 
 engine::EntityManager::~EntityManager() {
     clear();
+    VkDevice device = renderer->getDevice();
     for (auto& buffer : lightsBuffers) {
         if (buffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(renderer->getDevice(), buffer, nullptr);
+            vkDestroyBuffer(device, buffer, nullptr);
         }
     }
     for (auto& memory : lightsBuffersMemory) {
         if (memory != VK_NULL_HANDLE) {
-            vkFreeMemory(renderer->getDevice(), memory, nullptr);
+            vkFreeMemory(device, memory, nullptr);
         }
     }
     lightsBuffers.clear();
@@ -260,7 +262,7 @@ void engine::EntityManager::loadTextures() {
             continue;
         }
         entity->ensureUniformBuffers(renderer, shader);
-        entity->setDescriptorSets(renderer->createDescriptorSets(shader, texturePtrs, entity->getUniformBuffers()));
+        entity->setDescriptorSets(shader->createDescriptorSets(renderer, texturePtrs, entity->getUniformBuffers()));
     }
 }
 

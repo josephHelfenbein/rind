@@ -25,27 +25,13 @@ namespace engine {
         ~Renderer();
         void run();
 
-        void registerEntityManager(class EntityManager* entityManager) {
-            this->entityManager = entityManager;
-        }
-        void registerInputManager(class InputManager* inputManager) {
-            this->inputManager = inputManager;
-        }
-        void registerUIManager(class UIManager* uiManager) {
-            this->uiManager = uiManager;
-        }
-        void registerTextureManager(class TextureManager* textureManager) {
-            this->textureManager = textureManager;
-        }
-        void registerShaderManager(class ShaderManager* shaderManager) {
-            this->shaderManager = shaderManager;
-        }
-        void registerSceneManager(class SceneManager* sceneManager) {
-            this->sceneManager = sceneManager;
-        }
-        void registerModelManager(class ModelManager* modelManager) {
-            this->modelManager = modelManager;
-        }
+        void registerEntityManager(class EntityManager* entityManager) { this->entityManager = entityManager; }
+        void registerInputManager(class InputManager* inputManager) { this->inputManager = inputManager; }
+        void registerUIManager(class UIManager* uiManager) { this->uiManager = uiManager; }
+        void registerTextureManager(class TextureManager* textureManager) { this->textureManager = textureManager; }
+        void registerShaderManager(class ShaderManager* shaderManager) { this->shaderManager = shaderManager; }
+        void registerSceneManager(class SceneManager* sceneManager) { this->sceneManager = sceneManager; }
+        void registerModelManager(class ModelManager* modelManager) { this->modelManager = modelManager; }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -56,7 +42,6 @@ namespace engine {
 
         void toggleLockCursor(bool lock);
 
-        std::vector<VkDescriptorSet> createDescriptorSets(class GraphicsShader* shader, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
         std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
         std::pair<VkImage, VkDeviceMemory> createImage(
             uint32_t width,
@@ -131,23 +116,17 @@ namespace engine {
             VkImageCreateFlags flags
         );
 
-        void createGraphicsDescriptorSetLayout(GraphicsShader& shader);
-        void createGraphicsPipeline(GraphicsShader& shader);
-        void createGraphicsDescriptorPool(GraphicsShader& shader);
-
         void ensureFallbackShadowCubeTexture();
         void ensureFallback2DTexture();
 
-        void createComputeDescriptorSetLayout(class ComputeShader& shader);
-        void createComputePipeline(class ComputeShader& shader);
-        void createComputeDescriptorPool(class ComputeShader& shader);
-
-        VkDevice getDevice() { return device; }
-        uint32_t getFramesInFlight() { return MAX_FRAMES_IN_FLIGHT; }
-        VkExtent2D getSwapChainExtent() { return swapChainExtent; }
-        float getUIScale() { return uiScale; }
-        std::pair<VkBuffer, VkBuffer> getUIBuffers() { return { uiVertexBuffer, uiIndexBuffer }; }
-        UIObject* getHoveredObject() { return hoveredObject; }
+        VkDevice getDevice() const { return device; }
+        uint32_t getFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
+        VkExtent2D getSwapChainExtent() const { return swapChainExtent; }
+        float getUIScale() const { return uiScale; }
+        std::pair<VkBuffer, VkBuffer> getUIBuffers() const { return { uiVertexBuffer, uiIndexBuffer }; }
+        UIObject* getHoveredObject() const { return hoveredObject; }
+        int getMaxFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
+        VkSampler getMainTextureSampler() const { return mainTextureSampler; }
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
 
     private:
@@ -261,8 +240,6 @@ namespace engine {
         void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
         void draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node);
-
-        VkShaderModule createShaderModule(const std::vector<char>& code);
 
         void recreateSwapChain();
 

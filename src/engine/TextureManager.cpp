@@ -30,18 +30,19 @@ engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string t
     }
 
 engine::TextureManager::~TextureManager() {
+    VkDevice device = renderer->getDevice();
     for (auto& [name, texture] : textures) {
         if (texture.imageSampler != VK_NULL_HANDLE) {
-            vkDestroySampler(renderer->getDevice(), texture.imageSampler, nullptr);
+            vkDestroySampler(device, texture.imageSampler, nullptr);
         }
         if (texture.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(renderer->getDevice(), texture.imageView, nullptr);
+            vkDestroyImageView(device, texture.imageView, nullptr);
         }
         if (texture.image != VK_NULL_HANDLE) {
-            vkDestroyImage(renderer->getDevice(), texture.image, nullptr);
+            vkDestroyImage(device, texture.image, nullptr);
         }
         if (texture.imageMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(renderer->getDevice(), texture.imageMemory, nullptr);
+            vkFreeMemory(device, texture.imageMemory, nullptr);
         }
     }
 }
@@ -161,17 +162,18 @@ engine::Texture* engine::TextureManager::getTexture(const std::string& name) {
 void engine::TextureManager::registerTexture(const std::string& name, const Texture& texture) {
     auto it = textures.find(name);
     if (it != textures.end()) {
+        VkDevice device = renderer->getDevice();
         if (it->second.imageSampler != VK_NULL_HANDLE) {
-            vkDestroySampler(renderer->getDevice(), it->second.imageSampler, nullptr);
+            vkDestroySampler(device, it->second.imageSampler, nullptr);
         }
         if (it->second.imageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(renderer->getDevice(), it->second.imageView, nullptr);
+            vkDestroyImageView(device, it->second.imageView, nullptr);
         }
         if (it->second.image != VK_NULL_HANDLE) {
-            vkDestroyImage(renderer->getDevice(), it->second.image, nullptr);
+            vkDestroyImage(device, it->second.image, nullptr);
         }
         if (it->second.imageMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(renderer->getDevice(), it->second.imageMemory, nullptr);
+            vkFreeMemory(device, it->second.imageMemory, nullptr);
         }
     }
     textures[name] = texture;

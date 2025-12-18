@@ -1,4 +1,5 @@
 #include <engine/ShaderManager.h>
+#include <engine/TextureManager.h>
 #include <engine/io.h>
 #include <engine/PushConstants.h>
 #include <glm/glm.hpp>
@@ -28,18 +29,19 @@ engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string sha
 
 engine::ShaderManager::~ShaderManager() {
     std::unordered_set<PassInfo*> processedPasses;
+    VkDevice device = renderer->getDevice();
     for (auto& shader : graphicsShaders) {
         if (shader->pipeline != VK_NULL_HANDLE) {
-            vkDestroyPipeline(renderer->getDevice(), shader->pipeline, nullptr);
+            vkDestroyPipeline(device, shader->pipeline, nullptr);
         }
         if (shader->pipelineLayout != VK_NULL_HANDLE) {
-            vkDestroyPipelineLayout(renderer->getDevice(), shader->pipelineLayout, nullptr);
+            vkDestroyPipelineLayout(device, shader->pipelineLayout, nullptr);
         }
         if (shader->descriptorSetLayout != VK_NULL_HANDLE) {
-            vkDestroyDescriptorSetLayout(renderer->getDevice(), shader->descriptorSetLayout, nullptr);
+            vkDestroyDescriptorSetLayout(device, shader->descriptorSetLayout, nullptr);
         }
         if (shader->descriptorPool != VK_NULL_HANDLE) {
-            vkDestroyDescriptorPool(renderer->getDevice(), shader->descriptorPool, nullptr);
+            vkDestroyDescriptorPool(device, shader->descriptorPool, nullptr);
         }
         if (shader->config.passInfo) {
             PassInfo* pass = shader->config.passInfo.get();
@@ -47,15 +49,15 @@ engine::ShaderManager::~ShaderManager() {
                 if (pass->images.has_value()) {
                     for (auto& image : pass->images.value()) {
                         if (image.imageView != VK_NULL_HANDLE) {
-                            vkDestroyImageView(renderer->getDevice(), image.imageView, nullptr);
+                            vkDestroyImageView(device, image.imageView, nullptr);
                             image.imageView = VK_NULL_HANDLE;
                         }
                         if (image.image != VK_NULL_HANDLE) {
-                            vkDestroyImage(renderer->getDevice(), image.image, nullptr);
+                            vkDestroyImage(device, image.image, nullptr);
                             image.image = VK_NULL_HANDLE;
                         }
                         if (image.memory != VK_NULL_HANDLE) {
-                            vkFreeMemory(renderer->getDevice(), image.memory, nullptr);
+                            vkFreeMemory(device, image.memory, nullptr);
                             image.memory = VK_NULL_HANDLE;
                         }
                     }
@@ -65,16 +67,16 @@ engine::ShaderManager::~ShaderManager() {
     }
     for (auto& shader : computeShaders) {
         if (shader->pipeline != VK_NULL_HANDLE) {
-            vkDestroyPipeline(renderer->getDevice(), shader->pipeline, nullptr);
+            vkDestroyPipeline(device, shader->pipeline, nullptr);
         }
         if (shader->pipelineLayout != VK_NULL_HANDLE) {
-            vkDestroyPipelineLayout(renderer->getDevice(), shader->pipelineLayout, nullptr);
+            vkDestroyPipelineLayout(device, shader->pipelineLayout, nullptr);
         }
         if (shader->descriptorSetLayout != VK_NULL_HANDLE) {
-            vkDestroyDescriptorSetLayout(renderer->getDevice(), shader->descriptorSetLayout, nullptr);
+            vkDestroyDescriptorSetLayout(device, shader->descriptorSetLayout, nullptr);
         }
         if (shader->descriptorPool != VK_NULL_HANDLE) {
-            vkDestroyDescriptorPool(renderer->getDevice(), shader->descriptorPool, nullptr);
+            vkDestroyDescriptorPool(device, shader->descriptorPool, nullptr);
         }
     }
 }
@@ -100,9 +102,9 @@ void engine::ShaderManager::loadGraphicsShader(const std::string& name) {
         };
         resolveStage(shader->vertex);
         resolveStage(shader->fragment);
-        renderer->createGraphicsDescriptorSetLayout(*shader);
-        renderer->createGraphicsPipeline(*shader);
-        renderer->createGraphicsDescriptorPool(*shader);
+        shader->createDescriptorSetLayout(renderer);
+        shader->createPipeline(renderer);
+        shader->createDescriptorPool(renderer);
     } else {
         std::cout << std::format("Warning: Graphics shader {} not found.\n", name);
     }
@@ -116,9 +118,9 @@ void engine::ShaderManager::loadComputeShader(const std::string& name) {
             std::string mapped = getShaderFilePath(shader->compute.path);
             if (!mapped.empty()) shader->compute.path = mapped;
         }
-        renderer->createComputeDescriptorSetLayout(*shader);
-        renderer->createComputePipeline(*shader);
-        renderer->createComputeDescriptorPool(*shader);
+        shader->createDescriptorSetLayout(renderer);
+        shader->createPipeline(renderer);
+        shader->createDescriptorPool(renderer);
     } else {
         std::cout << std::format("Warning: Compute shader {} not found.\n", name);
     }
@@ -560,5 +562,537 @@ void engine::ShaderManager::resolveRenderGraphShaders() {
                 std::cout << std::format("Warning: Render graph shader '{}' not found.\n", shaderName);
             }
         }
+    }
+}
+
+std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Renderer* renderer, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers) {
+    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    VkDevice device = renderer->getDevice();
+    VkSampler mainTextureSampler = renderer->getMainTextureSampler();
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptorPool,
+        .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+        .pSetLayouts = layouts.data()
+    };
+    std::vector<VkDescriptorSet> descriptorSets(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate descriptor sets!");
+    }
+    const int vertexBindings = std::max(config.vertexBitBindings, 0);
+    const int fragmentBindings = std::max(config.fragmentBitBindings, 0);
+    const size_t expectedBuffers = static_cast<size_t>(vertexBindings) * MAX_FRAMES_IN_FLIGHT;
+    if (buffers.size() < expectedBuffers && vertexBindings > 0) {
+        throw std::runtime_error("Insufficient uniform buffers for descriptor set creation!");
+    }
+
+    auto getFragmentType = [&](int index) {
+        if (!config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < config.fragmentDescriptorTypes.size()) {
+            return config.fragmentDescriptorTypes[static_cast<size_t>(index)];
+        }
+        return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    };
+    auto getFragmentCount = [&](int index) {
+        if (!config.fragmentDescriptorCounts.empty() && config.fragmentDescriptorCounts.size() == static_cast<size_t>(fragmentBindings)) {
+            return std::max(config.fragmentDescriptorCounts[static_cast<size_t>(index)], 1u);
+        }
+        return 1u;
+    };
+
+    size_t requiredTextureBindings = 0;
+    for (int i = 0; i < fragmentBindings; ++i) {
+        const VkDescriptorType type = getFragmentType(i);
+        if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+            requiredTextureBindings += getFragmentCount(i);
+        }
+    }
+    if (textures.size() < requiredTextureBindings) {
+        throw std::runtime_error("Insufficient textures for descriptor set creation!");
+    }
+
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    imageInfos.reserve(requiredTextureBindings * MAX_FRAMES_IN_FLIGHT + fragmentBindings * MAX_FRAMES_IN_FLIGHT);
+    bufferInfos.reserve(expectedBuffers);
+    std::vector<VkWriteDescriptorSet> descriptorWrites;
+    descriptorWrites.reserve(static_cast<size_t>(vertexBindings + fragmentBindings) * MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+        for (int binding = 0; binding < vertexBindings; ++binding) {
+            const size_t bufferIndex = frame * static_cast<size_t>(vertexBindings) + static_cast<size_t>(binding);
+            VkBuffer bufferHandle = buffers[bufferIndex];
+            if (bufferHandle == VK_NULL_HANDLE) {
+                throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");
+            }
+            bufferInfos.push_back({
+                .buffer = bufferHandle,
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            });
+            descriptorWrites.push_back({
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[frame],
+                .dstBinding = static_cast<uint32_t>(binding),
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &bufferInfos.back()
+            });
+        }
+
+        size_t textureIndex = 0;
+        for (int frag = 0; frag < fragmentBindings; ++frag) {
+            const VkDescriptorType type = getFragmentType(frag);
+            const uint32_t descriptorCount = getFragmentCount(frag);
+            const uint32_t bindingIndex = static_cast<uint32_t>(vertexBindings + frag);
+
+            size_t startIndex = imageInfos.size();
+            switch (type) {
+                case VK_DESCRIPTOR_TYPE_SAMPLER: {
+                    VkSampler sampler = mainTextureSampler;
+                    if (!textures.empty() && textures.front() && textures.front()->imageSampler != VK_NULL_HANDLE) {
+                        sampler = textures.front()->imageSampler;
+                    }
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        imageInfos.push_back({
+                            .sampler = sampler
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = descriptorSets[frame],
+                        .dstBinding = bindingIndex,
+                        .dstArrayElement = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                        .descriptorCount = descriptorCount,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    break;
+                }
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        Texture* texture = textures.at(textureIndex++);
+                        if (!texture || !texture->imageView) {
+                            throw std::runtime_error("Invalid texture provided for sampled image descriptor!");
+                        }
+                        imageInfos.push_back({
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .imageView = texture->imageView,
+                            .sampler = VK_NULL_HANDLE
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = descriptorSets[frame],
+                        .dstBinding = bindingIndex,
+                        .dstArrayElement = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                        .descriptorCount = descriptorCount,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    break;
+                }
+                default: {
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        Texture* texture = textures.at(textureIndex++);
+                        if (!texture || !texture->imageView) {
+                            throw std::runtime_error("Invalid texture provided for combined image sampler descriptor!");
+                        }
+                        imageInfos.push_back({
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .imageView = texture->imageView,
+                            .sampler = texture->imageSampler
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = descriptorSets[frame],
+                        .dstBinding = bindingIndex,
+                        .dstArrayElement = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .descriptorCount = descriptorCount,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!descriptorWrites.empty()) {
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }
+    return descriptorSets;
+}
+
+void engine::GraphicsShader::createDescriptorSetLayout(engine::Renderer* renderer) {
+    const int totalVertexBindings = std::max(config.vertexBitBindings, 0);
+    const int totalFragmentBindings = std::max(config.fragmentBitBindings, 0);
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    bindings.reserve(static_cast<size_t>(totalVertexBindings + totalFragmentBindings));
+    VkShaderStageFlags uboStageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    for (int bindingIndex = 0; bindingIndex < totalVertexBindings; ++bindingIndex) {
+        VkDescriptorSetLayoutBinding uboLayoutBinding = {
+            .binding = static_cast<uint32_t>(bindingIndex),
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = uboStageFlags,
+            .pImmutableSamplers = nullptr
+        };
+        bindings.push_back(uboLayoutBinding);
+    }
+    auto getFragmentType = [&](int index) {
+        if (!config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < config.fragmentDescriptorTypes.size()) {
+            return config.fragmentDescriptorTypes[static_cast<size_t>(index)];
+        }
+        return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    };
+    auto getFragmentCount = [&](int index) {
+        if (!config.fragmentDescriptorCounts.empty() && config.fragmentDescriptorCounts.size() == static_cast<size_t>(totalFragmentBindings)) {
+            return std::max(config.fragmentDescriptorCounts[static_cast<size_t>(index)], 1u);
+        }
+        return 1u;
+    };
+    for (int offset = 0; offset < totalFragmentBindings; ++offset) {
+        const VkDescriptorType descriptorType = getFragmentType(offset);
+        const uint32_t descriptorCount = getFragmentCount(offset);
+        VkDescriptorSetLayoutBinding fragmentLayoutBinding = {
+            .binding = static_cast<uint32_t>(totalVertexBindings + offset),
+            .descriptorType = descriptorType,
+            .descriptorCount = descriptorCount,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = nullptr
+        };
+        bindings.push_back(fragmentLayoutBinding);
+    }
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = static_cast<uint32_t>(bindings.size()),
+        .pBindings = bindings.data()
+    };
+    if (vkCreateDescriptorSetLayout(renderer->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor set layout!");
+    }
+}
+
+void engine::ComputeShader::createDescriptorSetLayout(engine::Renderer* renderer) {
+    const int totalStorageBindings = std::max(config.storageImageCount, 0);
+    const int totalComputeBindings = std::max(config.computeBitBindings, 0);
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    bindings.reserve(static_cast<size_t>(totalStorageBindings + totalComputeBindings));
+    VkShaderStageFlags uboStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    for (int bindingIndex = 0; bindingIndex < config.storageImageCount; ++bindingIndex) {
+        VkDescriptorSetLayoutBinding uboLayoutBinding = {
+            .binding = static_cast<uint32_t>(bindingIndex),
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = uboStageFlags,
+            .pImmutableSamplers = nullptr
+        };
+        bindings.push_back(uboLayoutBinding);
+    }
+    for (int offset = 0; offset < config.computeBitBindings; ++offset) {
+        uint32_t descriptorCount = 1;
+        VkDescriptorSetLayoutBinding computeLayoutBinding = {
+            .binding = static_cast<uint32_t>(totalStorageBindings + offset),
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = descriptorCount,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+            .pImmutableSamplers = nullptr
+        };
+        bindings.push_back(computeLayoutBinding);
+    }
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = static_cast<uint32_t>(bindings.size()),
+        .pBindings = bindings.data()
+    };
+    if (vkCreateDescriptorSetLayout(renderer->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor set layout!");
+    }
+}
+
+void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
+    VkDevice device = renderer->getDevice();
+    std::vector<char> vertShaderCode = readFile(vertex.path);
+    std::vector<char> fragShaderCode = readFile(fragment.path);
+    VkShaderModule vertShaderModule = ShaderManager::createShaderModule(vertShaderCode, renderer);
+    VkShaderModule fragShaderModule = ShaderManager::createShaderModule(fragShaderCode, renderer);
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .module = vertShaderModule,
+        .pName = "main"
+    };
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = fragShaderModule,
+        .pName = "main"
+    };
+    VkPipelineShaderStageCreateInfo shaderStages[] = {
+        vertShaderStageInfo,
+        fragShaderStageInfo
+    };
+    const uint32_t shaderStageCount = 2u;
+    std::vector<VkDynamicState> dynamicStates = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+    VkPipelineDynamicStateCreateInfo dynamicState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data()
+    };
+    VkVertexInputBindingDescription bindingDescription{};
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+    if (config.getVertexInputDescriptions) {
+        config.getVertexInputDescriptions(bindingDescription, attributeDescriptions);
+    }
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = bindingDescription.stride != 0u ? 1u : 0u,
+        .pVertexBindingDescriptions = bindingDescription.stride != 0u ? &bindingDescription : nullptr,
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+        .pVertexAttributeDescriptions = attributeDescriptions.data()
+    };
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = VK_FALSE
+    };
+    VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
+    VkViewport viewport = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = static_cast<float>(swapChainExtent.width),
+        .height = static_cast<float>(swapChainExtent.height),
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+    };
+    VkRect2D scissor = {
+        .offset = {0, 0},
+        .extent = swapChainExtent
+    };
+    VkPipelineViewportStateCreateInfo viewportState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1u,
+        .pViewports = &viewport,
+        .scissorCount = 1u,
+        .pScissors = &scissor
+    };
+    VkPipelineRasterizationStateCreateInfo rasterizer = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .lineWidth = 1.0f,
+        .cullMode = config.cullMode,
+        .frontFace = config.frontFace,
+        .depthBiasEnable = VK_FALSE
+    };
+    VkPipelineMultisampleStateCreateInfo multisampling = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = config.sampleCount,
+        .sampleShadingEnable = (config.sampleCount != VK_SAMPLE_COUNT_1_BIT) ? VK_TRUE : VK_FALSE,
+        .minSampleShading = 0.2f,
+        .pSampleMask = nullptr,
+        .alphaToCoverageEnable = VK_FALSE,
+        .alphaToOneEnable = VK_FALSE
+    };
+    VkPipelineColorBlendAttachmentState colorBlendAttachment = {
+        .blendEnable = VK_TRUE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+        .colorWriteMask = static_cast<VkColorComponentFlags>(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
+    };
+    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments(config.colorAttachmentCount, colorBlendAttachment);
+    VkPipelineColorBlendStateCreateInfo colorBlending = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY,
+        .attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size()),
+        .pAttachments = colorBlendAttachments.data(),
+        .blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}
+    };
+    VkPipelineDepthStencilStateCreateInfo depthStencil = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = config.enableDepth ? VK_TRUE : VK_FALSE,
+        .depthWriteEnable = (config.enableDepth && config.depthWrite) ? VK_TRUE : VK_FALSE,
+        .depthCompareOp = config.depthCompare,
+        .depthBoundsTestEnable = VK_FALSE,
+        .minDepthBounds = 0.0f,
+        .maxDepthBounds = 1.0f,
+        .stencilTestEnable = VK_FALSE,
+        .front = {},
+        .back = {}
+    };
+    const bool hasPushConstant = config.pushConstantRange.stageFlags != 0;
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1u,
+        .pSetLayouts = &descriptorSetLayout,
+        .pushConstantRangeCount = hasPushConstant ? 1u : 0u,
+        .pPushConstantRanges = hasPushConstant ? &config.pushConstantRange : nullptr
+    };
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create pipeline layout!");
+    }
+    VkPipelineRenderingCreateInfo pipelineRenderingInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .colorAttachmentCount = static_cast<uint32_t>(config.colorAttachmentCount),
+        .pColorAttachmentFormats = config.passInfo->attachmentFormats.data(),
+        .depthAttachmentFormat = config.enableDepth ? config.passInfo->depthAttachmentFormat : VK_FORMAT_UNDEFINED,
+        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
+    };
+    VkGraphicsPipelineCreateInfo pipelineInfo = {
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = shaderStageCount,
+        .pStages = shaderStages,
+        .pVertexInputState = &vertexInputInfo,
+        .pInputAssemblyState = &inputAssembly,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pDepthStencilState = &depthStencil,
+        .pColorBlendState = &colorBlending,
+        .pDynamicState = &dynamicState,
+        .layout = pipelineLayout,
+        .subpass = 0u,
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1,
+        .pNext = &pipelineRenderingInfo
+    };
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create graphics pipeline!");
+    }
+    vkDestroyShaderModule(device, fragShaderModule, nullptr);
+    vkDestroyShaderModule(device, vertShaderModule, nullptr);
+}
+
+void engine::ComputeShader::createPipeline(Renderer* renderer) {
+    VkDevice device = renderer->getDevice();
+    std::vector<char> compShaderCode = readFile(compute.path);
+    VkShaderModule compShaderModule = ShaderManager::createShaderModule(compShaderCode, renderer);
+    VkPipelineShaderStageCreateInfo compShaderStageInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = compShaderModule,
+        .pName = "main"
+    };
+    const bool hasPushConstant = config.pushConstantRange.stageFlags != 0;
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1u,
+        .pSetLayouts = &descriptorSetLayout,
+        .pushConstantRangeCount = hasPushConstant ? 1u : 0u,
+        .pPushConstantRanges = hasPushConstant ? &config.pushConstantRange : nullptr
+    };
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compute pipeline layout!");
+    }
+    VkComputePipelineCreateInfo pipelineInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = compShaderStageInfo,
+        .layout = pipelineLayout,
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1
+    };
+    if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compute pipeline!");
+    }
+    vkDestroyShaderModule(device, compShaderModule, nullptr);
+}
+
+VkShaderModule engine::ShaderManager::createShaderModule(const std::vector<char>& code, Renderer* renderer) {
+    VkShaderModuleCreateInfo createInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = code.size(),
+        .pCode = reinterpret_cast<const uint32_t*>(code.data())
+    };
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(renderer->getDevice(), &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create shader module!");
+    }
+    return shaderModule;
+}
+
+void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
+    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    std::vector<VkDescriptorPoolSize> poolSizes;
+    if (config.vertexBitBindings > 0) {
+        VkDescriptorPoolSize uboPoolSize = {
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = static_cast<uint32_t>(config.vertexBitBindings * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        };
+        poolSizes.push_back(uboPoolSize);
+    }
+    if (config.fragmentBitBindings > 0) {
+        std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
+        auto getFragmentType = [&](size_t idx) {
+            if (!config.fragmentDescriptorTypes.empty() && idx < config.fragmentDescriptorTypes.size()) {
+                return config.fragmentDescriptorTypes[idx];
+            }
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        };
+        auto getFragmentCount = [&](size_t idx) {
+            if (!config.fragmentDescriptorCounts.empty() && config.fragmentDescriptorCounts.size() == static_cast<size_t>(config.fragmentBitBindings)) {
+                return std::max(config.fragmentDescriptorCounts[idx], 1u);
+            }
+            return 1u;
+        };
+        for (size_t i = 0; i < static_cast<size_t>(config.fragmentBitBindings); ++i) {
+            const VkDescriptorType type = getFragmentType(i);
+            const uint32_t count = getFragmentCount(i) * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier;
+            typeCounts[type] += count;
+        }
+        for (const auto& [type, count] : typeCounts) {
+            poolSizes.push_back({
+                .type = type,
+                .descriptorCount = count
+            });
+        }
+    }
+    VkDescriptorPoolCreateInfo poolInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+        .pPoolSizes = poolSizes.data(),
+        .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+    };
+    if (vkCreateDescriptorPool(renderer->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor pool!");
+    }
+}
+
+void engine::ComputeShader::createDescriptorPool(Renderer* renderer) {
+    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    std::vector<VkDescriptorPoolSize> poolSizes;
+    if (config.storageImageCount > 0) {
+        VkDescriptorPoolSize storageImagePoolSize = {
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .descriptorCount = static_cast<uint32_t>(config.storageImageCount * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        };
+        poolSizes.push_back(storageImagePoolSize);
+    }
+    if (config.computeBitBindings > 0) {
+        VkDescriptorPoolSize computePoolSize = {
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = static_cast<uint32_t>(config.computeBitBindings * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        };
+        poolSizes.push_back(computePoolSize);
+    }
+    VkDescriptorPoolCreateInfo poolInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+        .pPoolSizes = poolSizes.data(),
+        .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+    };
+    if (vkCreateDescriptorPool(renderer->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compute descriptor pool!");
     }
 }
