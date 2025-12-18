@@ -4,8 +4,8 @@
 
 engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
     : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable) {
-    entityManager->addEntity(name, this);
-}
+        entityManager->addEntity(name, this);
+    }
 
 engine::Entity::~Entity() {
     destroyUniformBuffers(entityManager ? entityManager->getRenderer() : nullptr);
@@ -179,12 +179,14 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
 }
 
 void engine::EntityManager::clear() {
-    while (!entities.empty()) {
-        delete entities.begin()->second;
-    }
-    rootEntities.clear();
     movableEntities.clear();
     lights.clear();
+    std::vector<Entity*> rootsSnapshot;
+    rootsSnapshot.swap(rootEntities);
+    for (Entity* root : rootsSnapshot) {
+        delete root;
+    }
+    entities.clear();
 }
 
 void engine::EntityManager::loadTextures() {
@@ -305,4 +307,80 @@ void engine::EntityManager::updateAll(float deltaTime) {
         traverse(rootEntity);
     }
     loadTextures();
+}
+
+void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {
+    std::vector<Entity*> rootEntities = getRootEntities();
+    std::set<GraphicsShader*>& shaders = node.shaders;
+    Camera* camera = getCamera();
+
+    std::function<void(Entity*)> drawEntity = [&](Entity* entity) {
+        if (!entity->getModel()) return;
+        ShaderManager* shaderManager = renderer->getShaderManager();
+        if (!entity->getShader().empty() || shaders.find(shaderManager->getGraphicsShader(entity->getShader())) != shaders.end()) {
+            Model* model = entity->getModel();
+            GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+            VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
+            
+            std::type_index type = shader->config.pushConstantType;
+            if (type == std::type_index(typeid(GBufferPC))) {
+                if (camera) {
+                    GBufferPC pc = {
+                        .model = entity->getWorldTransform(),
+                        .view = camera->getViewMatrix(),
+                        .projection = camera->getProjectionMatrix(),
+                        .camPos = camera->getWorldPosition()
+                    };
+                    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
+                }
+            } else if (type == std::type_index(typeid(LightingPC))) {
+                if (camera) {
+                    LightingPC pc = {
+                        .invView = glm::inverse(camera->getViewMatrix()),
+                        .invProj = glm::inverse(camera->getProjectionMatrix()),
+                        .camPos = camera->getWorldPosition()
+                    };
+                    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(LightingPC), &pc);
+                }
+            } else if (type == std::type_index(typeid(UIPC))) {
+                UIPC pc = {
+                    .tint = glm::vec3(1.0f),
+                    .model = entity->getWorldTransform()
+                };
+                vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(UIPC), &pc);
+            }
+            std::vector<VkDescriptorSet> descriptorSets = entity->getDescriptorSets();
+            if (!descriptorSets.empty()) {
+                const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(descriptorSets.size() - 1));
+                if (DEBUG_RENDER_LOGS) {
+                    std::cout << "[drawEntities] shader=" << shader->name << " bind DS idx=" << dsIndex
+                              << " handle=" << descriptorSets[dsIndex] << std::endl;
+                }
+                vkCmdBindDescriptorSets(
+                    commandBuffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    shader->pipelineLayout,
+                    0,
+                    1,
+                    &descriptorSets[dsIndex],
+                    0,
+                    nullptr
+                );
+            } else if (DEBUG_RENDER_LOGS) {
+                std::cout << "[drawEntities] shader=" << shader->name << " has NO descriptor sets" << std::endl;
+            }
+
+            vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
+        }
+        for (Entity* child : entity->getChildren()) {
+            drawEntity(child);
+        }
+    };
+    for (Entity* entity : rootEntities) {
+        drawEntity(entity);
+    }
 }

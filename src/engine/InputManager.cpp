@@ -38,7 +38,7 @@ void engine::InputManager::processInput(GLFWwindow* window) {
     if (deltaX != 0.0 || deltaY != 0.0) {
         InputEvent event = {
             .type = InputEvent::Type::MouseMove,
-            .mouseMoveEvent = { xpos, ypos }
+            .mouseMoveEvent = { deltaX, deltaY }
         };
         events.push_back(event);
         lastMouse = { xpos, ypos };

@@ -143,7 +143,6 @@ void engine::Renderer::initWindow() {
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetCursorPosCallback(window, mouseMoveCallback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    cursorLocked = false;
 }
 
 void engine::Renderer::initVulkan() {
@@ -538,7 +537,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
             if (DEBUG_RENDER_LOGS) {
                 std::cout << "[record] rendering 3D entities" << std::endl;
             }
-            drawEntities(commandBuffer, node);
+            entityManager->renderEntities(commandBuffer, node, currentFrame, DEBUG_RENDER_LOGS);
         }
         if (!skip3DDraw && isGBufferPass) {
             gbufferRendered = true;
@@ -593,81 +592,6 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     }
     entityManager->updateAll(deltaTime);
     entityManager->updateLightsUBO(currentFrame);
-}
-
-void engine::Renderer::drawEntities(VkCommandBuffer commandBuffer, RenderNode& node) {
-    std::vector<Entity*> rootEntities = entityManager->getRootEntities();
-    std::set<GraphicsShader*>& shaders = node.shaders;
-    Camera* camera = entityManager->getCamera();
-
-    std::function<void(Entity*)> drawEntity = [&](Entity* entity) {
-        if (!entity->getModel()) return;
-        if (!entity->getShader().empty() || shaders.find(shaderManager->getGraphicsShader(entity->getShader())) != shaders.end()) {
-            Model* model = entity->getModel();
-            GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
-            VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
-            VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
-            
-            std::type_index type = shader->config.pushConstantType;
-            if (type == std::type_index(typeid(GBufferPC))) {
-                if (camera) {
-                    GBufferPC pc = {
-                        .model = entity->getWorldTransform(),
-                        .view = camera->getViewMatrix(),
-                        .projection = camera->getProjectionMatrix(),
-                        .camPos = camera->getWorldPosition()
-                    };
-                    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
-                }
-            } else if (type == std::type_index(typeid(LightingPC))) {
-                if (camera) {
-                    LightingPC pc = {
-                        .invView = glm::inverse(camera->getViewMatrix()),
-                        .invProj = glm::inverse(camera->getProjectionMatrix()),
-                        .camPos = camera->getWorldPosition()
-                    };
-                    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(LightingPC), &pc);
-                }
-            } else if (type == std::type_index(typeid(UIPC))) {
-                UIPC pc = {
-                    .tint = glm::vec3(1.0f),
-                    .model = entity->getWorldTransform()
-                };
-                vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(UIPC), &pc);
-            }
-            std::vector<VkDescriptorSet> descriptorSets = entity->getDescriptorSets();
-            if (!descriptorSets.empty()) {
-                const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(descriptorSets.size() - 1));
-                if (DEBUG_RENDER_LOGS) {
-                    std::cout << "[drawEntities] shader=" << shader->name << " bind DS idx=" << dsIndex
-                              << " handle=" << descriptorSets[dsIndex] << std::endl;
-                }
-                vkCmdBindDescriptorSets(
-                    commandBuffer,
-                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    shader->pipelineLayout,
-                    0,
-                    1,
-                    &descriptorSets[dsIndex],
-                    0,
-                    nullptr
-                );
-            } else if (DEBUG_RENDER_LOGS) {
-                std::cout << "[drawEntities] shader=" << shader->name << " has NO descriptor sets" << std::endl;
-            }
-
-            vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
-        }
-        for (Entity* child : entity->getChildren()) {
-            drawEntity(child);
-        }
-    };
-    for (Entity* entity : rootEntities) {
-        drawEntity(entity);
-    }
 }
 
 void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node) {
@@ -2718,6 +2642,11 @@ void engine::Renderer::processInput(GLFWwindow* window) {
         if (ButtonObject* button = dynamic_cast<ButtonObject*>(renderer->getHoveredObject())) {
             button->click();
         }
+    } else if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        renderer->toggleLockCursor(false);
+    } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
+    && renderer->inputManager->getCursorLocked() == false) {
+        renderer->toggleLockCursor(true);
     }
     if (renderer && renderer->inputManager) {
         renderer->inputManager->processInput(window);
@@ -2727,6 +2656,16 @@ void engine::Renderer::processInput(GLFWwindow* window) {
 void engine::Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
     renderer->framebufferResized = true;
+}
+
+void engine::Renderer::toggleLockCursor(bool lock) {
+    if (lock) {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    } else {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+    inputManager->setCursorLocked(lock);
+    inputManager->resetMouseDelta();
 }
 
 void engine::Renderer::mouseMoveCallback(GLFWwindow* window, double xpos, double ypos) {

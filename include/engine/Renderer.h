@@ -54,6 +54,8 @@ namespace engine {
         class SceneManager* getSceneManager() { return sceneManager; }
         class ModelManager* getModelManager() { return modelManager; }
 
+        void toggleLockCursor(bool lock);
+
         std::vector<VkDescriptorSet> createDescriptorSets(class GraphicsShader* shader, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
         std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
         std::pair<VkImage, VkDeviceMemory> createImage(
@@ -233,7 +235,6 @@ namespace engine {
         class SceneManager* sceneManager;
         class ModelManager* modelManager;
 
-        bool cursorLocked;
         UIObject* hoveredObject = nullptr;
 
         void createInstance();
@@ -259,7 +260,6 @@ namespace engine {
         void endSingleTimeCommands(VkCommandBuffer commandBuffer);
         void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
-        void drawEntities(VkCommandBuffer commandBuffer, RenderNode& node);
         void draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node);
 
         VkShaderModule createShaderModule(const std::vector<char>& code);

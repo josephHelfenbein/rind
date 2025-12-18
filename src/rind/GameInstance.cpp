@@ -1,10 +1,12 @@
-#include <game/GameInstance.h>
+#include <rind/GameInstance.h>
 
 #include <engine/Camera.h>
 #include <engine/Light.h>
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
+
+#include <rind/Player.h>
 
 static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
     // Title screen UI setup
@@ -32,6 +34,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
             sceneManager->setActiveScene(1);
         }
     );
+    renderer->toggleLockCursor(false);
 };
 
 static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Renderer* renderer){
@@ -43,16 +46,6 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     if (!cubeModel) {
         std::cout << "Warning: cube model not found; cubes will not render.\n";
     }
-    engine::Camera* mainCamera = new engine::Camera(
-        entityManager,
-        "MainCamera",
-        glm::mat4(1.0f),
-        45.0f,
-        16.0f / 9.0f,
-        0.1f,
-        100.0f,
-        true
-    );
     std::vector<engine::Entity*> cubes;
     cubes.reserve(14);
     for (int i = -1; i <= 1; ++i) {
@@ -68,6 +61,12 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
                     glm::translate(glm::mat4(1.0), translator)
                 );
                 cube->setModel(cubeModel);
+                cube->addChild(new engine::AABBCollider(
+                    entityManager,
+                    glm::mat4(1.0f),
+                    name + "_collider",
+                    glm::vec3(1.0f)
+                ));
                 cubes.push_back(cube);
             }
         }
@@ -81,6 +80,15 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         50.0f,
         false
     );
+    rind::Player* player = new rind::Player(
+        entityManager,
+        renderer->getInputManager(),
+        "player1",
+        "",
+        glm::mat4(1.0f),
+        {}
+    );
+    renderer->toggleLockCursor(true);
 };
 
 rind::GameInstance::GameInstance() {

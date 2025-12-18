@@ -36,6 +36,7 @@ namespace engine {
         Entity* getParent() const { return parent; }
         void setParent(Entity* parent) { this->parent = parent; }
         glm::mat4 getTransform() const { return transform; }
+        void setTransform(const glm::mat4& transform) { this->transform = transform; }
         glm::mat4 getWorldTransform() const { return worldTransform; }
         glm::vec3 getWorldPosition() const;
         std::string getShader() const { return shader; }
@@ -48,7 +49,17 @@ namespace engine {
         void ensureUniformBuffers(Renderer* renderer, GraphicsShader* shader);
         void destroyUniformBuffers(Renderer* renderer);
 
+        EntityManager* getEntityManager() const { return entityManager; }
+
         const std::vector<Entity*>& getChildren() const { return children; }
+        Entity* getChildByName(const std::string& name) const {
+            for (const auto& child : children) {
+                if (child->getName() == name) {
+                    return child;
+                }
+            }
+            return nullptr;
+        }
 
     private:
         std::string name;
@@ -124,6 +135,7 @@ namespace engine {
         Renderer* getRenderer() const { return renderer; }
 
         void updateAll(float deltaTime);
+        void renderEntities(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t currentFrame, bool DEBUG_RENDER_LOGS = false);
 
     private:
         engine::Renderer* renderer;

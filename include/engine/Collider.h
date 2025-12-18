@@ -34,13 +34,13 @@ namespace engine {
             }
             return glm::vec3(0.0f);
         }
+        static bool aabbIntersects(const AABB& a, const AABB& b, float margin = 0.0f);
     protected:
         static std::array<glm::vec3, 8> buildOBBCorners(const glm::mat4& transform, const glm::vec3& half);
         static AABB aabbFromCorners(const std::array<glm::vec3, 8>& corners);
         static std::pair<float, float> projectOntoAxis(const std::array<glm::vec3, 8>& corners, const glm::vec3& axis); // min, max
         static std::array<glm::vec3, 8> getCornersFromAABB(const AABB& aabb);
         static bool aabbOverlapMTV(const AABB& a, const AABB& b, CollisionMTV& out);
-        static bool aabbIntersects(const AABB& a, const AABB& b, float margin = 0.0f);
         static glm::vec3 normalizeOrZero(const glm::vec3& v);
         static void addAxisUnique(std::vector<glm::vec3>& axes, const glm::vec3& axis);
         static std::pair<float, float> projectVertsOntoAxis(const std::vector<glm::vec3>& verts, const glm::vec3& axis, const glm::vec3& offset = glm::vec3(0.0f)); // min, max

@@ -1,5 +1,5 @@
 #include <memory>
-#include <game/GameInstance.h>
+#include <rind/GameInstance.h>
 
 int main() {
     rind::GameInstance game;

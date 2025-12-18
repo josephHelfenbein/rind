@@ -35,11 +35,19 @@ namespace engine {
         void dispatch(const std::vector<InputEvent>& events);
         void registerCallback(std::function<void(const std::vector<InputEvent>&)> callback);
 
+        void setCursorLocked(bool locked) { isCursorLocked = locked; }
+        bool getCursorLocked() const { return isCursorLocked; }
+
+        void resetMouseDelta() {
+            hasMousePosition = false;
+        }
+
     private:
         std::vector<std::function<void(const std::vector<InputEvent>&)>> callbacks;
         int keyStates[GLFW_KEY_LAST + 1] = {0};
         int mouseButtonStates[GLFW_MOUSE_BUTTON_LAST + 1] = {0};
         bool hasMousePosition = false;
         glm::dvec2 lastMouse = {0.0, 0.0};
+        bool isCursorLocked = false;
     };
 };

@@ -8,22 +8,23 @@
 #include <utility>
 #include <unordered_set>
 
-engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string shaderDirectory) : renderer(renderer), shaderDirectory(std::move(shaderDirectory)) {
-    renderer->registerShaderManager(this);
-    std::vector<std::string> shaderFiles = engine::scanDirectory(this->shaderDirectory);
-    for (const auto& filePath : shaderFiles) {
-        if (!std::filesystem::is_regular_file(filePath)) {
-            continue;
+engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string shaderDirectory)
+    : renderer(renderer), shaderDirectory(std::move(shaderDirectory)) {
+        renderer->registerShaderManager(this);
+        std::vector<std::string> shaderFiles = engine::scanDirectory(this->shaderDirectory);
+        for (const auto& filePath : shaderFiles) {
+            if (!std::filesystem::is_regular_file(filePath)) {
+                continue;
+            }
+            std::filesystem::path p(filePath);
+            std::string baseName = p.stem().string(); // strip trailing .spv
+            if (foundShaderFiles.find(baseName) != foundShaderFiles.end()) {
+                std::cout << std::format("Warning: Duplicate shader file name detected: {}. Skipping {}\n", baseName, filePath);
+                continue;
+            }
+            foundShaderFiles[baseName] = filePath;
         }
-        std::filesystem::path p(filePath);
-        std::string baseName = p.stem().string(); // strip trailing .spv
-        if (foundShaderFiles.find(baseName) != foundShaderFiles.end()) {
-            std::cout << std::format("Warning: Duplicate shader file name detected: {}. Skipping {}\n", baseName, filePath);
-            continue;
-        }
-        foundShaderFiles[baseName] = filePath;
     }
-}
 
 engine::ShaderManager::~ShaderManager() {
     std::unordered_set<PassInfo*> processedPasses;

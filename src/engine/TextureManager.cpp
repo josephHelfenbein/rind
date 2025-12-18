@@ -24,9 +24,10 @@ static uint16_t floatToHalf(float value) {
     return static_cast<uint16_t>(sign | (exponent << 10) | (mantissa >> 13));
 }
 
-engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string textureDirectory) : renderer(renderer), textureDirectory(textureDirectory) {
-    renderer->registerTextureManager(this);
-}
+engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string textureDirectory)
+    : renderer(renderer), textureDirectory(textureDirectory) {
+        renderer->registerTextureManager(this);
+    }
 
 engine::TextureManager::~TextureManager() {
     for (auto& [name, texture] : textures) {

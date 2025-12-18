@@ -5,13 +5,13 @@
 
 engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
     : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover) {
-    uiManager->addObject(this);
-}
+        uiManager->addObject(this);
+    }
 
 engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string text, std::string font, Corner anchorCorner)
     : uiManager(uiManager), name(std::move(name)), tint(tint), text(std::move(text)), font(std::move(font)), transform(transform), anchorCorner(anchorCorner) {
-    uiManager->addObject(this);
-}
+        uiManager->addObject(this);
+    }
 
 engine::UIObject::~UIObject() {
     for (auto& child : children) {
@@ -56,9 +56,10 @@ void engine::UIObject::removeChild(TextObject* child) {
     child->setParent(nullptr);
 }
 
-engine::UIManager::UIManager(Renderer* renderer, std::string& fontDirectory) : renderer(renderer), fontDirectory(std::move(fontDirectory)) {
-    renderer->registerUIManager(this);
-}
+engine::UIManager::UIManager(Renderer* renderer, std::string& fontDirectory)
+    : renderer(renderer), fontDirectory(std::move(fontDirectory)) {
+        renderer->registerUIManager(this);
+    }
 
 engine::UIManager::~UIManager() {
     clear();
