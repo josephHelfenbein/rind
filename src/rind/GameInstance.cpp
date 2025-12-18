@@ -6,8 +6,10 @@
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
 
-static std::function<void(engine::EntityManager*, engine::UIManager*, engine::SceneManager*)> titleScreenScene = [](engine::EntityManager* entityManager, engine::UIManager* uiManager, engine::SceneManager* sceneManager){
+static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
     // Title screen UI setup
+    engine::UIManager* uiManager = renderer->getUIManager();
+    engine::SceneManager* sceneManager = renderer->getSceneManager();
     engine::TextObject* titleText = new engine::TextObject(
         uiManager,
         glm::mat4(1.0f),
@@ -32,9 +34,11 @@ static std::function<void(engine::EntityManager*, engine::UIManager*, engine::Sc
     );
 };
 
-static std::function<void(engine::EntityManager*, engine::UIManager*, engine::SceneManager*)> mainGameScene = [](engine::EntityManager* entityManager, engine::UIManager* uiManager, engine::SceneManager* sceneManager){
+static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Renderer* renderer){
     // Gameplay scene logic here
-    engine::ModelManager* modelManager = entityManager->getRenderer()->getModelManager();
+    engine::ModelManager* modelManager = renderer->getModelManager();
+    engine::SceneManager* sceneManager = renderer->getSceneManager();
+    engine::EntityManager* entityManager = renderer->getEntityManager();
     engine::Model* cubeModel = modelManager ? modelManager->getModel("cube") : nullptr;
     if (!cubeModel) {
         std::cout << "Warning: cube model not found; cubes will not render.\n";

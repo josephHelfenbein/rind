@@ -14,5 +14,5 @@ void engine::SceneManager::setActiveScene(int index) {
     }
     renderer->getEntityManager()->clear();
     renderer->getUIManager()->clear();
-    scenes[index]->run(renderer->getEntityManager(), renderer->getUIManager(), this);
+    scenes[index]->run(renderer);
 }

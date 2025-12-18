@@ -11,12 +11,12 @@
 namespace engine {
     class Scene {
     public:
-        Scene(std::function<void(EntityManager*, UIManager*, SceneManager*)> onLoad) : onLoad(onLoad) {};
+        Scene(std::function<void(Renderer* renderer)> onLoad) : onLoad(onLoad) {};
         ~Scene() = default;
-        void run(EntityManager* entityManager, UIManager* uiManager, SceneManager* sceneManager) { onLoad(entityManager, uiManager, sceneManager); }
+        void run(Renderer* renderer) { onLoad(renderer); }
 
     private:
-        std::function<void(EntityManager*, UIManager*, SceneManager*)> onLoad;
+        std::function<void(Renderer* renderer)> onLoad;
     };
 
     class SceneManager {
