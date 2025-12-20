@@ -43,7 +43,7 @@ struct PushConstants {
 };
 [[vk::push_constant]] PushConstants pc;
 
-const float PI = 3.14159265359;
+static const float PI = 3.14159265359;
 
 float3 reconstructPosition(float2 uv, float depth) {
     float4 ndc = float4(uv * 2.0 - 1.0, depth, 1.0);
@@ -95,9 +95,9 @@ float specularAntiAliasing(float3 N, float roughness) {
     return clamp(roughness + kernelRoughness, 0.0, 1.0);
 }
 
-const uint INVALID_SHADOW_INDEX = 0xFFFFFFFF;
+static const uint INVALID_SHADOW_INDEX = 0xFFFFFFFF;
 
-const float3 sampleOffsetDirections[20] = {
+static const float3 sampleOffsetDirections[20] = {
     float3( 1,  1,  1), float3(-1,  1,  1), float3( 1, -1,  1), float3(-1, -1,  1),
     float3( 1,  1, -1), float3(-1,  1, -1), float3( 1, -1, -1), float3(-1, -1, -1),
     float3( 1,  0,  0), float3(-1,  0,  0), float3( 0,  1,  0), float3( 0, -1,  0),

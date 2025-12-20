@@ -88,7 +88,10 @@ void engine::TextureManager::init() {
                 }
                 pixelSize = numPixels * 4 * sizeof(uint16_t);
             } else {
-                format = VK_FORMAT_R8G8B8A8_SRGB;
+                bool isNoncolorMap = textureName.find("metallic") != std::string::npos 
+                || textureName.find("roughness") != std::string::npos 
+                || textureName.find("normal") != std::string::npos;
+                format = isNoncolorMap ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB;
                 pixelSize = static_cast<VkDeviceSize>(texWidth) * static_cast<VkDeviceSize>(texHeight) * 4 * sizeof(uint8_t);
             }
             VkImage textureImage;

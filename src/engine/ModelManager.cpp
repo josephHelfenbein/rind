@@ -1,6 +1,6 @@
 #include <engine/ModelManager.h>
 
-engine::Model::Model(std::string name, Renderer* renderer) : name(name), renderer(renderer) {}
+engine::Model::Model(std::string name, std::string filepath, Renderer* renderer) : name(name), filepath(filepath), renderer(renderer) {}
 
 engine::Model::~Model() {
     VkDevice device = renderer->getDevice();
@@ -22,7 +22,7 @@ engine::Model::~Model() {
     }
 }
 
-void engine::Model::loadFromFile(std::string filepath) {
+void engine::Model::loadFromFile() {
     const std::filesystem::path pathObj(filepath);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(pathObj);
     if (!dataResult) {
@@ -205,7 +205,52 @@ void engine::Model::loadFromFile(std::string filepath) {
     indexCount = static_cast<uint32_t>(tempIndices.size());
 }
 
-engine::ModelManager::ModelManager(Renderer* renderer, std::string modelDirectory) :  renderer(renderer), modelDirectory(modelDirectory) {
+std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> engine::Model::loadVertsForModel() {
+    const std::filesystem::path pathObj(filepath);
+    auto dataResult = fastgltf::GltfDataBuffer::FromPath(pathObj);
+    if (!dataResult) {
+        throw std::runtime_error("Failed to load model file: " + filepath + " Error: " + fastgltf::getErrorName(dataResult.error()).data());
+    }
+    fastgltf::GltfDataBuffer data = std::move(dataResult.get());
+    fastgltf::Parser parser{};
+    constexpr auto gltfOptions = fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers;
+    auto load = parser.loadGltfBinary(data, pathObj.parent_path(), gltfOptions);
+    if (!load) {
+        throw std::runtime_error("Failed to parse model file: " + filepath + " Error: " + fastgltf::getErrorName(load.error()).data());
+    }
+    fastgltf::Asset gltf = std::move(load.get());
+    if (gltf.meshes.empty()) {
+        throw std::runtime_error("Model file contains no meshes: " + filepath);
+    }
+    const auto& mesh = gltf.meshes[0];
+    if (mesh.primitives.empty()) {
+        throw std::runtime_error("Mesh contains no primitives: " + filepath);
+    }
+    std::vector<glm::vec3> vertices;
+    std::vector<uint32_t> indices;
+    for (const auto& primitive : mesh.primitives) {
+        const auto possitionAttr = primitive.findAttribute("POSITION");
+        if (possitionAttr == primitive.attributes.end()) {
+            continue;
+        }
+        const fastgltf::Accessor& positionAccessor = gltf.accessors[possitionAttr->accessorIndex];
+        const std::size_t vertexOffset = vertices.size();
+        fastgltf::iterateAccessor<glm::vec3>(gltf, positionAccessor,
+            [&](glm::vec3 v) {
+                vertices.push_back(v);
+            });
+        if (primitive.indicesAccessor.has_value()) {
+            const fastgltf::Accessor& indexAccessor = gltf.accessors[primitive.indicesAccessor.value()];
+            fastgltf::iterateAccessor<uint32_t>(gltf, indexAccessor,
+                [&](uint32_t i) {
+                    indices.push_back(static_cast<uint32_t>(vertexOffset + i));
+                });
+        }
+    }
+    return {vertices, indices};
+}
+
+engine::ModelManager::ModelManager(Renderer* renderer, std::string modelDirectory) : renderer(renderer), modelDirectory(modelDirectory) {
     renderer->registerModelManager(this);
 }
 
@@ -234,8 +279,8 @@ void engine::ModelManager::init() {
                 std::cout << std::format("Warning: Duplicate model name detected: {}. Skipping {}\n", modelName, filePath);
                 continue;
             }
-            Model* model = new Model(modelName, renderer);
-            model->loadFromFile(filePath);
+            Model* model = new Model(modelName, filePath, renderer);
+            model->loadFromFile();
             models[modelName] = model;
         }
     };

@@ -17,15 +17,17 @@ namespace engine {
     };
     class Model {
     public:
-        Model(std::string name, Renderer* renderer);
+        Model(std::string name, std::string filepath, Renderer* renderer);
         ~Model();
-        void loadFromFile(std::string filepath);
+        void loadFromFile();
+        std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> loadVertsForModel();
         std::pair<VkBuffer, VkDeviceMemory> getVertexBuffer() const { return {vertexBuffer, vertexBufferMemory}; }
         std::pair<VkBuffer, VkDeviceMemory> getIndexBuffer() const { return {indexBuffer, indexBufferMemory}; }
         uint32_t getIndexCount() const { return indexCount; }
         AABB& getAABB() { return aabb; }
     private:
         std::string name;
+        std::string filepath;
         Renderer* renderer;
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;

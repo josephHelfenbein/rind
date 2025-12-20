@@ -311,25 +311,12 @@ engine::AABB engine::ConvexHullCollider::getWorldAABB() {
     return AABB{ glm::vec3(minX, minY, minZ), glm::vec3(maxX, maxY, maxZ) };
 }
 
-void engine::ConvexHullCollider::setVertsFromModel(const std::vector<float>& vertexData, const std::vector<uint32_t>& indices, size_t strideFloats, size_t positionOffsetFloats, const glm::mat4& transform) {
-    if (strideFloats < positionOffsetFloats + 3) {
-        std::cerr << "Error: ConvexHullCollider::setVertsFromModel called with invalid stride or position offset." << std::endl;
-        return;
-    }
-    const size_t expectedVertexCount = vertexData.size() / strideFloats;
+void engine::ConvexHullCollider::setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform) {
     localVerts.clear();
     localTris.clear();
-    localVerts.reserve(expectedVertexCount);
-    for (size_t i = 0; i < expectedVertexCount; ++i) {
-        size_t base = i * strideFloats + positionOffsetFloats;
-        if (base + 2 >= vertexData.size()) break;
-        glm::vec3 v(
-            vertexData[base + 0],
-            vertexData[base + 1],
-            vertexData[base + 2]
-        );
-        v = glm::vec3(transform * glm::vec4(v, 1.0f));
-        localVerts.emplace_back(v);
+    localVerts.reserve(vertices.size());
+    for (const auto& v : vertices) {
+        localVerts.emplace_back(glm::vec3(transform * glm::vec4(v, 1.0f)));
     }
     const size_t expectedTriCount = indices.size() / 3;
     localTris.reserve(expectedTriCount);

@@ -36,6 +36,8 @@ namespace engine {
         void registerCallback(std::function<void(const std::vector<InputEvent>&)> callback);
 
         void setCursorLocked(bool locked) { isCursorLocked = locked; }
+        void setUIFocused(bool focused) { isUIFocused = focused; }
+        bool getUIFocused() const { return isUIFocused; }
         bool getCursorLocked() const { return isCursorLocked; }
 
         void resetMouseDelta() {
@@ -49,5 +51,6 @@ namespace engine {
         bool hasMousePosition = false;
         glm::dvec2 lastMouse = {0.0, 0.0};
         bool isCursorLocked = false;
+        bool isUIFocused = false;
     };
 };

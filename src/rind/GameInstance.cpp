@@ -34,6 +34,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
             sceneManager->setActiveScene(1);
         }
     );
+    renderer->getInputManager()->setUIFocused(true);
     renderer->toggleLockCursor(false);
 };
 
@@ -42,41 +43,61 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     engine::ModelManager* modelManager = renderer->getModelManager();
     engine::SceneManager* sceneManager = renderer->getSceneManager();
     engine::EntityManager* entityManager = renderer->getEntityManager();
-    engine::Model* cubeModel = modelManager ? modelManager->getModel("cube") : nullptr;
-    if (!cubeModel) {
-        std::cout << "Warning: cube model not found; cubes will not render.\n";
-    }
-    std::vector<engine::Entity*> cubes;
-    cubes.reserve(14);
-    for (int i = -1; i <= 1; ++i) {
-        for (int j = -1; j <= 1; ++j) {
-            for (int k = -1; k <= 1; ++k) {
-                if (i == 0 && j == 0 && k == 0) continue;
-                glm::vec3 translator = 5.0f * glm::vec3(static_cast<float>(i), static_cast<float>(j), static_cast<float>(k));
-                std::string name = "cube" + std::to_string(i) + std::to_string(j) + std::to_string(k);
-                engine::Entity* cube = new engine::Entity(
-                    entityManager,
-                    name,
-                    "gbuffer",
-                    glm::translate(glm::mat4(1.0), translator)
-                );
-                cube->setModel(cubeModel);
-                cube->addChild(new engine::AABBCollider(
-                    entityManager,
-                    glm::mat4(1.0f),
-                    name + "_collider",
-                    glm::vec3(1.0f)
-                ));
-                cubes.push_back(cube);
-            }
-        }
-    }
+    std::vector<std::string> metalMaterial = {
+        "materials_metal_albedo",
+        "materials_metal_metallic",
+        "materials_metal_roughness",
+        "materials_metal_normal"
+    };
+    engine::Entity* groundplatform = new engine::Entity(
+        entityManager,
+        "groundplatform",
+        "gbuffer",
+        glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.8f, 0.0f)), glm::vec3(1.5f, 1.0f, 1.5f)),
+        metalMaterial
+    );
+    engine::Model* platformModel = modelManager ? modelManager->getModel("groundplatform") : nullptr;
+    groundplatform->setModel(platformModel);
+    auto [platformVerts, platformIndices] = platformModel->loadVertsForModel();
+    engine::ConvexHullCollider* platformCollider = new engine::ConvexHullCollider(
+        entityManager,
+        glm::mat4(1.0f),
+        "groundplatform"
+    );
+    platformCollider->setVertsFromModel(
+        std::move(platformVerts),
+        std::move(platformIndices),
+        glm::mat4(1.0f)
+    );
+    groundplatform->addChild(platformCollider);
+    engine::Entity* groundblock = new engine::Entity(
+        entityManager,
+        "groundblock",
+        "gbuffer",
+        glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
+        metalMaterial
+    );
+    engine::Model* groundModel = modelManager ? modelManager->getModel("groundblock") : nullptr;
+    groundblock->setModel(groundModel);
+    auto [vertices, indices] = groundModel->loadVertsForModel();
+    engine::ConvexHullCollider* groundCollider = new engine::ConvexHullCollider(
+        entityManager,
+        glm::mat4(1.0f),
+        "groundblock"
+    );
+    groundCollider->setVertsFromModel(
+        std::move(vertices),
+        std::move(indices),
+        glm::mat4(1.0f)
+    );
+    groundblock->addChild(groundCollider);
+
     engine::Light* light = new engine::Light(
         entityManager,
         "light1",
-        glm::mat4(1.0f),
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
         glm::vec3(1.0f),
-        50.0f,
+        5.0f,
         50.0f,
         false
     );
@@ -85,9 +106,10 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         renderer->getInputManager(),
         "player1",
         "",
-        glm::mat4(1.0f),
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f)),
         {}
     );
+    renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);
 };
 

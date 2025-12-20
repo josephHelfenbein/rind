@@ -84,6 +84,7 @@ namespace engine {
         const std::vector<glm::vec3>& getEdgeAxesCached() const { return edgeAxesCached; }
         const std::vector<glm::vec3>& getFaceAxesCached() const { return faceAxesCached; }
         glm::vec3 getWorldCenter() const { return worldCenter; }
+        void setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform = glm::mat4(1.0f));
     private:
         std::vector<glm::vec3> localVerts;
         std::vector<glm::ivec3> localTris;
@@ -94,7 +95,6 @@ namespace engine {
         glm::mat4 lastTransform{1.0f};
         bool isCached = false;
         void ensureCached();
-        void setVertsFromModel(const std::vector<float>& vertexData, const std::vector<uint32_t>& indices, size_t strideFloats, size_t positionOffsetFloats, const glm::mat4& transform = glm::mat4(1.0f));
         void buildConvexData(const std::vector<glm::vec3>& verts, const std::vector<glm::ivec3>& tris, const glm::mat4& transform, std::vector<glm::vec3>& outVerts, std::vector<glm::vec3>& outEdgeAxes, std::vector<glm::vec3>& outFaceAxes, glm::vec3& outCenter);
     };
 };

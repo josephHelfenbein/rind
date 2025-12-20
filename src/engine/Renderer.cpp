@@ -1209,7 +1209,7 @@ VkImageView engine::Renderer::createImageView(
         .viewType = viewType,
         .format = format,
         .subresourceRange = {
-            .aspectMask = aspectFlags,
+            .aspectMask = resolvedAspect,
             .baseMipLevel = 0,
             .levelCount = mipLevels,
             .baseArrayLayer = 0,
@@ -2121,7 +2121,7 @@ void engine::Renderer::processInput(GLFWwindow* window) {
     } else if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         renderer->toggleLockCursor(false);
     } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
-    && renderer->inputManager->getCursorLocked() == false) {
+    && !renderer->inputManager->getCursorLocked() && !renderer->inputManager->getUIFocused()) {
         renderer->toggleLockCursor(true);
     }
     if (renderer && renderer->inputManager) {

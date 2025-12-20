@@ -33,8 +33,6 @@ float3 getNormalFromMap(float3 normalMap, float3x3 TBN) {
 
 GBufferOutput main(VSOutput input) : SV_Target {
     float4 baseColor = albedoTexture.Sample(sampleSampler, input.fragTexCoord);
-    float3 albedo = pow(baseColor.rgb, 2.2f); // Gamma correction
-    float alpha = baseColor.a;
     float4 metallicRaw = metallicTexture.Sample(sampleSampler, input.fragTexCoord);
     float mask = metallicRaw.a;
     if (mask < 0.01) discard;
@@ -42,7 +40,7 @@ GBufferOutput main(VSOutput input) : SV_Target {
     float roughness = max(roughnessTexture.Sample(sampleSampler, input.fragTexCoord).r, 0.01);
     float3 normal = getNormalFromMap(normalTexture.Sample(sampleSampler, input.fragTexCoord).xyz * 2.0 - 1.0, input.fragTBN);
     GBufferOutput output;
-    output.outAlbedo = float4(albedo, alpha);
+    output.outAlbedo = baseColor;
     output.outNormal = float4(normalize(normal) * 0.5 + 0.5, 1.0);
     output.outMaterial = float4(metallic, roughness, 0.0, 1.0);
     return output;
