@@ -27,7 +27,7 @@ Texture2D<float4> normalTexture;
 SamplerState sampleSampler;
 
 float3 getNormalFromMap(float3 normalMap, float3x3 TBN) {
-    float3 N = normalize(mul(TBN, normalMap));
+    float3 N = normalize(mul(normalMap, TBN));
     return N;
 }
 

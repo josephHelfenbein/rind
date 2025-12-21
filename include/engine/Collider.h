@@ -85,6 +85,7 @@ namespace engine {
         const std::vector<glm::vec3>& getFaceAxesCached() const { return faceAxesCached; }
         glm::vec3 getWorldCenter() const { return worldCenter; }
         void setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform = glm::mat4(1.0f));
+        void setVertsFromModel(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const glm::mat4& transform);
     private:
         std::vector<glm::vec3> localVerts;
         std::vector<glm::ivec3> localTris;

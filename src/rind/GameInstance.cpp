@@ -5,6 +5,7 @@
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
+#include <engine/io.h>
 
 #include <rind/Player.h>
 
@@ -49,6 +50,18 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "materials_metal_roughness",
         "materials_metal_normal"
     };
+    std::vector<std::string> wallsMaterial = {
+        "materials_walls_albedo",
+        "materials_walls_metallic",
+        "materials_walls_roughness",
+        "materials_walls_normal"
+    };
+    std::vector<std::string> lightMaterial = {
+        "materials_light_albedo",
+        "materials_light_metallic",
+        "materials_light_roughness",
+        "materials_light_normal"
+    };
     engine::Entity* groundplatform = new engine::Entity(
         entityManager,
         "groundplatform",
@@ -57,8 +70,9 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         metalMaterial
     );
     engine::Model* platformModel = modelManager ? modelManager->getModel("groundplatform") : nullptr;
+    engine::Model* platformColliderModel = modelManager ? modelManager->getModel("groundplatform-collider") : nullptr;
     groundplatform->setModel(platformModel);
-    auto [platformVerts, platformIndices] = platformModel->loadVertsForModel();
+    auto [platformVerts, platformIndices] = platformColliderModel->loadVertsForModel();
     engine::ConvexHullCollider* platformCollider = new engine::ConvexHullCollider(
         entityManager,
         glm::mat4(1.0f),
@@ -92,15 +106,164 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     );
     groundblock->addChild(groundCollider);
 
+    engine::Model* groundCubesModel = modelManager ? modelManager->getModel("groundcubes") : nullptr;
+    engine::Entity* groundcubes = new engine::Entity(
+        entityManager,
+        "groundcubes",
+        "gbuffer",
+        glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
+        metalMaterial
+    );
+    groundcubes->setModel(groundCubesModel);
+
+    engine::Model* trueGroundModel = modelManager ? modelManager->getModel("trueground") : nullptr;
+    engine::Entity* trueground = new engine::Entity(
+        entityManager,
+        "trueground",
+        "gbuffer",
+        glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
+        metalMaterial
+    );
+    trueground->setModel(trueGroundModel);
+
+    engine::Model* walls = modelManager ? modelManager->getModel("walls") : nullptr;
+    engine::Entity* wallEntity = new engine::Entity(
+        entityManager,
+        "walls",
+        "gbuffer",
+        glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
+        wallsMaterial
+    );
+    wallEntity->setModel(walls);
+
+    engine::Model* lightModel = modelManager ? modelManager->getModel("light") : nullptr;
+    engine::Model* lightColliderModel = modelManager ? modelManager->getModel("light-collider") : nullptr;
+    
+    engine::Entity* lightObject1 = new engine::Entity(
+        entityManager,
+        "lightObject1",
+        "gbuffer",
+        glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(13.5296f, -13.3857f, -0.136268f))),
+        lightMaterial
+    );
+    lightObject1->setModel(lightModel);
     engine::Light* light = new engine::Light(
         entityManager,
         "light1",
-        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
         glm::vec3(1.0f),
         5.0f,
-        50.0f,
+        120.0f,
         false
     );
+    lightObject1->addChild(light);
+    
+    engine::ConvexHullCollider* lightCollider = new engine::ConvexHullCollider(
+        entityManager,
+        glm::mat4(1.0f),
+        "lightObject1"
+    );
+    auto [lightVerts, lightIndices] = lightColliderModel->loadVertsForModel();
+    lightCollider->setVertsFromModel(
+        lightVerts,
+        lightIndices,
+        glm::mat4(1.0f)
+    );
+    lightObject1->addChild(lightCollider);
+
+    engine::Entity* lightObject2 = new engine::Entity(
+        entityManager,
+        "lightObject2",
+        "gbuffer",
+        glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(13.5296f, 13.6124f, -0.136268f))),
+        lightMaterial
+    );
+    lightObject2->setModel(lightModel);
+    engine::Light* light2 = new engine::Light(
+        entityManager,
+        "light2",
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+        glm::vec3(1.0f),
+        5.0f,
+        120.0f,
+        false
+    );
+    lightObject2->addChild(light2);
+
+    engine::ConvexHullCollider* light2Collider = new engine::ConvexHullCollider(
+        entityManager,
+        glm::mat4(1.0f),
+        "lightObject2"
+    );
+    light2Collider->setVertsFromModel(
+        lightVerts,
+        lightIndices,
+        glm::mat4(1.0f)
+    );
+    lightObject2->addChild(light2Collider);
+
+    engine::Entity* lightObject3 = new engine::Entity(
+        entityManager,
+        "lightObject3",
+        "gbuffer",
+        glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(-13.365f, 13.6124f, -0.136268f))),
+        lightMaterial
+    );
+    lightObject3->setModel(lightModel);
+    engine::Light* light3 = new engine::Light(
+        entityManager,
+        "light3",
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+        glm::vec3(1.0f),
+        5.0f,
+        120.0f,
+        false
+    );
+    lightObject3->addChild(light3);
+
+    engine::ConvexHullCollider* light3Collider = new engine::ConvexHullCollider(
+        entityManager,
+        glm::mat4(1.0f),
+        "lightObject3"
+    );
+    light3Collider->setVertsFromModel(
+        lightVerts,
+        lightIndices,
+        glm::mat4(1.0f)
+    );
+    lightObject3->addChild(light3Collider);
+
+    engine::Entity* lightObject4 = new engine::Entity(
+        entityManager,
+        "lightObject4",
+        "gbuffer",
+        glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(-13.365f, -13.3857f, -0.136268f))),
+        lightMaterial
+    );
+    lightObject4->setModel(lightModel);
+    engine::Light* light4 = new engine::Light(
+        entityManager,
+        "light4",
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+        glm::vec3(1.0f),
+        5.0f,
+        120.0f,
+        false
+    );
+    lightObject4->addChild(light4);
+
+    engine::ConvexHullCollider* light4Collider = new engine::ConvexHullCollider(
+        entityManager,
+        glm::mat4(1.0f),
+        "lightObject4"
+    );
+    light4Collider->setVertsFromModel(
+        std::move(lightVerts),
+        std::move(lightIndices),
+        glm::mat4(1.0f)
+    );
+    lightObject4->addChild(light4Collider);
+
     rind::Player* player = new rind::Player(
         entityManager,
         renderer->getInputManager(),

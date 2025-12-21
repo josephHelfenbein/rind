@@ -336,6 +336,31 @@ void engine::ConvexHullCollider::setVertsFromModel(std::vector<glm::vec3>&& vert
     isCached = false;
 }
 
+void engine::ConvexHullCollider::setVertsFromModel(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const glm::mat4& transform) {
+    localVerts.clear();
+    localTris.clear();
+    localVerts.reserve(vertices.size());
+    for (const auto& v : vertices) {
+        localVerts.emplace_back(glm::vec3(transform * glm::vec4(v, 1.0f)));
+    }
+    const size_t expectedTriCount = indices.size() / 3;
+    localTris.reserve(expectedTriCount);
+    for (size_t i = 0; i < expectedTriCount; ++i) {
+        glm::ivec3 tri(
+            static_cast<int>(indices[i * 3 + 0]),
+            static_cast<int>(indices[i * 3 + 1]),
+            static_cast<int>(indices[i * 3 + 2])
+        );
+        if (static_cast<size_t>(tri.x) >= localVerts.size() ||
+            static_cast<size_t>(tri.y) >= localVerts.size() ||
+            static_cast<size_t>(tri.z) >= localVerts.size()) {
+            continue;
+        }
+        localTris.emplace_back(tri);
+    }
+    isCached = false;
+}
+
 bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
     glm::mat4 transform = getWorldTransform() * deltaTransform;
     auto cornersA = Collider::buildOBBCorners(transform, halfSize);

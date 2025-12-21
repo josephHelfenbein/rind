@@ -1,6 +1,7 @@
 #include <engine/CharacterEntity.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
+#include <engine/io.h>
 
 static inline glm::mat4 applyWorldTranslation(const glm::mat4& transform, const glm::vec3& offset) {
     glm::mat4 result = transform;
@@ -40,7 +41,7 @@ void engine::CharacterEntity::update(float deltaTime) {
     if (!grounded || velocity.y > 0.0f) {
         velocity.y -= gravity * deltaTime;
     }
-    // Subset integration: horizontal and vertical
+    // subset integration: horizontal and vertical
     const float MAX_STEP = 0.02f; // 20 ms
     const float totalMoveLength = glm::length(velocity * deltaTime);
     int steps = totalMoveLength > 0.0f ? static_cast<int>(glm::ceil(totalMoveLength / (MAX_STEP * moveSpeed))) : 1;
@@ -95,18 +96,19 @@ void engine::CharacterEntity::update(float deltaTime) {
         }
         glm::vec3 hStep(velocity.x * subDt, 0.0f, velocity.z * subDt);
         if (glm::length(hStep) > 1e-6f) {
-            if (!touchedGround) {
-                glm::vec3 gn = glm::length(groundNormalAccum) > 1e-6f ? glm::normalize(groundNormalAccum) : glm::vec3(0.0f, 1.0f, 0.0f);
-                hStep = hStep - gn * glm::dot(hStep, gn);
-            }
             Collider::Collision collision = willCollide(glm::translate(glm::mat4(1.0f), hStep));
             if (collision.other) {
                 glm::vec3 mtv = collision.mtv.mtv;
                 if (glm::dot(mtv, hStep) > 0.0f) {
                     mtv = -mtv; // oppose attempted horizontal motion
                 }
-                if (!touchedGround && collision.mtv.mtv.y > 0.0f) {
-                    mtv.y = 0.0f;
+                float mtvLen = glm::length(mtv);
+                if (mtvLen > 1e-6f) {
+                    glm::vec3 mtvNorm = mtv / mtvLen;
+                    if (mtvNorm.y > groundedNormalThreshold) {
+                        touchedGround = true;
+                        groundNormalAccum += mtvNorm;
+                    }
                 }
                 glm::vec3 offset = hStep + mtv;
                 setTransform(applyWorldTranslation(getTransform(), offset));
@@ -125,15 +127,17 @@ void engine::CharacterEntity::update(float deltaTime) {
         }
         Collider::Collision postCollision = willCollide(glm::mat4(1.0f));
         if (postCollision.other) {
-            setTransform(applyWorldTranslation(getTransform(), postCollision.mtv.mtv));
+            glm::vec3 mtv = postCollision.mtv.mtv;
             float penetration = postCollision.mtv.penetrationDepth;
+            
+            // check if MTV points up enough to be considered ground
             if (penetration > 1e-6f) {
-                glm::vec3 fix = postCollision.mtv.mtv;
-                if (!touchedGround && postCollision.mtv.mtv.y > 0.0f) {
-                    fix.y = 0.0f;
-                    setTransform(applyWorldTranslation(getTransform(), -postCollision.mtv.mtv + fix));
+                glm::vec3 n = mtv / penetration;
+                if (n.y > groundedNormalThreshold) {
+                    touchedGround = true;
+                    groundNormalAccum += n;
                 }
-                glm::vec3 n = (penetration > 1e-6f) ? (postCollision.mtv.mtv / penetration) : glm::vec3(0.0f, 1.0f, 0.0f);
+                setTransform(applyWorldTranslation(getTransform(), mtv));
                 float vn = glm::dot(velocity, n);
                 if (vn < 0.0f) {
                     velocity -= n * vn;
@@ -155,12 +159,6 @@ void engine::CharacterEntity::update(float deltaTime) {
     if (glm::length(velocity) < 1e-6f) {
         velocity = glm::vec3(0.0f);
     }
-}
-
-inline void remapCoord(glm::vec3& coord) {
-    float temp = coord.x;
-    coord.x = -coord.z;
-    coord.z = temp;
 }
 
 void engine::CharacterEntity::move(const glm::vec3& delta) {

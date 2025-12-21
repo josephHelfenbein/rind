@@ -34,4 +34,14 @@ namespace engine {
         }
         return fileList;
     }
+
+    static inline void remapCoord(glm::vec3& coord) {
+        float temp = coord.x;
+        coord.x = -coord.z;
+        coord.z = temp;
+    }
+
+    static inline const glm::vec3 blenderRemap(const glm::vec3& coord) {
+        return glm::vec3(coord.x, coord.z, -coord.y);
+    }
 };

@@ -277,7 +277,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         std::vector<PassImage> images;
         images.push_back({
             .name = "SceneColor",
-            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
         });
