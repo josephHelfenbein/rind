@@ -300,7 +300,7 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
 void engine::EntityManager::createAllShadowMaps() {
     auto& lights = getLights();
     for (auto& light : lights) {
-        light->createShadowMap(renderer);
+        light->createShadowMaps(renderer);
     }
 }
 
