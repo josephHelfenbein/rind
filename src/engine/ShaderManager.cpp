@@ -305,7 +305,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     shadowPass->usesSwapchain = false;
     shadowPass->hasDepthAttachment = true;
     shadowPass->depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
-    shadowPass->attachmentFormats.push_back(VK_FORMAT_R32_SFLOAT);
 
     // Shadow Shader
     {
@@ -315,7 +314,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("shadow.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = shadowPass,
-                .colorAttachmentCount = 1,
+                .colorAttachmentCount = 0,
                 .depthWrite = true,
                 .enableDepth = true,
                 .depthCompare = VK_COMPARE_OP_LESS,

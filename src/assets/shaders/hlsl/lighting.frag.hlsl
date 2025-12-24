@@ -33,7 +33,7 @@ Texture2D<float4> gBufferMaterial;
 Texture2D<float4> gBufferDepth;
 
 [[vk::binding(5)]]
-TextureCube<float4> shadowMaps[64];
+TextureCube<float> shadowMaps[64];
 
 [[vk::binding(6)]]
 SamplerState sampleSampler;

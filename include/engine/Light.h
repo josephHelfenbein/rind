@@ -23,7 +23,7 @@ namespace engine {
         void setRadius(float radius) { this->radius = radius; }
 
         PointLight getPointLightData();
-        VkImageView getShadowImageView() const { return shadowImageView; }
+        VkImageView getShadowImageView() const { return shadowDepthImageView; }
 
         void createShadowMap(engine::Renderer* renderer);
         void renderShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
@@ -33,13 +33,9 @@ namespace engine {
         float intensity;
         float radius;
 
-        VkImage shadowImage = VK_NULL_HANDLE;
-        VkDeviceMemory shadowMemory = VK_NULL_HANDLE;
-        VkImageView shadowImageView = VK_NULL_HANDLE;
-        VkImageView shadowFaceViews[6] = { VK_NULL_HANDLE };
-        
         VkImage shadowDepthImage = VK_NULL_HANDLE;
         VkDeviceMemory shadowDepthMemory = VK_NULL_HANDLE;
+        VkImageView shadowDepthImageView = VK_NULL_HANDLE;
         VkImageView shadowDepthFaceViews[6] = { VK_NULL_HANDLE };
         
         bool hasShadowMap = false;
