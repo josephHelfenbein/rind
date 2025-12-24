@@ -1,3 +1,5 @@
+#pragma pack_matrix(row_major)
+
 struct VSOutput {
     float4 gl_Position : SV_Position;
     [[vk::location(0)]] float3 fragPosition : TEXCOORD0;
@@ -22,13 +24,13 @@ struct PushConstants {
 [[vk::push_constant]] PushConstants pc;
 
 VSOutput main(VSInput input) {
-    float4 worldPos = mul(pc.model, float4(input.inPosition, 1.0));
-    float3 T = normalize(mul((float3x3)pc.model, input.inTangent));
-    float3 N = normalize(mul((float3x3)pc.model, input.inNormal));
+    float4 worldPos = mul(float4(input.inPosition, 1.0), pc.model);
+    float3 T = normalize(mul(input.inTangent, (float3x3)pc.model));
+    float3 N = normalize(mul(input.inNormal, (float3x3)pc.model));
     T = normalize(T - dot(T, N) * N);
     float3 B = cross(N, T);
     VSOutput output;
-    output.gl_Position = mul(pc.projection, mul(pc.view, worldPos));
+    output.gl_Position = mul(mul(worldPos, pc.view), pc.projection);
     output.fragPosition = worldPos.xyz;
     output.fragNormal = N;
     output.fragTexCoord = input.inTexCoord;

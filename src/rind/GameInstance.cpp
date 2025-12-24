@@ -153,7 +153,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
         glm::vec3(1.0f),
         5.0f,
-        120.0f,
+        150.0f,
         false
     );
     lightObject1->addChild(light);
@@ -185,7 +185,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
         glm::vec3(1.0f),
         5.0f,
-        120.0f,
+        150.0f,
         false
     );
     lightObject2->addChild(light2);
@@ -216,7 +216,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
         glm::vec3(1.0f),
         5.0f,
-        120.0f,
+        150.0f,
         false
     );
     lightObject3->addChild(light3);
@@ -247,7 +247,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
         glm::vec3(1.0f),
         5.0f,
-        120.0f,
+        150.0f,
         false
     );
     lightObject4->addChild(light4);

@@ -21,6 +21,12 @@ namespace engine {
         glm::mat4 model;
     };
 
+    struct ShadowPC {
+        glm::mat4 model;
+        glm::mat4 viewProj;
+        glm::vec4 lightPos; // xyz = pos, w = radius
+    };
+
     struct PointLight {
         glm::vec4 positionRadius;
         glm::vec4 colorIntensity;

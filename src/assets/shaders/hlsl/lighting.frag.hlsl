@@ -1,3 +1,5 @@
+#pragma pack_matrix(row_major)
+
 struct VSOutput {
     [[vk::location(0)]] float2 fragTexCoord : TEXCOORD2;
 };
@@ -31,7 +33,7 @@ Texture2D<float4> gBufferMaterial;
 Texture2D<float4> gBufferDepth;
 
 [[vk::binding(5)]]
-TextureCubeArray<float> shadowMaps;
+TextureCube<float4> shadowMaps[64];
 
 [[vk::binding(6)]]
 SamplerState sampleSampler;
@@ -47,9 +49,9 @@ static const float PI = 3.14159265359;
 
 float3 reconstructPosition(float2 uv, float depth) {
     float4 ndc = float4(uv * 2.0 - 1.0, depth, 1.0);
-    float4 viewPos = mul(pc.invProj, ndc);
+    float4 viewPos = mul(ndc, pc.invProj);
     viewPos /= viewPos.w;
-    float4 worldPos = mul(pc.invView, viewPos);
+    float4 worldPos = mul(viewPos, pc.invView);
     return worldPos.xyz;
 }
 
@@ -91,7 +93,7 @@ float specularAntiAliasing(float3 N, float roughness) {
     float3 dndu = ddx(N);
     float3 dndv = ddy(N);
     float variance = dot(dndu, dndu) + dot(dndv, dndv);
-    float kernelRoughness = min(mul(2.0, variance), 1.0);
+    float kernelRoughness = min(2.0 * variance, 1.0);
     return clamp(roughness + kernelRoughness, 0.0, 1.0);
 }
 
@@ -105,42 +107,44 @@ static const float3 sampleOffsetDirections[20] = {
     float3( 1, -1,  0), float3(-1, -1,  0), float3( 1,  0,  1), float3(-1,  0, -1)
 };
 
+float linearizeDepth(float perspectiveDepth, float nearPlane, float farPlane) {
+    return nearPlane * farPlane / (farPlane - perspectiveDepth * (farPlane - nearPlane));
+}
+
 float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, float3 lightDir) {
-    if (light.shadowData.y == 0) return 1.0;
     uint shadowIndex = light.shadowData.x;
-    if (shadowIndex == INVALID_SHADOW_INDEX) return 1.0;
+    uint hasShadow = light.shadowData.y;
+    if (shadowIndex == INVALID_SHADOW_INDEX || hasShadow == 0) {
+        return 1.0;
+    }
     float3 lightPos = light.positionRadius.xyz;
     float3 toFrag = fragPos - lightPos;
-    float currentDepth = length(toFrag);
-    if (currentDepth <= 0.0001) return 1.0;
+    float currentDistance = length(toFrag);
     float farPlane = light.shadowParams.y;
-    if (currentDepth > farPlane) return 1.0;
-
+    float nearPlane = light.shadowParams.z;
+    float bias = light.shadowParams.x;
+    if (currentDistance <= nearPlane || currentDistance > farPlane) {
+        return 1.0;
+    }
+    float currentDepth = currentDistance / farPlane;
     float3 sampleDir = normalize(toFrag);
-    float depthSample = shadowMaps.Sample(sampleSampler, float4(sampleDir, shadowIndex)).r;
-    if (depthSample >= 0.9999) return 1.0;
-    uint samples = 30;
-    float viewDistance = length(pc.camPos - fragPos);
-    float diskRadius = (1.0 + (viewDistance / farPlane)) / 25.0;
+    float storedDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleDir).r;
     float shadow = 0.0;
+    uint samples = 20;
+    float diskRadius = (1.0 + (length(pc.camPos - fragPos)) / farPlane) / 25.0;
     for (uint i = 0; i < samples; ++i) {
-        float3 offsetDir = sampleOffsetDirections[i % 20];
-        float3 sampleVec = sampleDir + offsetDir * diskRadius;
-        sampleVec = normalize(sampleVec);
-        float depthSample = shadowMaps.Sample(sampleSampler, float4(sampleVec, shadowIndex)).r;
-        float closestDepth = depthSample * farPlane;
-        
-        float NoLGeom = max(dot(geomNormal, lightDir), 0.0);
-        float baseBias = light.shadowParams.x;
-        float normalBias = baseBias * 5.0 * (1.0 - NoLGeom);
-        float bias = baseBias + normalBias;
-        if (currentDepth - bias > closestDepth) {
+        float3 offsetDir = sampleOffsetDirections[i];
+        offsetDir = normalize(offsetDir);
+        offsetDir = offsetDir - dot(offsetDir, sampleDir) * sampleDir;
+        offsetDir = normalize(offsetDir);
+        float3 sampleOffset = sampleDir + offsetDir * diskRadius;
+        float sampleDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleOffset).r;
+        if (currentDepth - bias > sampleDepth) {
             shadow += 1.0;
         }
     }
     shadow /= samples;
-    float strength = clamp(light.shadowParams.w, 0.0, 1.0);
-    return 1.0 - (shadow * strength);
+    return 1.0 - shadow;
 }
 
 float4 main(VSOutput input) : SV_Target {
@@ -203,7 +207,8 @@ float4 main(VSOutput input) : SV_Target {
         float3 diffuse = kD * albedoSample;
 
         float shadow = computePointShadow(light, fragPos, geomNormal, L);
-        Lo += (diffuse / PI + specular) * radiance * NdotL * shadow;
+        
+        Lo += (diffuse + specular) * radiance * NdotL * shadow;
     }
     float3 ambient = float3(0.03, 0.03, 0.03) * albedoSample;
     Lo += ambient;

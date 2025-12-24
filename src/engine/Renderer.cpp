@@ -8,6 +8,7 @@
 #include <engine/SceneManager.h>
 #include <engine/ModelManager.h>
 #include <engine/Camera.h>
+#include <engine/Light.h>
 #include <engine/io.h>
 #include <engine/PushConstants.h>
 
@@ -165,13 +166,14 @@ void engine::Renderer::initVulkan() {
     entityManager->createLightsUBO();
     createColorResources();
     createDepthResources();
-    sceneManager->setActiveScene(0);
     textureManager->init();
+    ensureFallback2DTexture();
+    ensureFallbackShadowCubeTexture();
+    sceneManager->setActiveScene(0);
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
-    ensureFallback2DTexture();
-    ensureFallbackShadowCubeTexture();
+    entityManager->createAllShadowMaps();
     createPostProcessDescriptorSets();
     modelManager->init();
     createCommandBuffers();
@@ -190,7 +192,7 @@ void engine::Renderer::mainLoop() {
 
 void engine::Renderer::drawFrame() {
     if (DEBUG_RENDER_LOGS) {
-            std::cout << "[drawFrame] frame " << currentFrame << " start" << std::endl;
+        std::cout << "[drawFrame] frame " << currentFrame << " start" << std::endl;
     }
     deltaTime = static_cast<float>(glfwGetTime() - lastFrameTime);
     lastFrameTime = glfwGetTime();
@@ -275,6 +277,10 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     const bool has3DContent = hasRenderable3D(roots);
     bool gbufferRendered = false;
 
+    entityManager->updateAll(deltaTime);
+    entityManager->renderShadows(commandBuffer);
+    entityManager->updateLightsUBO(currentFrame);
+
     for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
         auto& node = renderGraph[nodeIdx];
         if (!node.passInfo) {
@@ -283,7 +289,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         const bool skip3DDraw = !node.is2D && !has3DContent;
         const bool isGBufferPass = node.passInfo && node.passInfo->name == "GBuffer";
         if (isGBufferPass && skip3DDraw) {
-            // Mark GBuffer as produced even when we only clear attachments for UI-only frames.
+            // mark GBuffer as produced even when we only clear attachments for UI-only frames
             gbufferRendered = true;
         }
         std::vector<VkImageMemoryBarrier2> preBarriers;
@@ -590,8 +596,6 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[record] command buffer end" << std::endl;
     }
-    entityManager->updateAll(deltaTime);
-    entityManager->updateLightsUBO(currentFrame);
 }
 
 void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node) {
@@ -601,9 +605,11 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
         if (type == std::type_index(typeid(LightingPC))) {
             Camera* camera = entityManager->getCamera();
             if (camera) {
+                glm::mat4 invView = glm::inverse(camera->getViewMatrix());
+                glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
                 LightingPC pc = {
-                    .invView = glm::inverse(camera->getViewMatrix()),
-                    .invProj = glm::inverse(camera->getProjectionMatrix()),
+                    .invView = invView,
+                    .invProj = invProj,
                     .camPos = camera->getWorldPosition()
                 };
                 vkCmdPushConstants(
@@ -892,6 +898,11 @@ void engine::Renderer::recreateSwapChain() {
     createPostProcessDescriptorSets();
 }
 
+void engine::Renderer::refreshDescriptorSets() {
+    vkDeviceWaitIdle(device);
+    createPostProcessDescriptorSets();
+}
+
 void engine::Renderer::createImageViews() {
     swapChainImageViews.resize(swapChainImages.size());
     for (size_t i = 0; i < swapChainImages.size(); ++i) {
@@ -1012,6 +1023,18 @@ void engine::Renderer::transitionImageLayout(
     uint32_t layerCount
 ) {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+    VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    if (format == VK_FORMAT_D16_UNORM ||
+        format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
+        format == VK_FORMAT_D32_SFLOAT ||
+        format == VK_FORMAT_D16_UNORM_S8_UINT ||
+        format == VK_FORMAT_D24_UNORM_S8_UINT ||
+        format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+        aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (hasStencilComponent(format)) {
+            aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+    }
     VkImageMemoryBarrier barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = oldLayout,
@@ -1020,19 +1043,13 @@ void engine::Renderer::transitionImageLayout(
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = image,
         .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .aspectMask = aspectMask,
             .baseMipLevel = 0,
             .levelCount = mipLevels,
             .baseArrayLayer = 0,
             .layerCount = layerCount
         }
     };
-    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        if (hasStencilComponent(format)) {
-            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-        }
-    }
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
@@ -1045,6 +1062,21 @@ void engine::Renderer::transitionImageLayout(
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
         throw std::invalid_argument("Unsupported layout transition!");
     }
@@ -1057,6 +1089,107 @@ void engine::Renderer::transitionImageLayout(
         1, &barrier
     );
     endSingleTimeCommands(commandBuffer);
+}
+
+void engine::Renderer::transitionImageLayoutInline(
+    VkCommandBuffer commandBuffer,
+    VkImage image,
+    VkFormat format,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    uint32_t mipLevels,
+    uint32_t layerCount
+) {
+    VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    if (format == VK_FORMAT_D16_UNORM ||
+        format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
+        format == VK_FORMAT_D32_SFLOAT ||
+        format == VK_FORMAT_D16_UNORM_S8_UINT ||
+        format == VK_FORMAT_D24_UNORM_S8_UINT ||
+        format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+        aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (hasStencilComponent(format)) {
+            aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+    }
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = oldLayout,
+        .newLayout = newLayout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = {
+            .aspectMask = aspectMask,
+            .baseMipLevel = 0,
+            .levelCount = mipLevels,
+            .baseArrayLayer = 0,
+            .layerCount = layerCount
+        }
+    };
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else {
+        throw std::invalid_argument("Unsupported layout transition!");
+    }
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        sourceStage, destinationStage,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
 }
 
 void engine::Renderer::copyDataToBuffer(
@@ -1301,11 +1434,14 @@ void engine::Renderer::createAttachmentResources() {
         auto& renderPass = *renderPassPtr;
         destroyPassResources(renderPass);
         
-        renderPass.attachmentFormats.clear();
-        renderPass.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
         renderPass.colorAttachments.clear();
         renderPass.depthAttachment.reset();
-        renderPass.hasDepthAttachment = false;
+        
+        if (renderPass.images.has_value()) {
+            renderPass.attachmentFormats.clear();
+            renderPass.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+            renderPass.hasDepthAttachment = false;
+        }
 
         if (renderPass.usesSwapchain) {
             renderPass.attachmentFormats.push_back(swapChainImageFormat);
@@ -1415,41 +1551,75 @@ void engine::Renderer::ensureFallbackShadowCubeTexture() {
     if (textureManager->getTexture("fallback_shadow_cube")) {
         return;
     }
-
-    // 1x1 cube map array (6 faces) with opaque black texels to satisfy cube descriptors when no shadows exist.
-    std::array<uint8_t, 6 * 4> pixels{};
-    for (size_t face = 0; face < 6; ++face) {
-        pixels[face * 4 + 3] = 255; // alpha=1
-    }
-
+    // 1x1x6 R32_SFLOAT cube map filled with 1.0 (max depth = far = no shadow)
+    const uint32_t fallbackWidth = 1;
+    const uint32_t fallbackHeight = 1;
+    const uint32_t layerCount = 6;
     VkImage cubeImage;
     VkDeviceMemory cubeMemory;
-    std::tie(cubeImage, cubeMemory) = createImageFromPixels(
-        pixels.data(),
-        pixels.size(),
-        1,
-        1,
+    std::tie(cubeImage, cubeMemory) = createImage(
+        fallbackWidth,
+        fallbackHeight,
         1,
         VK_SAMPLE_COUNT_1_BIT,
-        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_FORMAT_R32_SFLOAT,
         VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        6,
+        layerCount,
         VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
     );
-    transitionImageLayout(
-        cubeImage,
-        VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        1,
-        6
-    );
+    VkCommandBuffer cmdBuf = beginSingleTimeCommands();
+    VkImageMemoryBarrier toTransfer = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = cubeImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = layerCount
+        }
+    };
+    vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
+    VkClearColorValue clearValue = {{1.0f, 0.0f, 0.0f, 1.0f}};
+    VkImageSubresourceRange clearRange = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = layerCount
+    };
+    vkCmdClearColorImage(cmdBuf, cubeImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &clearRange);
+    VkImageMemoryBarrier toShaderRead = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = cubeImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = layerCount
+        }
+    };
+    vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toShaderRead);
+    endSingleTimeCommands(cmdBuf);
 
     VkImageView cubeView = createImageView(
         cubeImage,
-        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_FORMAT_R32_SFLOAT,
         VK_IMAGE_ASPECT_COLOR_BIT,
         1,
         VK_IMAGE_VIEW_TYPE_CUBE,
@@ -1462,7 +1632,7 @@ void engine::Renderer::ensureFallbackShadowCubeTexture() {
         .imageView = cubeView,
         .imageMemory = cubeMemory,
         .imageSampler = VK_NULL_HANDLE,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .format = VK_FORMAT_R32_SFLOAT,
         .width = 1,
         .height = 1
     };
@@ -1542,9 +1712,15 @@ void engine::Renderer::ensureFallback2DTexture() {
 }
 
 void engine::Renderer::createPostProcessDescriptorSets() {
+    if (DEBUG_RENDER_LOGS) {
+        std::cout << "[Debug] createPostProcessDescriptorSets starting..." << std::endl;
+    }
     auto shaders = shaderManager->getGraphicsShaders();
     for (const auto& shaderCopy : shaders) {
         if (shaderCopy.config.inputBindings.empty()) continue;
+        if (DEBUG_RENDER_LOGS) {
+        std::cout << "[Debug] Processing shader: " << shaderCopy.name << std::endl;
+        }
 
         auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
         if (!shader) continue;
@@ -1708,7 +1884,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                               << std::endl;
                 }
             }
-
+            auto& lights = entityManager->getLights();
             for (int frag = 0; frag < fragmentBindings; ++frag) {
                 if (fragmentBindingWritten[static_cast<size_t>(frag)]) continue;
                 VkDescriptorType type = getFragmentType(frag);
@@ -1732,30 +1908,48 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 }
 
                 if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
-                    Texture* fallbackTex = nullptr;
                     const bool isLightingShadowBinding = (shader->name == "lighting" && frag == 4);
-                    if (isLightingShadowBinding && textureManager) {
-                        fallbackTex = textureManager->getTexture("fallback_shadow_cube");
-                    }
-                    if (!fallbackTex && textureManager) {
-                        fallbackTex = textureManager->getTexture("materials_default_albedo");
-                    }
-                    if (!fallbackTex && textureManager) {
-                        fallbackTex = textureManager->getTexture("ui_window");
-                    }
-                    if (!fallbackTex && textureManager) {
-                        fallbackTex = textureManager->getTexture("fallback_white_2d");
-                    }
-                    if (!fallbackTex || fallbackTex->imageView == VK_NULL_HANDLE || fallbackTex->image == VK_NULL_HANDLE) {
-                        std::cout << std::format("Warning: No fallback texture available for shader '{}' binding {}. Skipping descriptor write.\n", shader->name, vertexBindings + frag);
-                        continue;
-                    }
-                    for (uint32_t c = 0; c < descriptorCount; ++c) {
-                        imageInfos.push_back({
-                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            .imageView = fallbackTex->imageView,
-                            .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE
-                        });
+                    
+                    if (isLightingShadowBinding) {
+                        Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_shadow_cube") : nullptr;
+                        VkImageView fallbackView = (fallbackTex && fallbackTex->imageView != VK_NULL_HANDLE) ? fallbackTex->imageView : VK_NULL_HANDLE;
+
+                        for (uint32_t c = 0; c < descriptorCount; ++c) {
+                            VkImageView viewToBind = fallbackView;
+                            if (c < lights.size()) {
+                                Light* light = lights[c];
+                                if (light && light->getShadowImageView() != VK_NULL_HANDLE) {
+                                    viewToBind = light->getShadowImageView();
+                                }
+                            }
+                            imageInfos.push_back({
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                .imageView = viewToBind,
+                                .sampler = VK_NULL_HANDLE
+                            });
+                        }
+                    } else {
+                        Texture* fallbackTex = nullptr;
+                        if (textureManager) {
+                            fallbackTex = textureManager->getTexture("materials_default_albedo");
+                        }
+                        if (!fallbackTex && textureManager) {
+                            fallbackTex = textureManager->getTexture("ui_window");
+                        }
+                        if (!fallbackTex && textureManager) {
+                            fallbackTex = textureManager->getTexture("fallback_white_2d");
+                        }
+                        if (!fallbackTex || fallbackTex->imageView == VK_NULL_HANDLE || fallbackTex->image == VK_NULL_HANDLE) {
+                            std::cout << std::format("Warning: No fallback texture available for shader '{}' binding {}. Skipping descriptor write.\n", shader->name, vertexBindings + frag);
+                            continue;
+                        }
+                        for (uint32_t c = 0; c < descriptorCount; ++c) {
+                            imageInfos.push_back({
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                .imageView = fallbackTex->imageView,
+                                .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE
+                            });
+                        }
                     }
                     descriptorWrites.push_back({
                         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

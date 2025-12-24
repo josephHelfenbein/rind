@@ -297,6 +297,20 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
     renderer->copyDataToBuffer(&lightsUBO, sizeof(lightsUBO), lightsBuffers[frameIndex], lightsBuffersMemory[frameIndex]);
 }
 
+void engine::EntityManager::createAllShadowMaps() {
+    auto& lights = getLights();
+    for (auto& light : lights) {
+        light->createShadowMap(renderer);
+    }
+}
+
+void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer) {
+    auto& lights = getLights();
+    for (auto& light : lights) {
+        light->renderShadowMap(renderer, commandBuffer);
+    }
+}
+
 void engine::EntityManager::updateAll(float deltaTime) {
     std::function<void(Entity*)> traverse = [&](Entity* entity) {
         entity->updateWorldTransform();

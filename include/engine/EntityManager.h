@@ -131,6 +131,8 @@ namespace engine {
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
+        void createAllShadowMaps();
+        void renderShadows(VkCommandBuffer commandBuffer);
 
         Renderer* getRenderer() const { return renderer; }
 

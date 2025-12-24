@@ -299,6 +299,46 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         uiPass->images = images;
     }
 
+    // Shadow Pass
+    auto shadowPass = std::make_shared<PassInfo>();
+    shadowPass->name = "ShadowPass";
+    shadowPass->usesSwapchain = false;
+    shadowPass->hasDepthAttachment = true;
+    shadowPass->depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
+    shadowPass->attachmentFormats.push_back(VK_FORMAT_R32_SFLOAT);
+
+    // Shadow Shader
+    {
+        GraphicsShader shader = {
+            .name = "shadow",
+            .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("shadow.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .passInfo = shadowPass,
+                .colorAttachmentCount = 1,
+                .depthWrite = true,
+                .enableDepth = true,
+                .depthCompare = VK_COMPARE_OP_LESS,
+                .cullMode = VK_CULL_MODE_NONE,
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 0,
+                .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    binding.binding = 0;
+                    binding.stride = sizeof(Vertex);
+                    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                    attributes.resize(1);
+                    attributes[0].binding = 0;
+                    attributes[0].location = 0;
+                    attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+                    attributes[0].offset = offsetof(Vertex, pos);
+                }
+            }
+        };
+        shader.config.setPushConstant<ShadowPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
     // Text Pass
     auto textPass = std::make_shared<PassInfo>();
     textPass->name = "TextPass";
@@ -386,6 +426,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 1,
                 .fragmentBitBindings = 6,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 64, 1
+                },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -816,26 +859,31 @@ void engine::ComputeShader::createDescriptorSetLayout(engine::Renderer* renderer
 void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
     VkDevice device = renderer->getDevice();
     std::vector<char> vertShaderCode = readFile(vertex.path);
-    std::vector<char> fragShaderCode = readFile(fragment.path);
     VkShaderModule vertShaderModule = ShaderManager::createShaderModule(vertShaderCode, renderer);
-    VkShaderModule fragShaderModule = ShaderManager::createShaderModule(fragShaderCode, renderer);
+    
     VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = VK_SHADER_STAGE_VERTEX_BIT,
         .module = vertShaderModule,
         .pName = "main"
     };
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-        .module = fragShaderModule,
-        .pName = "main"
-    };
-    VkPipelineShaderStageCreateInfo shaderStages[] = {
-        vertShaderStageInfo,
-        fragShaderStageInfo
-    };
-    const uint32_t shaderStageCount = 2u;
+
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+    shaderStages.push_back(vertShaderStageInfo);
+
+    VkShaderModule fragShaderModule = VK_NULL_HANDLE;
+    if (!fragment.path.empty()) {
+        std::vector<char> fragShaderCode = readFile(fragment.path);
+        fragShaderModule = ShaderManager::createShaderModule(fragShaderCode, renderer);
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = fragShaderModule,
+            .pName = "main"
+        };
+        shaderStages.push_back(fragShaderStageInfo);
+    }
+
     std::vector<VkDynamicState> dynamicStates = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
@@ -946,14 +994,14 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
     VkPipelineRenderingCreateInfo pipelineRenderingInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .colorAttachmentCount = static_cast<uint32_t>(config.colorAttachmentCount),
-        .pColorAttachmentFormats = config.passInfo->attachmentFormats.data(),
+        .pColorAttachmentFormats = config.colorAttachmentCount > 0 ? config.passInfo->attachmentFormats.data() : nullptr,
         .depthAttachmentFormat = config.enableDepth ? config.passInfo->depthAttachmentFormat : VK_FORMAT_UNDEFINED,
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
     };
     VkGraphicsPipelineCreateInfo pipelineInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .stageCount = shaderStageCount,
-        .pStages = shaderStages,
+        .stageCount = static_cast<uint32_t>(shaderStages.size()),
+        .pStages = shaderStages.data(),
         .pVertexInputState = &vertexInputInfo,
         .pInputAssemblyState = &inputAssembly,
         .pViewportState = &viewportState,

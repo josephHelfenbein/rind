@@ -3,7 +3,6 @@ struct VSOutput {
 };
 
 [[vk::binding(0)]]
-[[vk::sampled_image]]
 Texture2D<float4> sampleTexture;
 
 [[vk::binding(1)]]

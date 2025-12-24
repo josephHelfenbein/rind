@@ -71,6 +71,15 @@ namespace engine {
             uint32_t mipLevels,
             uint32_t layerCount = 1
         );
+        void transitionImageLayoutInline(
+            VkCommandBuffer commandBuffer,
+            VkImage image,
+            VkFormat format,
+            VkImageLayout oldLayout,
+            VkImageLayout newLayout,
+            uint32_t mipLevels,
+            uint32_t layerCount = 1
+        );
         void copyBufferToImage(
             VkBuffer buffer,
             VkImage image,
@@ -118,6 +127,7 @@ namespace engine {
 
         void ensureFallbackShadowCubeTexture();
         void ensureFallback2DTexture();
+        void refreshDescriptorSets();
 
         VkDevice getDevice() const { return device; }
         uint32_t getFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
@@ -128,6 +138,8 @@ namespace engine {
         int getMaxFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
         VkSampler getMainTextureSampler() const { return mainTextureSampler; }
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
+        PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
+        PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
