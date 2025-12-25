@@ -74,4 +74,17 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             }
         }
     }
+    const glm::vec3 currentPress = getPressed();
+    if (currentPress != lastPress && glm::length(currentPress) > 1e-6f) {
+        lastPress = currentPress;
+        lastPressTime = std::chrono::steady_clock::now();
+    } else if (glm::length(currentPress) > 1e-6f) {
+        auto now = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastPressTime).count();
+        if (duration >= 100 && duration <= 400 && (now - lastDashTime) >= std::chrono::duration<float>(dashCooldown)) {
+            dash(currentPress, 100.0f);
+            lastDashTime = now;
+        }
+        lastPressTime = now;
+    }
 }

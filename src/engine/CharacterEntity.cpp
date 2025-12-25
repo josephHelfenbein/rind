@@ -13,7 +13,8 @@ void engine::CharacterEntity::update(float deltaTime) {
     const float MAX_DELTA_TIME = 0.1f; // clamp deltaTime to avoid large jumps, 100 ms
     deltaTime = glm::min(deltaTime, MAX_DELTA_TIME);
     glm::vec3 desiredVel(0.0f);
-    if (glm::length(pressed) > 1e-6f) {
+    bool shouldDash = glm::length(dashing) > 1e-6f;
+    if (glm::length(pressed) > 1e-6f || glm::length(dashing) > 1e-6f) {
         glm::mat4 t = getTransform();
         glm::vec3 forward = -glm::vec3(t[2]);
         forward.y = 0.0f;
@@ -30,14 +31,26 @@ void engine::CharacterEntity::update(float deltaTime) {
         }
 
         glm::vec3 worldDir = right * pressed.x + forward * pressed.z;
+        glm::vec3 dashDir = right * dashing.x + forward * dashing.z;
         float m = glm::length(worldDir);
         if (m > 1e-6f) {
             worldDir /= m;
             desiredVel = worldDir * moveSpeed;
         }
+        if (glm::length(dashDir) > 1e-6f) {
+            dashVelocity = dashDir;
+            dashing = glm::vec3(0.0f);
+        }
     }
-    velocity.x = desiredVel.x;
-    velocity.z = desiredVel.z;
+    velocity.x = desiredVel.x + dashVelocity.x;
+    velocity.z = desiredVel.z + dashVelocity.z;
+    if (glm::length(dashVelocity) > 1e-6f) {
+        float decayFactor = glm::exp(-dashDecayRate * deltaTime);
+        dashVelocity *= decayFactor;
+        if (glm::length(dashVelocity) < 0.1f) {
+            dashVelocity = glm::vec3(0.0f);
+        }
+    }
     if (!grounded || velocity.y > 0.0f) {
         velocity.y -= gravity * deltaTime;
     }
@@ -47,10 +60,11 @@ void engine::CharacterEntity::update(float deltaTime) {
     int steps = totalMoveLength > 0.0f ? static_cast<int>(glm::ceil(totalMoveLength / (MAX_STEP * moveSpeed))) : 1;
     steps = glm::clamp(steps, 1, 8);
     const float subDt = deltaTime / static_cast<float>(steps);
+    glm::vec3 frameVelocity = velocity;
     bool touchedGround = false;
     glm::vec3 groundNormalAccum(0.0f);
     for (int i = 0; i < steps; ++i) {
-        glm::vec3 vStep(0.0f, velocity.y * subDt, 0.0f);
+        glm::vec3 vStep(0.0f, frameVelocity.y * subDt, 0.0f);
         if (std::abs(vStep.y) < 1e-6f && !touchedGround) {
             Collider::Collision collision = willCollide(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.2f, 0.0f)));
             if (collision.other) {
@@ -94,7 +108,7 @@ void engine::CharacterEntity::update(float deltaTime) {
                 setTransform(applyWorldTranslation(getTransform(), vStep));
             }
         }
-        glm::vec3 hStep(velocity.x * subDt, 0.0f, velocity.z * subDt);
+        glm::vec3 hStep(frameVelocity.x * subDt, 0.0f, frameVelocity.z * subDt);
         if (glm::length(hStep) > 1e-6f) {
             Collider::Collision collision = willCollide(glm::translate(glm::mat4(1.0f), hStep));
             if (collision.other) {
@@ -172,8 +186,12 @@ void engine::CharacterEntity::stopMove(const glm::vec3& delta) {
     remapCoord(remappedDelta);
     pressed -= remappedDelta;
     if (glm::length(pressed) < 1e-6f) {
-        velocity = glm::vec3(0.0f);
+        pressed = glm::vec3(0.0f);
     }
+}
+
+void engine::CharacterEntity::dash(const glm::vec3& direction, float strength) {
+    dashing = glm::normalize(direction) * strength;
 }
 
 void engine::CharacterEntity::jump(float strength) {

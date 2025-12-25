@@ -14,6 +14,9 @@ namespace engine {
         void stopMove(const glm::vec3& delta);
         void jump(float strength);
         void rotate(const glm::vec3& delta);
+        void dash(const glm::vec3& direction, float strength);
+
+        const glm::vec3& getPressed() const { return pressed; }
 
         void setCollider(OBBCollider* collider) { this->collider = collider; }
 
@@ -21,8 +24,11 @@ namespace engine {
     private:
         glm::vec3 velocity = glm::vec3(0.0f);
         glm::vec3 pressed = glm::vec3(0.0f);
+        glm::vec3 dashing = glm::vec3(0.0f);
+        glm::vec3 dashVelocity = glm::vec3(0.0f); // persistent dash impulse that decays
         OBBCollider* collider = nullptr;
         const float moveSpeed = 10.0f;
+        const float dashDecayRate = 8.0f; // how fast dash velocity decays
         const float jumpSpeed = 1.5f;
         const float coyoteTime = 0.10f;
         const float groundedNormalThreshold = 0.5f; // normals with y > threshold count as ground
