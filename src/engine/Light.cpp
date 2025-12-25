@@ -6,6 +6,13 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+engine::Light::~Light() {
+    Renderer* renderer = getEntityManager()->getRenderer();
+    if (renderer && hasShadowMap) {
+        destroyShadowResources(renderer->getDevice());
+    }
+}
+
 engine::PointLight engine::Light::getPointLightData() {
     glm::vec3 worldPos = getWorldPosition();
     uint32_t shadowIdx = 0xFFFFFFFF;

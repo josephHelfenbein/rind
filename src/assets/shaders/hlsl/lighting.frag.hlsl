@@ -122,13 +122,18 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float currentDistance = length(toFrag);
     float farPlane = light.shadowParams.y;
     float nearPlane = light.shadowParams.z;
-    float bias = light.shadowParams.x;
+    float baseBias = light.shadowParams.x;
+    float shadowFadeStart = nearPlane * 10.0;
     if (currentDistance <= nearPlane || currentDistance > farPlane) {
         return 1.0;
     }
+    float shadowFade = saturate((currentDistance - nearPlane) / (shadowFadeStart - nearPlane));
     float currentDepth = currentDistance / farPlane;
     float3 sampleDir = normalize(toFrag);
-    float storedDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleDir);
+    float NdotL = max(dot(geomNormal, lightDir), 0.0);
+    float slopeBias = baseBias * (1.0 - NdotL) * 2.0;
+    float distanceBias = baseBias * (nearPlane / max(currentDistance, nearPlane));
+    float bias = baseBias + slopeBias + distanceBias;
     float shadow = 0.0;
     uint samples = 20;
     float diskRadius = (1.0 + (length(pc.camPos - fragPos)) / farPlane) / 25.0;
@@ -144,13 +149,16 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
         }
     }
     shadow /= samples;
+    shadow *= shadowFade;
     return 1.0 - shadow;
 }
 
 float4 main(VSOutput input) : SV_Target {
     float3 albedoSample = gBufferAlbedo.Sample(sampleSampler, input.fragTexCoord).rgb;
     float alpha = gBufferAlbedo.Sample(sampleSampler, input.fragTexCoord).a;
-    float3 N = normalize(gBufferNormal.Sample(sampleSampler, input.fragTexCoord).xyz * 2.0 - 1.0);
+    float3 rawNormal = gBufferNormal.Sample(sampleSampler, input.fragTexCoord).xyz * 2.0 - 1.0;
+    float normalLen = length(rawNormal);
+    float3 N = (normalLen > 0.001) ? (rawNormal / normalLen) : float3(0.0, 1.0, 0.0);
     float3 materialSample = gBufferMaterial.Sample(sampleSampler, input.fragTexCoord).rgb;
     float metallic = materialSample.r;
     float baseRoughness = materialSample.g;
@@ -159,7 +167,9 @@ float4 main(VSOutput input) : SV_Target {
         return float4(albedoSample, 1.0); // Background
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
-    float3 V = normalize(pc.camPos - fragPos);
+    float3 toCamera = pc.camPos - fragPos;
+    float camDist = length(toCamera);
+    float3 V = (camDist > 0.001) ? (toCamera / camDist) : float3(0.0, 1.0, 0.0);
     float3 geomNormal = cross(ddx(fragPos), ddy(fragPos));
     if (dot(geomNormal, geomNormal) > 1e-10) {
         geomNormal = normalize(geomNormal);
@@ -185,9 +195,18 @@ float4 main(VSOutput input) : SV_Target {
         float lightRadius = light.positionRadius.w;
         float3 lightColor = light.colorIntensity.rgb;
         float intensity = light.colorIntensity.w;
-        float3 L = normalize(lightPos - fragPos);
-        float3 H = normalize(V + L);
-        float distance = length(lightPos - fragPos);
+        float3 toLight = lightPos - fragPos;
+        float distance = length(toLight);
+        if (distance < 0.001) {
+            continue;
+        }
+        float3 L = toLight / distance;
+        float3 H = V + L;
+        float hLen = length(H);
+        if (hLen < 0.001) {
+            continue;
+        }
+        H = H / hLen;        
         float t = saturate(1.0 - distance / lightRadius);
         float attenuation = t * t;
         
@@ -203,15 +222,20 @@ float4 main(VSOutput input) : SV_Target {
         float3 numerator = F * D * G;
         float denominator = 4.0 * max(NdotV, 0.0001) * max(NdotL, 0.0001);
         float3 specular = numerator / denominator;
-        float3 kD = (1.0 - F0) * (1.0 - metallic);
+        float3 kD = (1.0 - F) * (1.0 - metallic);
         float3 diffuse = kD * albedoSample;
 
         float shadow = computePointShadow(light, fragPos, geomNormal, L);
         
-        Lo += (diffuse + specular) * radiance * NdotL * shadow;
+        float3 contribution = (diffuse + specular) * radiance * NdotL * shadow;
+        contribution = clamp(contribution, float3(0.0, 0.0, 0.0), float3(100.0, 100.0, 100.0));
+        Lo += contribution;
     }
     float3 ambient = float3(0.03, 0.03, 0.03) * albedoSample;
     Lo += ambient;
+    if (any(isnan(Lo)) || any(isinf(Lo))) {
+        Lo = albedoSample * 0.1;
+    }
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, alpha));
     return float4(Lo, alphaOut);
 }

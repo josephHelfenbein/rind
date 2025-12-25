@@ -229,7 +229,7 @@ void engine::Renderer::drawFrame() {
         throw std::runtime_error("Failed to submit draw command buffer!");
     }
     if (DEBUG_RENDER_LOGS) {
-            std::cout << "[drawFrame] submit done" << std::endl;
+        std::cout << "[drawFrame] submit done" << std::endl;
     }
     VkPresentInfoKHR presentInfo = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -534,7 +534,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                 if (DEBUG_RENDER_LOGS) {
                     std::cout << "[record] skipping Lighting draw (UI-only frame)" << std::endl;
                 }
-                // No draw; attachments are cleared by loadOp.
+                // no draw, attachments are cleared by loadOp.
             } else {
                 if (DEBUG_RENDER_LOGS) {
                     std::cout << "[record] rendering generic 2D pass" << std::endl;
@@ -1765,7 +1765,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
     for (const auto& shaderCopy : shaders) {
         if (shaderCopy.config.inputBindings.empty()) continue;
         if (DEBUG_RENDER_LOGS) {
-        std::cout << "[Debug] Processing shader: " << shaderCopy.name << std::endl;
+            std::cout << "[Debug] Processing shader: " << shaderCopy.name << std::endl;
         }
 
         auto shader = shaderManager->getGraphicsShader(shaderCopy.name);

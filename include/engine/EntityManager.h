@@ -17,7 +17,7 @@ namespace engine {
     public:
         Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
 
-        ~Entity();
+        virtual ~Entity();
 
         virtual void update(float deltaTime) {}
 

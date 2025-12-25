@@ -12,6 +12,7 @@ namespace engine {
                 entityManager->addLight(this);
                 createShadowMaps(entityManager->getRenderer());
             }
+        ~Light();
 
         glm::vec3 getColor() const { return color; }
         void setColor(const glm::vec3& color) { this->color = color; }
