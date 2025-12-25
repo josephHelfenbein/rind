@@ -14,6 +14,8 @@
 #include <optional>
 #include <set>
 #include <filesystem>
+#include <functional>
+#include <utility>
 
 namespace engine {
 
@@ -68,7 +70,6 @@ namespace engine {
             int poolMultiplier = 1;
             int vertexBitBindings = 1;
             int fragmentBitBindings = 4;
-            std::function<void(VkVertexInputBindingDescription&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
             std::vector<uint32_t> fragmentDescriptorCounts = {};
             std::vector<VkDescriptorType> fragmentDescriptorTypes = {};
             VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
@@ -95,6 +96,8 @@ namespace engine {
                 pushConstantRange.size = sizeof(T);
                 pushConstantType = std::type_index(typeid(T));
             }
+            
+            std::function<void(VkVertexInputBindingDescription&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
         } config;
 
         VkPipeline pipeline{};
@@ -103,7 +106,7 @@ namespace engine {
         VkDescriptorPool descriptorPool{};
         std::vector<VkDescriptorSet> descriptorSets;
 
-        std::vector<VkDescriptorSet> createDescriptorSets(engine::Renderer* renderer, std::vector<class Texture*>& textures, std::vector<VkBuffer>& buffers);
+        std::vector<VkDescriptorSet> createDescriptorSets(engine::Renderer* renderer, std::vector<struct Texture*>& textures, std::vector<VkBuffer>& buffers);
 
         void createDescriptorSetLayout(engine::Renderer* renderer);
         void createPipeline(engine::Renderer* renderer);

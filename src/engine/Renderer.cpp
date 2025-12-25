@@ -766,8 +766,8 @@ void engine::Renderer::createLogicalDevice() {
         queueCreateInfos.push_back(queueCreateInfo);
     }
     VkPhysicalDeviceFeatures deviceFeatures = {
-        .samplerAnisotropy = VK_TRUE,
-        .sampleRateShading = VK_TRUE
+        .sampleRateShading = VK_TRUE,
+        .samplerAnisotropy = VK_TRUE
     };
     bool enableAtomicFloatExt = false;
     bool canUseBufferFloat32AtomicAdd = false;
@@ -776,8 +776,8 @@ void engine::Renderer::createLogicalDevice() {
     };
     VkPhysicalDeviceVulkan13Features vulkan13Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .dynamicRendering = VK_TRUE,
-        .synchronization2 = VK_TRUE
+        .synchronization2 = VK_TRUE,
+        .dynamicRendering = VK_TRUE
     };
     vulkan13Features.pNext = &atomicFloatFeatures;
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {
@@ -792,15 +792,15 @@ void engine::Renderer::createLogicalDevice() {
     useCASAdvection = !(enableAtomicFloatExt && canUseBufferFloat32AtomicAdd);
     VkDeviceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = &vulkan13Features,
         .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-        .pQueueCreateInfos = queueCreateInfos.data(),
-        .pNext = &vulkan13Features
+        .pQueueCreateInfos = queueCreateInfos.data()
     };
     VkPhysicalDeviceVulkan13Features enabledVulkan13Features = vulkan13Features;
     VkPhysicalDeviceFeatures2 enabledFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .features = deviceFeatures,
-        .pNext = &enabledVulkan13Features
+        .pNext = &enabledVulkan13Features,
+        .features = deviceFeatures
     };
     VkPhysicalDeviceShaderAtomicFloatFeaturesEXT enabledAtomicFloat{};
     if (!useCASAdvection && enableAtomicFloatExt && canUseBufferFloat32AtomicAdd) {
@@ -939,8 +939,8 @@ void engine::Renderer::createImageViews() {
 VkCommandBuffer engine::Renderer::beginSingleTimeCommands() {
     VkCommandBufferAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandPool = commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1
     };
     VkCommandBuffer commandBuffer;
@@ -981,6 +981,7 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags = flags,
         .imageType = VK_IMAGE_TYPE_2D,
+        .format = format,
         .extent = {
             .width = width,
             .height = height,
@@ -988,12 +989,11 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
         },
         .mipLevels = mipLevels,
         .arrayLayers = arrayLayers,
-        .format = format,
-        .tiling = tiling,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage = usage,
         .samples = samples,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE
+        .tiling = tiling,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
     };
     VkImage image;
     if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
@@ -1423,19 +1423,19 @@ VkSampler engine::Renderer::createTextureSampler(
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = magFilter,
         .minFilter = minFilter,
+        .mipmapMode = mipmapMode,
         .addressModeU = addressModeU,
         .addressModeV = addressModeV,
         .addressModeW = addressModeW,
+        .mipLodBias = 0.0f,
         .anisotropyEnable = anisotropyEnable,
         .maxAnisotropy = maxAnisotropy,
-        .borderColor = borderColor,
-        .unnormalizedCoordinates = unnormalizedCoordinates,
         .compareEnable = compareEnable,
         .compareOp = compareOp,
-        .mipmapMode = mipmapMode,
-        .mipLodBias = 0.0f,
         .minLod = 0.0f,
-        .maxLod = 0.0f
+        .maxLod = 0.0f,
+        .borderColor = borderColor,
+        .unnormalizedCoordinates = unnormalizedCoordinates
     };
     VkSampler textureSampler;
     if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
@@ -1573,19 +1573,19 @@ void engine::Renderer::createMainTextureSampler() {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = VK_FILTER_LINEAR,
         .minFilter = VK_FILTER_LINEAR,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .mipLodBias = 0.0f,
         .anisotropyEnable = VK_TRUE,
         .maxAnisotropy = 16.0f,
-        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-        .unnormalizedCoordinates = VK_FALSE,
         .compareEnable = VK_FALSE,
         .compareOp = VK_COMPARE_OP_ALWAYS,
-        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .mipLodBias = 0.0f,
         .minLod = 0.0f,
-        .maxLod = 0.0f
+        .maxLod = 0.0f,
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = VK_FALSE
     };
     if (vkCreateSampler(device, &samplerInfo, nullptr, &mainTextureSampler) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture sampler!");
@@ -1839,8 +1839,8 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         .dstSet = shader->descriptorSets[i],
                         .dstBinding = 0,
                         .dstArrayElement = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                         .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                         .pBufferInfo = &bufferInfos.back()
                     });
                 }
@@ -1885,9 +1885,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 switch (descriptorType) {
                     case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
                         imageInfos.push_back({
-                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .sampler = VK_NULL_HANDLE,
                             .imageView = imageView,
-                            .sampler = VK_NULL_HANDLE
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                         });
                         break;
                     }
@@ -1899,9 +1899,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     }
                     default: {
                         imageInfos.push_back({
-                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .sampler = mainTextureSampler,
                             .imageView = imageView,
-                            .sampler = mainTextureSampler
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                         });
                         break;
                     }
@@ -1912,15 +1912,15 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     .dstSet = shader->descriptorSets[i],
                     .dstBinding = binding.binding,
                     .dstArrayElement = 0,
-                    .descriptorType = descriptorType,
                     .descriptorCount = descriptorCount,
+                    .descriptorType = descriptorType,
                     .pImageInfo = &imageInfos[startIndex]
                 });
                 if (DEBUG_RENDER_LOGS) {
-                    const uint64_t viewHandle = reinterpret_cast<uint64_t>(imageView);
+                    const uint64_t viewHandle = (uint64_t) imageView;
                     const uint64_t samplerHandle = descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER
-                        ? reinterpret_cast<uint64_t>(mainTextureSampler)
-                        : reinterpret_cast<uint64_t>(imageInfos[startIndex].sampler);
+                        ? (uint64_t) mainTextureSampler
+                        : (uint64_t) imageInfos[startIndex].sampler;
                     std::cout << "[descriptors] shader=" << shader->name
                               << " frame=" << i
                               << " binding=" << binding.binding
@@ -1946,8 +1946,8 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         .dstSet = shader->descriptorSets[i],
                         .dstBinding = static_cast<uint32_t>(vertexBindings + frag),
                         .dstArrayElement = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                         .descriptorCount = descriptorCount,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                         .pImageInfo = &imageInfos[startIndex]
                     });
                     continue;
@@ -1969,9 +1969,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                                 }
                             }
                             imageInfos.push_back({
-                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                .sampler = VK_NULL_HANDLE,
                                 .imageView = viewToBind,
-                                .sampler = VK_NULL_HANDLE
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                             });
                         }
                     } else {
@@ -1991,9 +1991,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         }
                         for (uint32_t c = 0; c < descriptorCount; ++c) {
                             imageInfos.push_back({
-                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE,
                                 .imageView = fallbackTex->imageView,
-                                .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                             });
                         }
                     }
@@ -2002,13 +2002,13 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         .dstSet = shader->descriptorSets[i],
                         .dstBinding = static_cast<uint32_t>(vertexBindings + frag),
                         .dstArrayElement = 0,
-                        .descriptorType = type,
                         .descriptorCount = descriptorCount,
+                        .descriptorType = type,
                         .pImageInfo = &imageInfos[startIndex]
                     });
                     if (DEBUG_RENDER_LOGS) {
-                        const uint64_t viewHandle = reinterpret_cast<uint64_t>(imageInfos[startIndex].imageView);
-                        const uint64_t samplerHandle = reinterpret_cast<uint64_t>(imageInfos[startIndex].sampler);
+                        const uint64_t viewHandle = (uint64_t) (imageInfos[startIndex].imageView);
+                        const uint64_t samplerHandle = (uint64_t) (imageInfos[startIndex].sampler);
                         std::cout << "[descriptors] shader=" << shader->name
                                   << " frame=" << i
                                   << " binding=" << (vertexBindings + frag)

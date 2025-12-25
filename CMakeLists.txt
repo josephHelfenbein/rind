@@ -215,18 +215,21 @@ elseif(IS_WINDOWS)
         find_package(Vulkan REQUIRED)
         set(Vulkan_LIBRARY Vulkan::Vulkan)
     endif()
-    find_package(Freetype REQUIRED)
+    # Freetype
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/freetype)
 
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/include/glfw)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/glfw)
 
-    target_link_libraries(${PROJECT_NAME} ${Vulkan_LIBRARY} glfw ${FREETYPE_LIBRARIES} fastgltf::fastgltf)
-    target_include_directories(${PROJECT_NAME} PRIVATE
-        ${FREETYPE_INCLUDE_DIRS}
-    )
+    target_link_libraries(${PROJECT_NAME} ${Vulkan_LIBRARY} glfw freetype fastgltf::fastgltf)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32
     )

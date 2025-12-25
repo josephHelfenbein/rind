@@ -241,30 +241,30 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         // Albedo (Target 0)
         images.push_back({
             .name = "Albedo",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R8G8B8A8_UNORM,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         // Normal (Target 1)
         images.push_back({
             .name = "Normal",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         // Material (Target 2)
         images.push_back({
             .name = "Material",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R8G8B8A8_UNORM,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         // Depth
         images.push_back({
             .name = "Depth",
+            .clearValue = { .depthStencil = { 1.0f, 0 } },
             .format = VK_FORMAT_D32_SFLOAT,
-            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .depthStencil = { 1.0f, 0 } }
+            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         gbufferPass->images = images;
     }
@@ -277,9 +277,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         std::vector<PassImage> images;
         images.push_back({
             .name = "SceneColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         lightingPass->images = images;
     }
@@ -292,9 +292,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         std::vector<PassImage> images;
         images.push_back({
             .name = "SceneColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         ssrPass->images = images;
     }
@@ -307,9 +307,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         std::vector<PassImage> images;
         images.push_back({
             .name = "UIColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R8G8B8A8_UNORM,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         uiPass->images = images;
     }
@@ -327,14 +327,14 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .name = "shadow",
             .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .config = {
-                .passInfo = shadowPass,
-                .colorAttachmentCount = 0,
-                .depthWrite = true,
-                .enableDepth = true,
-                .depthCompare = VK_COMPARE_OP_LESS,
-                .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 0,
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = true,
+                .depthCompare = VK_COMPARE_OP_LESS,
+                .enableDepth = true,
+                .passInfo = shadowPass,
+                .colorAttachmentCount = 0,
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(Vertex);
@@ -360,9 +360,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         std::vector<PassImage> images;
         images.push_back({
             .name = "TextColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R8G8B8A8_UNORM,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         textPass->images = images;
     }
@@ -378,11 +378,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("gbuffer.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("gbuffer.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = gbufferPass,
-                .colorAttachmentCount = 3,
-                .depthWrite = true,
-                .enableDepth = true,
-                .cullMode = VK_CULL_MODE_BACK_BIT,
                 .poolMultiplier = 512,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 5,
@@ -393,6 +388,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
+                .cullMode = VK_CULL_MODE_BACK_BIT,
+                .depthWrite = true,
+                .enableDepth = true,
+                .passInfo = gbufferPass,
+                .colorAttachmentCount = 3,
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(Vertex);
@@ -432,11 +432,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = lightingPass,
-                .colorAttachmentCount = 1,
-                .depthWrite = false,
-                .enableDepth = false,
-                .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 1,
                 .fragmentBitBindings = 6,
                 .fragmentDescriptorCounts = {
@@ -450,6 +445,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = lightingPass,
+                .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 1, "gbuffer", "Albedo" },
                     { 2, "gbuffer", "Normal" },
@@ -469,11 +469,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("ssr.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = ssrPass,
-                .colorAttachmentCount = 1,
-                .depthWrite = false,
-                .enableDepth = false,
-                .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 4,
                 .fragmentDescriptorCounts = {
@@ -485,6 +480,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = ssrPass,
+                .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { 1, "gbuffer", "Depth" },
@@ -503,18 +503,18 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("ui.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("ui.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = uiPass,
-                .colorAttachmentCount = 1,
-                .depthWrite = false,
-                .enableDepth = false,
-                .cullMode = VK_CULL_MODE_NONE,
+                .poolMultiplier = 64,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
-                .poolMultiplier = 64,
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = uiPass,
+                .colorAttachmentCount = 1,
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(UIVertex);
@@ -544,18 +544,18 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("text.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("text.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = textPass,
-                .colorAttachmentCount = 1,
-                .depthWrite = false,
-                .enableDepth = false,
-                .cullMode = VK_CULL_MODE_NONE,
+                .poolMultiplier = 256,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
-                .poolMultiplier = 256,
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = textPass,
+                .colorAttachmentCount = 1,
                 .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     binding.binding = 0;
                     binding.stride = sizeof(UIVertex);
@@ -585,11 +585,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .passInfo = mainPass,
-                .colorAttachmentCount = 1,
-                .depthWrite = false,
-                .enableDepth = false,
-                .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 5,
                 .fragmentDescriptorTypes = {
@@ -599,6 +594,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = mainPass,
+                .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { 1, "ui", "UIColor" },
@@ -728,8 +728,8 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                 .dstSet = descriptorSets[frame],
                 .dstBinding = static_cast<uint32_t>(binding),
                 .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .pBufferInfo = &bufferInfos.back()
             });
         }
@@ -757,8 +757,8 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                         .dstSet = descriptorSets[frame],
                         .dstBinding = bindingIndex,
                         .dstArrayElement = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                         .descriptorCount = descriptorCount,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                         .pImageInfo = &imageInfos[startIndex]
                     });
                     break;
@@ -770,9 +770,9 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                             throw std::runtime_error("Invalid texture provided for sampled image descriptor!");
                         }
                         imageInfos.push_back({
-                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .sampler = VK_NULL_HANDLE,
                             .imageView = texture->imageView,
-                            .sampler = VK_NULL_HANDLE
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                         });
                     }
                     descriptorWrites.push_back({
@@ -780,8 +780,8 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                         .dstSet = descriptorSets[frame],
                         .dstBinding = bindingIndex,
                         .dstArrayElement = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                         .descriptorCount = descriptorCount,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                         .pImageInfo = &imageInfos[startIndex]
                     });
                     break;
@@ -793,9 +793,9 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                             throw std::runtime_error("Invalid texture provided for combined image sampler descriptor!");
                         }
                         imageInfos.push_back({
-                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .sampler = texture->imageSampler,
                             .imageView = texture->imageView,
-                            .sampler = texture->imageSampler
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                         });
                     }
                     descriptorWrites.push_back({
@@ -803,8 +803,8 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                         .dstSet = descriptorSets[frame],
                         .dstBinding = bindingIndex,
                         .dstArrayElement = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                         .descriptorCount = descriptorCount,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                         .pImageInfo = &imageInfos[startIndex]
                     });
                     break;
@@ -985,10 +985,10 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
         .depthClampEnable = VK_FALSE,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .lineWidth = 1.0f,
         .cullMode = config.cullMode,
         .frontFace = config.frontFace,
-        .depthBiasEnable = VK_FALSE
+        .depthBiasEnable = VK_FALSE,
+        .lineWidth = 1.0f
     };
     VkPipelineMultisampleStateCreateInfo multisampling = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -1024,11 +1024,11 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
         .depthWriteEnable = (config.enableDepth && config.depthWrite) ? VK_TRUE : VK_FALSE,
         .depthCompareOp = config.depthCompare,
         .depthBoundsTestEnable = VK_FALSE,
-        .minDepthBounds = 0.0f,
-        .maxDepthBounds = 1.0f,
         .stencilTestEnable = VK_FALSE,
         .front = {},
-        .back = {}
+        .back = {},
+        .minDepthBounds = 0.0f,
+        .maxDepthBounds = 1.0f
     };
     const bool hasPushConstant = config.pushConstantRange.stageFlags != 0;
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
@@ -1050,6 +1050,7 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
     };
     VkGraphicsPipelineCreateInfo pipelineInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext = &pipelineRenderingInfo,
         .stageCount = static_cast<uint32_t>(shaderStages.size()),
         .pStages = shaderStages.data(),
         .pVertexInputState = &vertexInputInfo,
@@ -1063,8 +1064,7 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
         .layout = pipelineLayout,
         .subpass = 0u,
         .basePipelineHandle = VK_NULL_HANDLE,
-        .basePipelineIndex = -1,
-        .pNext = &pipelineRenderingInfo
+        .basePipelineIndex = -1
     };
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline!");
@@ -1158,9 +1158,9 @@ void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
     }
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier),
         .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
-        .pPoolSizes = poolSizes.data(),
-        .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        .pPoolSizes = poolSizes.data()
     };
     if (vkCreateDescriptorPool(renderer->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create descriptor pool!");
@@ -1186,9 +1186,9 @@ void engine::ComputeShader::createDescriptorPool(Renderer* renderer) {
     }
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier),
         .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
-        .pPoolSizes = poolSizes.data(),
-        .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        .pPoolSizes = poolSizes.data()
     };
     if (vkCreateDescriptorPool(renderer->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create compute descriptor pool!");

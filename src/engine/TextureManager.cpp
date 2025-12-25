@@ -5,6 +5,8 @@
 
 #include <filesystem>
 #include <iostream>
+#include <functional>
+#include <format>
 
 static uint16_t floatToHalf(float value) {
     union { float f; uint32_t i; } v;

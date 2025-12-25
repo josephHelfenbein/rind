@@ -234,9 +234,9 @@ engine::Collider::Collision engine::CharacterEntity::willCollide(const glm::mat4
         return Collider::Collision();
     }
     AABB myAABB = collider->getWorldAABB();
-    if (glm::length(deltaTransform[3]) > 1e-6f) {
-        myAABB.min += deltaTransform[3];
-        myAABB.max += deltaTransform[3];
+    if (glm::length(glm::vec3(deltaTransform[3])) > 1e-6f) {
+        myAABB.min += glm::vec3(deltaTransform[3]);
+        myAABB.max += glm::vec3(deltaTransform[3]);
     }
     for (auto& [entityName, entity] : getEntityManager()->getEntities()) {
         if (entity == this) {

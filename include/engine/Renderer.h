@@ -10,13 +10,15 @@
 #include <iostream>
 #include <set>
 #include <memory>
+#include <optional>
+#include <utility>
 
 namespace engine {
     struct GraphicsShader;
     struct ComputeShader;
     struct PassInfo;
     struct RenderNode;
-    class Texture;
+    struct Texture;
     class UIObject;
 
     class Renderer {

@@ -196,7 +196,7 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue.depthStencil = {1.0f, 0}
+            .clearValue = { .depthStencil = {1.0f, 0} }
         };
         VkRenderingInfo renderInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -351,7 +351,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
                 .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue.depthStencil = {1.0f, 0}
+                .clearValue = { .depthStencil = {1.0f, 0} }
             };
             VkRenderingInfo renderInfo = {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
