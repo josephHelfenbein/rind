@@ -52,6 +52,7 @@ namespace engine {
 
         bool usesSwapchain = false;
         bool hasDepthAttachment = false;
+        bool isActive = true;
         std::optional<std::vector<PassImage>> images = std::nullopt;
         std::vector<VkRenderingAttachmentInfo> colorAttachments;
         std::optional<VkRenderingAttachmentInfo> depthAttachment;

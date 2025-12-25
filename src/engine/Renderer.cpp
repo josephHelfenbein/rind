@@ -515,7 +515,13 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
         const bool skipLightingWork = (node.passInfo && node.passInfo->name == "LightingPass" && !has3DContent);
 
-        if (node.is2D 
+        const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
+
+        if (passIsInactive) {
+            if (DEBUG_RENDER_LOGS) {
+                std::cout << "[record] pass " << node.passInfo->name << " is inactive, skipping draw (attachments cleared by loadOp)" << std::endl;
+            }
+        } else if (node.is2D 
         && (node.shaders.find(shaderManager->getGraphicsShader("ui")) != node.shaders.end()
         || node.shaders.find(shaderManager->getGraphicsShader("text")) != node.shaders.end())
         ) {
@@ -618,6 +624,26 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
                     shader->config.pushConstantRange.stageFlags,
                     0,
                     sizeof(LightingPC),
+                    &pc
+                );
+            }
+        } else if (type == std::type_index(typeid(SSRPC))) {
+            Camera* camera = entityManager->getCamera();
+            if (camera) {
+                glm::mat4 invView = glm::inverse(camera->getViewMatrix());
+                glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
+                SSRPC pc = {
+                    .view = camera->getViewMatrix(),
+                    .proj = camera->getProjectionMatrix(),
+                    .invView = invView,
+                    .invProj = invProj
+                };
+                vkCmdPushConstants(
+                    commandBuffer,
+                    shader->pipelineLayout,
+                    shader->config.pushConstantRange.stageFlags,
+                    0,
+                    sizeof(SSRPC),
                     &pc
                 );
             }

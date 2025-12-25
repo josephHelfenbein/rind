@@ -284,6 +284,21 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         lightingPass->images = images;
     }
 
+    // SSR Pass
+    auto ssrPass = std::make_shared<PassInfo>();
+    ssrPass->name = "SSRPass";
+    ssrPass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SceneColor",
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } }
+        });
+        ssrPass->images = images;
+    }
+
     // UI Pass
     auto uiPass = std::make_shared<PassInfo>();
     uiPass->name = "UIPass";
@@ -311,7 +326,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         GraphicsShader shader = {
             .name = "shadow",
             .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("shadow.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = shadowPass,
                 .colorAttachmentCount = 0,
@@ -415,7 +429,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "lighting",
-            .vertex = { shaderPath("lighting.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = lightingPass,
@@ -445,6 +459,40 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
+    // SSR
+    {
+        GraphicsShader shader = {
+            .name = "ssr",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("ssr.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .passInfo = ssrPass,
+                .colorAttachmentCount = 1,
+                .depthWrite = false,
+                .enableDepth = false,
+                .cullMode = VK_CULL_MODE_NONE,
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 4,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .inputBindings = {
+                    { 0, "lighting", "SceneColor" },
+                    { 1, "gbuffer", "Depth" },
+                    { 2, "gbuffer", "Normal" }
+                }
+            }
+        };
+        shader.config.setPushConstant<SSRPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         shaders.push_back(shader);
     }
 
@@ -543,8 +591,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .cullMode = VK_CULL_MODE_NONE,
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 4,
+                .fragmentBitBindings = 5,
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -553,7 +602,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { 1, "ui", "UIColor" },
-                    { 2, "text", "TextColor" }
+                    { 2, "text", "TextColor" },
+                    { 3, "ssr", "SceneColor"}
                 }
             }
         };
@@ -561,7 +611,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     }
 
     renderGraph.nodes.clear();
-    renderGraph.nodes.reserve(5);
+    renderGraph.nodes.reserve(6);
 
     auto pushNode = [&](bool is2D, PassInfo* pass, std::initializer_list<const char*> shaderList) {
         RenderNode node;
@@ -575,6 +625,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
 
     pushNode(false, gbufferPass.get(), { "gbuffer" });
     pushNode(true, lightingPass.get(), { "lighting" });
+    pushNode(true, ssrPass.get(), { "ssr" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });

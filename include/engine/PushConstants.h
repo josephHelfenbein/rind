@@ -27,6 +27,13 @@ namespace engine {
         glm::vec4 lightPos; // xyz = pos, w = radius
     };
 
+    struct SSRPC {
+        glm::mat4 view;
+        glm::mat4 proj;
+        glm::mat4 invView;
+        glm::mat4 invProj;
+    };
+
     struct PointLight {
         glm::vec4 positionRadius;
         glm::vec4 colorIntensity;

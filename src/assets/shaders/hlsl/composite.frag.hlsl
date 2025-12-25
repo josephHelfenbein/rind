@@ -12,6 +12,9 @@ Texture2D<float4> uiTexture;
 Texture2D<float4> textTexture;
 
 [[vk::binding(3)]]
+Texture2D<float4> ssrTexture;
+
+[[vk::binding(4)]]
 SamplerState sampleSampler;
 
 float3 ACESFilm(float3 x) {
@@ -27,8 +30,9 @@ float4 main(VSOutput input) : SV_Target {
     float4 sceneColor = sceneTexture.Sample(sampleSampler, input.texCoord);
     float4 uiColor = uiTexture.Sample(sampleSampler, input.texCoord);
     float4 textColor = textTexture.Sample(sampleSampler, input.texCoord);
-    
-    float3 tonemapped = ACESFilm(sceneColor.rgb);
+    float4 ssrColor = ssrTexture.Sample(sampleSampler, input.texCoord);
+
+    float3 tonemapped = ACESFilm(sceneColor.rgb + ssrColor.rgb * ssrColor.a);
     float4 sceneUI = lerp(float4(tonemapped, sceneColor.a), uiColor, uiColor.a);
     return lerp(sceneUI, textColor, textColor.a);
 }

@@ -22,6 +22,9 @@ namespace engine {
         float getRadius() const { return radius; }
         void setRadius(float radius) { this->radius = radius; }
 
+        uint32_t getShadowMapSize() const { return shadowMapSize; }
+        void setShadowMapSize(uint32_t size);
+
         PointLight getPointLightData();
         VkImageView getShadowImageView() const { return shadowDepthImageView; }
 
@@ -34,6 +37,7 @@ namespace engine {
         glm::vec3 color;
         float intensity;
         float radius;
+        uint32_t shadowMapSize = 2048;
 
         // dynamic shadow map, sent to shader
         VkImage shadowDepthImage = VK_NULL_HANDLE;

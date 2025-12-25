@@ -30,11 +30,10 @@ engine::PointLight engine::Light::getPointLightData() {
 
 void engine::Light::createShadowMaps(engine::Renderer* renderer) {
     if (hasShadowMap) return;
-    uint32_t shadowSize = 1024;
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
     std::tie(shadowDepthImage, shadowDepthMemory) = renderer->createImage(
-        shadowSize, shadowSize,
+        shadowMapSize, shadowMapSize,
         1,
         VK_SAMPLE_COUNT_1_BIT,
         depthFormat,
@@ -70,7 +69,7 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer) {
     }
     
     std::tie(bakedShadowImage, bakedShadowMemory) = renderer->createImage(
-        shadowSize, shadowSize,
+        shadowMapSize, shadowMapSize,
         1,
         VK_SAMPLE_COUNT_1_BIT,
         depthFormat,
@@ -151,15 +150,15 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     VkViewport viewport = {
         .x = 0.0f,
         .y = 0.0f,
-        .width = 1024.0f,
-        .height = 1024.0f,
+        .width = static_cast<float>(shadowMapSize),
+        .height = static_cast<float>(shadowMapSize),
         .minDepth = 0.0f, 
         .maxDepth = 1.0f
     };
     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
     VkRect2D scissor = {
         .offset = {0, 0}, 
-        .extent = {1024, 1024}
+        .extent = {shadowMapSize, shadowMapSize}
     };
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
@@ -203,7 +202,7 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea = {
                 .offset = {0, 0},
-                .extent = {1024, 1024}
+                .extent = {shadowMapSize, shadowMapSize}
             },
             .layerCount = 1,
             .colorAttachmentCount = 0,
@@ -264,7 +263,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
             .layerCount = 6
         },
         .dstOffset = {0, 0, 0},
-        .extent = {1024, 1024, 1}
+        .extent = {shadowMapSize, shadowMapSize, 1}
     };
     vkCmdCopyImage(
         commandBuffer,
@@ -308,15 +307,15 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         VkViewport viewport = {
             .x = 0.0f,
             .y = 0.0f,
-            .width = 1024.0f,
-            .height = 1024.0f,
+            .width = static_cast<float>(shadowMapSize),
+            .height = static_cast<float>(shadowMapSize),
             .minDepth = 0.0f, 
             .maxDepth = 1.0f
         };
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
         VkRect2D scissor = {
             .offset = {0, 0}, 
-            .extent = {1024, 1024}
+            .extent = {shadowMapSize, shadowMapSize}
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
         std::function<void(Entity*, glm::mat4&)> drawMovableEntity = [&](Entity* entity, glm::mat4& viewProj) {
@@ -358,7 +357,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
                 .renderArea = {
                     .offset = {0, 0},
-                    .extent = {1024, 1024}
+                    .extent = {shadowMapSize, shadowMapSize}
                 },
                 .layerCount = 1,
                 .colorAttachmentCount = 0,
@@ -403,4 +402,15 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     shadowImageReady = false;
     shadowBaked = false;
     bakedImageReady = false;
+}
+
+void engine::Light::setShadowMapSize(uint32_t size) {
+    if (size == shadowMapSize) return;
+    shadowMapSize = size;
+    
+    Renderer* renderer = getEntityManager()->getRenderer();
+    if (hasShadowMap) {
+        destroyShadowResources(renderer->getDevice());
+    }
+    createShadowMaps(renderer);
 }
