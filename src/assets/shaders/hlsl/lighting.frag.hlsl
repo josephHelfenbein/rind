@@ -30,7 +30,7 @@ Texture2D<float4> gBufferNormal;
 Texture2D<float4> gBufferMaterial;
 
 [[vk::binding(4)]]
-Texture2D<float4> gBufferDepth;
+Texture2D<float> gBufferDepth;
 
 [[vk::binding(5)]]
 TextureCube<float> shadowMaps[64];
@@ -128,7 +128,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     }
     float currentDepth = currentDistance / farPlane;
     float3 sampleDir = normalize(toFrag);
-    float storedDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleDir).r;
+    float storedDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleDir);
     float shadow = 0.0;
     uint samples = 20;
     float diskRadius = (1.0 + (length(pc.camPos - fragPos)) / farPlane) / 25.0;
@@ -138,7 +138,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
         offsetDir = offsetDir - dot(offsetDir, sampleDir) * sampleDir;
         offsetDir = normalize(offsetDir);
         float3 sampleOffset = sampleDir + offsetDir * diskRadius;
-        float sampleDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleOffset).r;
+        float sampleDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleOffset);
         if (currentDepth - bias > sampleDepth) {
             shadow += 1.0;
         }
@@ -154,7 +154,7 @@ float4 main(VSOutput input) : SV_Target {
     float3 materialSample = gBufferMaterial.Sample(sampleSampler, input.fragTexCoord).rgb;
     float metallic = materialSample.r;
     float baseRoughness = materialSample.g;
-    float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord).r;
+    float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
     if (depth >= 0.9999) {
         return float4(albedoSample, 1.0); // Background
     }

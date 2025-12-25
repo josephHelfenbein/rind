@@ -1,5 +1,5 @@
 struct VSOutput {
-    [[vk::location(0)]] float2 texCoord : TEXCOORD0;
+    [[vk::location(0)]] float2 fragTexCoord : TEXCOORD0;
 };
 
 [[vk::binding(0)]]
@@ -27,10 +27,10 @@ float3 ACESFilm(float3 x) {
 }
 
 float4 main(VSOutput input) : SV_Target {
-    float4 sceneColor = sceneTexture.Sample(sampleSampler, input.texCoord);
-    float4 uiColor = uiTexture.Sample(sampleSampler, input.texCoord);
-    float4 textColor = textTexture.Sample(sampleSampler, input.texCoord);
-    float4 ssrColor = ssrTexture.Sample(sampleSampler, input.texCoord);
+    float4 sceneColor = sceneTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 uiColor = uiTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 textColor = textTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 ssrColor = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
 
     float3 tonemapped = ACESFilm(sceneColor.rgb + ssrColor.rgb * ssrColor.a);
     float4 sceneUI = lerp(float4(tonemapped, sceneColor.a), uiColor, uiColor.a);

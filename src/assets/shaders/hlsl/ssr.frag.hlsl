@@ -8,7 +8,7 @@ struct VSOutput {
 Texture2D<float4> lightingTexture;
 
 [[vk::binding(1)]]
-Texture2D<float4> gBufferDepth;
+Texture2D<float> gBufferDepth;
 
 [[vk::binding(2)]]
 Texture2D<float4> gBufferNormal;
@@ -39,8 +39,7 @@ float3 reconstructPosition(float2 uv, float depth) {
     float4 ndc = float4(uv * 2.0 - 1.0, depth, 1.0);
     float4 viewPos = mul(ndc, pc.invProj);
     viewPos /= viewPos.w;
-    float4 worldPos = mul(viewPos, pc.invView);
-    return worldPos.xyz;
+    return viewPos.xyz;
 }
 
 float3 viewToScreenSpace(float3 viewPos) {
@@ -53,6 +52,9 @@ float3 viewToScreenSpace(float3 viewPos) {
 }
 
 bool rayMarch(float3 rayStart, float3 rayDir, float jitter, out float2 hitUV, out float hitDepth, out float rayLength) {
+    hitUV = float2(0.0, 0.0);
+    hitDepth = 0.0;
+    rayLength = 0.0;
     float3 currPos = rayStart;
     float stepSize = START_STEP;
     float3 rayDirNorm = normalize(rayDir);
@@ -72,7 +74,7 @@ bool rayMarch(float3 rayStart, float3 rayDir, float jitter, out float2 hitUV, ou
          || screenPos.z < 0.0 || screenPos.z > 1.0) {
             return false;
         }
-        float sampledDepth = gBufferDepth.SampleLevel(sampleSampler, screenPos.xy, 0).r;
+        float sampledDepth = gBufferDepth.SampleLevel(sampleSampler, screenPos.xy, 0);
         float3 sampledPos = reconstructPosition(screenPos.xy, sampledDepth);
         float depthDiff = sampledPos.z - currPos.z;
         float adaptiveThickness = max(THICKNESS, stepSize * 1.5);
@@ -82,7 +84,7 @@ bool rayMarch(float3 rayStart, float3 rayDir, float jitter, out float2 hitUV, ou
             for (int j = 0; j < NUM_BINARY_SEARCH_STEPS; j++) {
                 float3 midPos = (searchStart + searchEnd) * 0.5;
                 float3 midScreenPos = viewToScreenSpace(midPos);
-                float midSampledDepth = gBufferDepth.SampleLevel(sampleSampler, midScreenPos.xy, 0).r;
+                float midSampledDepth = gBufferDepth.SampleLevel(sampleSampler, midScreenPos.xy, 0);
                 float3 midSampledPos = reconstructPosition(midScreenPos.xy, midSampledDepth);
                 float midDepthDiff = midSampledPos.z - midPos.z;
                 if (midDepthDiff > 0.0 && midDepthDiff < adaptiveThickness) {
@@ -108,7 +110,7 @@ float4 main(VSOutput input) : SV_Target {
     lightingTexture.GetDimensions(width, height);
     uint2 gid = uint2(input.fragTexCoord * float2(width, height));
     float2 uv = (float2(gid.x, gid.y) + 0.5) / float2(width, height);
-    float depth = gBufferDepth.Load(int3(gid.x, gid.y, 0)).r;
+    float depth = gBufferDepth.Load(int3(gid.x, gid.y, 0));
     if (depth >= 0.9999) {
         return float4(0.0, 0.0, 0.0, 1.0);
     }

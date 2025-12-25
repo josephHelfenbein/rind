@@ -582,7 +582,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "composite",
-            .vertex = { shaderPath("composite.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .passInfo = mainPass,
