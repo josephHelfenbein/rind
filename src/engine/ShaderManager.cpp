@@ -541,7 +541,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     {
         GraphicsShader shader = {
             .name = "text",
-            .vertex = { shaderPath("text.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .vertex = { shaderPath("ui.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("text.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .poolMultiplier = 256,

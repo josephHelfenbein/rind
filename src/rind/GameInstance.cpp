@@ -284,6 +284,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     );
     rind::Enemy* enemy1 = new rind::Enemy(
         entityManager,
+        player,
         "enemy1",
         "gbuffer",
         glm::translate(glm::mat4(1.0f), glm::vec3(8.0f, 5.0f, 0.0f)),
