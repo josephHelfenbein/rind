@@ -10,6 +10,10 @@ static inline glm::mat4 applyWorldTranslation(const glm::mat4& transform, const 
 }
 
 void engine::CharacterEntity::update(float deltaTime) {
+    updateMovement(deltaTime);
+}
+
+void engine::CharacterEntity::updateMovement(float deltaTime) {
     const float MAX_DELTA_TIME = 0.1f; // clamp deltaTime to avoid large jumps, 100 ms
     deltaTime = glm::min(deltaTime, MAX_DELTA_TIME);
     glm::vec3 desiredVel(0.0f);

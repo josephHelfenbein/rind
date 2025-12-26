@@ -10,11 +10,17 @@ namespace engine {
             : Entity(entityManager, name, shader, transform, textures, true) {}
         
         void update(float deltaTime) override;
+        void updateMovement(float deltaTime);
+        virtual void damage(float amount) { health -= amount; }
+
         void move(const glm::vec3& delta);
         void stopMove(const glm::vec3& delta);
         void jump(float strength);
         void rotate(const glm::vec3& delta);
         void dash(const glm::vec3& direction, float strength);
+
+        const float getHealth() const { return health; }
+        void setHealth(float health) { this->health = health; }
 
         const glm::vec3& getPressed() const { return pressed; }
 
@@ -22,6 +28,7 @@ namespace engine {
 
         Collider::Collision willCollide(const glm::mat4& deltaTransform);
     private:
+        float health = 100.0f;
         glm::vec3 velocity = glm::vec3(0.0f);
         glm::vec3 pressed = glm::vec3(0.0f);
         glm::vec3 dashing = glm::vec3(0.0f);

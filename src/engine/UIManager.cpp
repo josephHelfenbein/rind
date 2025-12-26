@@ -5,11 +5,17 @@
 
 engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
     : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover) {
+#ifdef __APPLE__
+        this->transform = glm::scale(this->transform, glm::vec3(2.0f, 2.0f, 1.0f));
+#endif
         uiManager->addObject(this);
     }
 
 engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string text, std::string font, Corner anchorCorner)
     : uiManager(uiManager), name(std::move(name)), tint(tint), text(std::move(text)), font(std::move(font)), transform(transform), anchorCorner(anchorCorner) {
+#ifdef __APPLE__
+        this->transform = glm::scale(this->transform, glm::vec3(2.0f, 2.0f, 1.0f));
+#endif
         uiManager->addObject(this);
     }
 
@@ -342,8 +348,15 @@ engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, 
     if (std::holds_alternative<TextObject*>(node)) {
         TextObject* textObj = std::get<TextObject*>(node);
         const auto& fontInfo = fonts[textObj->getFont()];
-        const float scaleX = textObj->getScale().x;
-        const float scaleY = textObj->getScale().y;
+        float scaleX = textObj->getScale().x;
+        float scaleY = textObj->getScale().y;
+        if (textObj->getParent() != nullptr) {
+            const float baseGlyphHeight = static_cast<float>(fontInfo.ascent - fontInfo.descent);
+            const float targetHeight = parentRect.size.y * 0.6f;
+            const float fitScale = targetHeight / std::max(baseGlyphHeight, 1.0f);
+            scaleX *= fitScale;
+            scaleY *= fitScale;
+        }
         float penX = 0.0f;
         float minX = std::numeric_limits<float>::max();
         float maxX = std::numeric_limits<float>::lowest();
@@ -388,6 +401,18 @@ engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, 
             break;
         case Corner::Center:
             position += glm::vec2((parentRect.size.x - size.x) / 2.0f, (parentRect.size.y - size.y) / 2.0f);
+            break;
+        case Corner::Top:
+            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, 0.0f);
+            break;
+        case Corner::Bottom:
+            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, parentRect.size.y - size.y);
+            break;
+        case Corner::Left:
+            position += glm::vec2(0.0f, (parentRect.size.y - size.y) / 2.0f);
+            break;
+        case Corner::Right:
+            position += glm::vec2(parentRect.size.x - size.x, (parentRect.size.y - size.y) / 2.0f);
             break;
     }
     if (std::holds_alternative<TextObject*>(node)) {
@@ -455,7 +480,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
         vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(UIPC), &pushConstants);
         vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
     };
-    std::function<void(TextObject*, const LayoutRect&, const LayoutRect&)> drawTextObject = [&](TextObject* object, const LayoutRect& rect, const LayoutRect& pixelRect) {
+    std::function<void(TextObject*, const LayoutRect&, const LayoutRect&, const LayoutRect&)> drawTextObject = [&](TextObject* object, const LayoutRect& rect, const LayoutRect& pixelRect, const LayoutRect& parentRect) {
         if (!object->isEnabled() || object->getText().empty()) return;
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("text");
         if (shaders.find(shader) == shaders.end()) {
@@ -463,10 +488,16 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
         }
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
 
-        const float scaleX = object->getScale().x * layoutScale;
-        const float scaleY = object->getScale().y * layoutScale;
-
         const auto& fontInfo = fonts[object->getFont()];
+        float scaleX = object->getScale().x * layoutScale;
+        float scaleY = object->getScale().y * layoutScale;
+        if (object->getParent() != nullptr) {
+            const float baseGlyphHeight = static_cast<float>(fontInfo.ascent - fontInfo.descent);
+            const float targetHeight = parentRect.size.y * 0.6f;
+            const float fitScale = targetHeight / std::max(baseGlyphHeight, 1.0f);
+            scaleX *= fitScale;
+            scaleY *= fitScale;
+        }
         float penX = 0.0f;
         float minX = std::numeric_limits<float>::max();
         float maxX = std::numeric_limits<float>::lowest();
@@ -479,11 +510,13 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
             penX += ch.advance * scaleX;
         }
         float x = pixelRect.position.x - (minX == std::numeric_limits<float>::max() ? 0.0f : minX);
-
-        const float layoutHeightPx = pixelRect.size.y;
+        LayoutRect parentPixelRect = object->getParent() != nullptr 
+            ? toPixelRect(parentRect, canvasOrigin, layoutScale) 
+            : pixelRect;
+        const float layoutHeightPx = parentPixelRect.size.y;
         const float glyphHeightPx = (fontInfo.ascent - fontInfo.descent) * scaleY;
         const float topMarginPx = 0.5f * std::max(layoutHeightPx - glyphHeightPx, 0.0f);
-        float y = pixelRect.position.y + topMarginPx + fontInfo.ascent * scaleY;
+        float y = parentPixelRect.position.y - topMarginPx + fontInfo.ascent * scaleY;
 
         const std::string& text = object->getText();
         for (const char& c : text) {
@@ -532,7 +565,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
             TextObject* obj = std::get<TextObject*>(node);
             LayoutRect designRect = resolveDesignRect(obj, parentRect);
             LayoutRect pixelRect = toPixelRect(designRect, canvasOrigin, layoutScale);
-            drawTextObject(obj, designRect, pixelRect);
+            drawTextObject(obj, designRect, pixelRect, parentRect);
         }
     };
 

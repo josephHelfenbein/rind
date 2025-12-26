@@ -1,6 +1,7 @@
 #include <engine/EntityManager.h>
 #include <engine/Camera.h>
 #include <engine/Light.h>
+#include <engine/Collider.h>
 
 engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
     : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable) {
@@ -176,6 +177,9 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
         if (currentCamera && currentCamera->getName() == entity->getName()) {
             setCamera(nullptr);
         }
+        if (Collider* collider = dynamic_cast<Collider*>(entity)) {
+            colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
+        }
         entities.erase(it);
     }
 }
@@ -229,7 +233,7 @@ void engine::EntityManager::loadTextures() {
             texturePtrs.push_back(found);
         }
         if (texturePtrs.size() < defaultTextures.size()) {
-            for (int i = texturePtrs.size(); i < defaultTextures.size(); ++i) {
+            for (size_t i = texturePtrs.size(); i < defaultTextures.size(); ++i) {
                 Texture* defaultTex = textureManager->getTexture(defaultTextures[i]);
                 if (defaultTex) {
                     texturePtrs.push_back(defaultTex);
@@ -289,8 +293,8 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
     }
     engine::LightsUBO lightsUBO{};
     auto lights = getLights();
-    uint32_t count = std::min<uint32_t>(lights.size(), 64);
-    for (uint32_t i = 0; i < count; ++i) {
+    size_t count = std::min(lights.size(), static_cast<size_t>(64));
+    for (size_t i = 0; i < count; ++i) {
         lightsUBO.pointLights[i] = lights[i]->getPointLightData();
     }
     lightsUBO.numPointLights = glm::uvec4(count, 0, 0, 0);

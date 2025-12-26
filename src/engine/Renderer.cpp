@@ -926,6 +926,7 @@ void engine::Renderer::recreateSwapChain() {
 
 void engine::Renderer::refreshDescriptorSets() {
     vkDeviceWaitIdle(device);
+    uiManager->loadTextures();
     createPostProcessDescriptorSets();
 }
 

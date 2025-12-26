@@ -28,7 +28,11 @@ namespace engine {
         TopRight,
         BottomLeft,
         BottomRight,
-        Center
+        Center,
+        Top,
+        Bottom,
+        Left,
+        Right
     };
 
     class TextObject {
@@ -113,28 +117,9 @@ namespace engine {
     public:
         ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, glm::vec3 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
             : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
-            constexpr float kEpsilon = 1e-6f;
-            glm::vec3 right = glm::vec3(transform[0]);
-            glm::vec3 up = glm::vec3(transform[1]);
-            glm::vec3 forward = glm::vec3(transform[2]);
-            glm::vec3 translation = glm::vec3(transform[3]);
-
-            float lenX = glm::length(right);
-            right = (lenX > kEpsilon) ? right / lenX : right;
-            float lenY = glm::length(up);
-            up = (lenY > kEpsilon) ? up / lenY : up;
-            float lenZ = glm::length(forward);
-            forward = (lenZ > kEpsilon) ? forward / lenZ : forward;
-
-            glm::mat4 textTransform(1.0f);
-            textTransform[0] = glm::vec4(right, 0.0f);
-            textTransform[1] = glm::vec4(up, 0.0f);
-            textTransform[2] = glm::vec4(forward, 0.0f);
-            textTransform[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-            TextObject* textObj = new TextObject(uiManager, textTransform, name + "_text", textColor, text, font, Corner::Center);
-            textObj->setVerticalOffsetRatio(0.3f);
-            this->addChild(textObj);
-        }
+                TextObject* textObj = new TextObject(uiManager, glm::mat4(1.0f), name + "_text", textColor, text, font, Corner::Center);
+                this->addChild(textObj);
+            }
 
         void click() {
             if (onClick) {

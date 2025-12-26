@@ -1,4 +1,5 @@
 #include <rind/Player.h>
+#include <rind/Enemy.h>
 
 rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
@@ -72,6 +73,13 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 float yOffset = static_cast<float>(event.mouseMoveEvent.yPos) * mouseSensitivity;
                 rotate(glm::vec3(0.0f, -xOffset, -yOffset));
             }
+        } else if (event.type == engine::InputEvent::Type::MouseButtonPress) {
+            if (event.mouseButtonEvent.button == GLFW_MOUSE_BUTTON_LEFT) {
+                if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)) {
+                    shoot();
+                    lastShotTime = std::chrono::steady_clock::now();
+                }
+            }
         }
     }
     const glm::vec3 currentPress = getPressed();
@@ -86,5 +94,29 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             lastDashTime = now;
         }
         lastPressTime = now;
+    }
+}
+
+void rind::Player::damage(float amount) {
+    setHealth(getHealth() - amount);
+    if (getHealth() <= 0.0f) {
+        std::cout << "Player has died. Game Over." << std::endl;
+    }
+}
+
+void rind::Player::shoot() {
+    std::cout << "Shooting weapon!" << std::endl;
+    std::vector<engine::Collider*> hitColliders = engine::Collider::raycast(
+        getEntityManager(),
+        camera->getWorldPosition(),
+        -glm::normalize(glm::vec3(camera->getWorldTransform()[2])),
+        1000.0f
+    );
+    for (engine::Collider* collider : hitColliders) {
+        rind::Enemy* character = dynamic_cast<rind::Enemy*>(collider->getParent());
+        if (character) {
+            character->damage(25.0f);
+            std::cout << "Hit " << character->getName() << " for 25 damage!" << std::endl;
+        }
     }
 }

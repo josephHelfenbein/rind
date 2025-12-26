@@ -1,15 +1,126 @@
 #include <engine/Collider.h>
 
+engine::Collider::Collider(EntityManager* entityManager, const std::string& name, glm::mat4 transform)
+    : Entity(entityManager, name, "", transform, {}, false) {
+        entityManager->addCollider(this);
+    }
+
+std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance) {
+    std::vector<Collider*> results;
+    glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
+    std::vector<Collider*>& colliders = entityManager->getColliders();
+    for (Collider* collider : colliders) {
+        AABB aabb = collider->getWorldAABB();
+        if (!aabbIntersects(AABB{ glm::min(rayOrigin, rayEnd), glm::max(rayOrigin, rayEnd) }, aabb)) {
+            continue;
+        }
+        ColliderType type = collider->getType();
+        switch (type) {
+            case ColliderType::AABB: {
+                AABBCollider* aabbCollider = static_cast<AABBCollider*>(collider);
+                glm::vec3 invDir = 1.0f / rayDir;
+                glm::vec3 t1 = (aabb.min - rayOrigin) * invDir;
+                glm::vec3 t2 = (aabb.max - rayOrigin) * invDir;
+                glm::vec3 tmin = glm::min(t1, t2);
+                glm::vec3 tmax = glm::max(t1, t2);
+                float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
+                float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
+                if (tNear <= tFar && tFar >= 0.0f && tNear <= maxDistance) {
+                    results.push_back(collider);
+                }
+                break;
+            }
+            case ColliderType::OBB: {
+                OBBCollider* obbCollider = static_cast<OBBCollider*>(collider);
+                glm::mat4 transform = obbCollider->getWorldTransform();
+                glm::vec3 halfSize = obbCollider->getHalfSize();
+                glm::vec3 obbCenter = glm::vec3(transform[3]);
+                glm::vec3 axisX = glm::normalize(glm::vec3(transform[0]));
+                glm::vec3 axisY = glm::normalize(glm::vec3(transform[1]));
+                glm::vec3 axisZ = glm::normalize(glm::vec3(transform[2]));
+                glm::vec3 delta = obbCenter - rayOrigin;
+                glm::vec3 axes[3] = { axisX, axisY, axisZ };
+                float halfSizes[3] = { halfSize.x, halfSize.y, halfSize.z };
+                float tMin = 0.0f;
+                float tMax = maxDistance;
+                bool hit = true;
+                for (int i = 0; i < 3; ++i) {
+                    float e = glm::dot(axes[i], delta);
+                    float f = glm::dot(axes[i], rayDir);
+                    if (std::abs(f) > 1e-6f) {
+                        float t1 = (e - halfSizes[i]) / f;
+                        float t2 = (e + halfSizes[i]) / f;
+                        if (t1 > t2) std::swap(t1, t2);
+                        tMin = glm::max(tMin, t1);
+                        tMax = glm::min(tMax, t2);
+                        if (tMin > tMax) {
+                            hit = false;
+                            break;
+                        }
+                    } else if (-e - halfSizes[i] > 0.0f || -e + halfSizes[i] < 0.0f) {
+                        hit = false;
+                        break;
+                    }
+                }
+                if (hit && tMax >= 0.0f) {
+                    results.push_back(collider);
+                }
+                break;
+            }
+            case ColliderType::ConvexHull: {
+                ConvexHullCollider* hullCollider = static_cast<ConvexHullCollider*>(collider);
+                const std::vector<glm::vec3>& faceAxes = hullCollider->getFaceAxesCached();
+                const std::vector<glm::vec3>& worldVerts = hullCollider->getWorldVerts();
+                glm::vec3 center = hullCollider->getWorldCenter();
+                float tMin = 0.0f;
+                float tMax = maxDistance;
+                bool hit = true;
+                for (const glm::vec3& normal : faceAxes) {
+                    float hullMin = std::numeric_limits<float>::max();
+                    float hullMax = std::numeric_limits<float>::lowest();
+                    for (const glm::vec3& v : worldVerts) {
+                        float proj = glm::dot(v, normal);
+                        hullMin = glm::min(hullMin, proj);
+                        hullMax = glm::max(hullMax, proj);
+                    }
+                    float originProj = glm::dot(rayOrigin, normal);
+                    float dirProj = glm::dot(rayDir, normal);
+                    if (std::abs(dirProj) > 1e-6f) {
+                        float t1 = (hullMin - originProj) / dirProj;
+                        float t2 = (hullMax - originProj) / dirProj;
+                        if (t1 > t2) std::swap(t1, t2);
+                        tMin = glm::max(tMin, t1);
+                        tMax = glm::min(tMax, t2);
+                        if (tMin > tMax) {
+                            hit = false;
+                            break;
+                        }
+                    } else if (originProj < hullMin || originProj > hullMax) {
+                        hit = false;
+                        break;
+                    }
+                }
+                if (hit && tMax >= 0.0f) {
+                    results.push_back(collider);
+                }
+                break;
+            }
+        }
+    }
+    return results;
+}
+
 std::array<glm::vec3, 8> engine::Collider::buildOBBCorners(const glm::mat4& transform, const glm::vec3& half) {
-    std::array<glm::vec3, 8> corners;
-    corners[0] = glm::vec3(transform * glm::vec4(-half.x, -half.y, -half.z, 1.0f));
-    corners[1] = glm::vec3(transform * glm::vec4( half.x, -half.y, -half.z, 1.0f));
-    corners[2] = glm::vec3(transform * glm::vec4( half.x,  half.y, -half.z, 1.0f));
-    corners[3] = glm::vec3(transform * glm::vec4(-half.x,  half.y, -half.z, 1.0f));
-    corners[4] = glm::vec3(transform * glm::vec4(-half.x, -half.y,  half.z, 1.0f));
-    corners[5] = glm::vec3(transform * glm::vec4( half.x, -half.y,  half.z, 1.0f));
-    corners[6] = glm::vec3(transform * glm::vec4( half.x,  half.y,  half.z, 1.0f));
-    corners[7] = glm::vec3(transform * glm::vec4(-half.x,  half.y,  half.z, 1.0f));
+    std::array<glm::vec3, 8> corners = {
+        glm::vec3(transform * glm::vec4(-half.x, -half.y, -half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4( half.x, -half.y, -half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4( half.x,  half.y, -half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4(-half.x,  half.y, -half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4(-half.x, -half.y,  half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4( half.x, -half.y,  half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4( half.x,  half.y,  half.z, 1.0f)),
+        glm::vec3(transform * glm::vec4(-half.x,  half.y,  half.z, 1.0f))
+    };
     return corners;
 }
 
@@ -35,15 +146,16 @@ std::pair<float, float> engine::Collider::projectOntoAxis(const std::array<glm::
 }
 
 std::array<glm::vec3, 8> engine::Collider::getCornersFromAABB(const AABB& aabb) {
-    std::array<glm::vec3, 8> corners;
-    corners[0] = glm::vec3(aabb.min.x, aabb.min.y, aabb.min.z);
-    corners[1] = glm::vec3(aabb.max.x, aabb.min.y, aabb.min.z);
-    corners[2] = glm::vec3(aabb.max.x, aabb.max.y, aabb.min.z);
-    corners[3] = glm::vec3(aabb.min.x, aabb.max.y, aabb.min.z);
-    corners[4] = glm::vec3(aabb.min.x, aabb.min.y, aabb.max.z);
-    corners[5] = glm::vec3(aabb.max.x, aabb.min.y, aabb.max.z);
-    corners[6] = glm::vec3(aabb.max.x, aabb.max.y, aabb.max.z);
-    corners[7] = glm::vec3(aabb.min.x, aabb.max.y, aabb.max.z);
+    std::array<glm::vec3, 8> corners = {
+        glm::vec3(aabb.min.x, aabb.min.y, aabb.min.z),
+        glm::vec3(aabb.max.x, aabb.min.y, aabb.min.z),
+        glm::vec3(aabb.max.x, aabb.max.y, aabb.min.z),
+        glm::vec3(aabb.min.x, aabb.max.y, aabb.min.z),
+        glm::vec3(aabb.min.x, aabb.min.y, aabb.max.z),
+        glm::vec3(aabb.max.x, aabb.min.y, aabb.max.z),
+        glm::vec3(aabb.max.x, aabb.max.y, aabb.max.z),
+        glm::vec3(aabb.min.x, aabb.max.y, aabb.max.z)
+    };
     return corners;
 }
 

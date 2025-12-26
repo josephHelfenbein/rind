@@ -8,6 +8,7 @@
 #include <engine/io.h>
 
 #include <rind/Player.h>
+#include <rind/Enemy.h>
 
 static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
     // Title screen UI setup
@@ -15,7 +16,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
     engine::SceneManager* sceneManager = renderer->getSceneManager();
     engine::TextObject* titleText = new engine::TextObject(
         uiManager,
-        glm::mat4(1.0f),
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 1.0f)),
         "TitleText",
         glm::vec3(1.0f, 1.0f, 1.0f),
         "Rind",
@@ -24,7 +25,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
     );
     engine::ButtonObject* startButton = new engine::ButtonObject(
         uiManager,
-        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -100.0f, 0.0f)), glm::vec3(0.3, 0.1, 1.0)),
+        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -100.0f, 0.0f)), glm::vec3(0.15, 0.05, 1.0)),
         "StartButton",
         glm::vec3(0.5f, 0.5f, 0.6f),
         glm::vec3(1.0f, 1.0f, 1.0f),
@@ -44,6 +45,15 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     engine::ModelManager* modelManager = renderer->getModelManager();
     engine::SceneManager* sceneManager = renderer->getSceneManager();
     engine::EntityManager* entityManager = renderer->getEntityManager();
+    engine::UIManager* uiManager = renderer->getUIManager();
+    engine::UIObject* crosshair = new engine::UIObject(
+        uiManager,
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)),
+        "crosshair",
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        "ui_crosshair",
+        engine::Corner::Center
+    );
     std::vector<std::string> metalMaterial = {
         "materials_metal_albedo",
         "materials_metal_metallic",
@@ -272,6 +282,14 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f)),
         {}
     );
+    rind::Enemy* enemy1 = new rind::Enemy(
+        entityManager,
+        "enemy1",
+        "gbuffer",
+        glm::translate(glm::mat4(1.0f), glm::vec3(8.0f, 5.0f, 0.0f)),
+        {}
+    );
+    enemy1->setModel(modelManager->getModel("cube"));
     renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);
 };

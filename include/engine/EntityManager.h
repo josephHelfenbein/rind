@@ -13,6 +13,7 @@
 namespace engine {
     class Camera;
     class Light;
+    class Collider;
     class Entity {
     public:
         Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
@@ -127,10 +128,14 @@ namespace engine {
         void addLight(Light* light) {
             lights.push_back(light);
         }
+        void addCollider(Collider* collider) {
+            colliders.push_back(collider);
+        }
         const std::vector<Light*>& getLights() const { return lights; }
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
+        std::vector<Collider*>& getColliders() { return colliders; }
         void createAllShadowMaps();
         void renderShadows(VkCommandBuffer commandBuffer);
 
@@ -145,6 +150,7 @@ namespace engine {
         std::map<std::string, Entity*> entities;
         std::vector<Entity*> rootEntities;
         std::vector<Entity*> movableEntities;
+        std::vector<Collider*> colliders;
         std::vector<Light*> lights;
 
         std::vector<VkBuffer> lightsBuffers;
