@@ -5,17 +5,11 @@
 
 engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
     : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover) {
-#ifdef __APPLE__
-        this->transform = glm::scale(this->transform, glm::vec3(2.0f, 2.0f, 1.0f));
-#endif
         uiManager->addObject(this);
     }
 
 engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string text, std::string font, Corner anchorCorner)
     : uiManager(uiManager), name(std::move(name)), tint(tint), text(std::move(text)), font(std::move(font)), transform(transform), anchorCorner(anchorCorner) {
-#ifdef __APPLE__
-        this->transform = glm::scale(this->transform, glm::vec3(2.0f, 2.0f, 1.0f));
-#endif
         uiManager->addObject(this);
     }
 
@@ -433,7 +427,13 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
     std::set<GraphicsShader*>& shaders = node.shaders;
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
     constexpr glm::vec2 designResolution(800.0f, 600.0f);
-    float layoutScale = std::max(renderer->getUIScale(), 0.0001f);
+    float contentScale = 1.0f;
+#ifdef __APPLE__
+    float xscale = 1.0f, yscale = 1.0f;
+    glfwGetWindowContentScale(renderer->getWindow(), &xscale, &yscale);
+    contentScale = std::max(xscale, yscale);
+#endif
+    float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
     glm::vec2 canvasSize = designResolution * layoutScale;
     glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
     glm::mat4 pixelToNdc(1.0f);
@@ -584,11 +584,12 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
 engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, double xpos, double ypos) {
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
     constexpr glm::vec2 designResolution(800.0f, 600.0f);
-    float layoutScale = std::max(renderer->getUIScale(), 0.0001f);
-    glm::vec2 canvasSize = designResolution * layoutScale;
-    glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
     float xscale = 1.0f, yscale = 1.0f;
     glfwGetWindowContentScale(window, &xscale, &yscale);
+    float contentScale = std::max(xscale, yscale);
+    float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
+    glm::vec2 canvasSize = designResolution * layoutScale;
+    glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
     glm::vec2 mousePosF(static_cast<float>(xpos) * std::max(xscale, 1.0f), static_cast<float>(ypos) * std::max(yscale, 1.0f));
     mousePosF.y = swapExtentF.y - mousePosF.y;
 
