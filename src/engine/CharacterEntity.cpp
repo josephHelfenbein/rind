@@ -179,15 +179,19 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     }
 }
 
-void engine::CharacterEntity::move(const glm::vec3& delta) {
+void engine::CharacterEntity::move(const glm::vec3& delta, bool remap) {
     glm::vec3 remappedDelta = delta;
-    remapCoord(remappedDelta);
+    if (remap) {
+        remapCoord(remappedDelta);
+    }
     pressed += remappedDelta;
 }
 
-void engine::CharacterEntity::stopMove(const glm::vec3& delta) {
+void engine::CharacterEntity::stopMove(const glm::vec3& delta, bool remap) {
     glm::vec3 remappedDelta = delta;
-    remapCoord(remappedDelta);
+    if (remap) {
+        remapCoord(remappedDelta);
+    }
     pressed -= remappedDelta;
     if (glm::length(pressed) < 1e-6f) {
         pressed = glm::vec3(0.0f);

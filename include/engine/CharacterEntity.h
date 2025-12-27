@@ -13,8 +13,8 @@ namespace engine {
         void updateMovement(float deltaTime);
         virtual void damage(float amount) { health -= amount; }
 
-        void move(const glm::vec3& delta);
-        void stopMove(const glm::vec3& delta);
+        void move(const glm::vec3& delta, bool remap = true);
+        void stopMove(const glm::vec3& delta, bool remap = true);
         void jump(float strength);
         void rotate(const glm::vec3& delta);
         void dash(const glm::vec3& direction, float strength);
@@ -25,6 +25,7 @@ namespace engine {
         const glm::vec3& getPressed() const { return pressed; }
 
         void setCollider(OBBCollider* collider) { this->collider = collider; }
+        OBBCollider* getCollider() const { return collider; }
 
         Collider::Collision willCollide(const glm::mat4& deltaTransform);
     private:
