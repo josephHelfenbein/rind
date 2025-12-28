@@ -931,6 +931,11 @@ void engine::Renderer::recreateSwapChain() {
     ensureFallback2DTexture();
     ensureFallbackShadowCubeTexture();
     createPostProcessDescriptorSets();
+    GraphicsShader* particleShader = shaderManager->getGraphicsShader("particle");
+    if (particleShader && particleShader->descriptorPool != VK_NULL_HANDLE) {
+        vkResetDescriptorPool(device, particleShader->descriptorPool, 0);
+        particleManager->createParticleDescriptorSets();
+    }
 }
 
 void engine::Renderer::refreshDescriptorSets() {

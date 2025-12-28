@@ -123,7 +123,7 @@ void rind::Player::shoot() {
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             glm::vec4(1.0f, 0.5f, 0.0f, 1.0f),
             reflectedDir * 15.0f,
-            15,
+            20,
             5.0f
         );
         rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent());

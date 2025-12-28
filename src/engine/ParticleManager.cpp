@@ -310,8 +310,8 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
     ParticlePC pushConstants = {
         .viewProj = camera->getProjectionMatrix() * camera->getViewMatrix(),
         .screenSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
-        .particleSize = 0.06f,
-        .streakScale = 0.004f
+        .particleSize = 0.04f,
+        .streakScale = 0.001f
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);
     vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(particles.size()), 0, 0);
