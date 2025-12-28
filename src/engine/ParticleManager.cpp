@@ -1,0 +1,325 @@
+#include <engine/ParticleManager.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <engine/PushConstants.h>
+#include <engine/Camera.h>
+
+engine::Particle::Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime)
+   : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime) {
+        particleManager->registerParticle(this);
+    }
+
+engine::Particle::~Particle() {
+    particleManager->unregisterParticle(this);
+}
+
+void engine::Particle::update(float deltaTime) {
+    age += deltaTime;
+    if (age >= lifetime) {
+        delete this;
+        return;
+    }
+    velocity.y -= gravity * deltaTime; // gravity
+    glm::vec3 currentPos = glm::vec3(transform[3]);
+    glm::vec3 newPos = currentPos + velocity * deltaTime;
+    if (age > 0.15f) {
+        Collider::Collision collision = checkCollision(newPos);
+        if (collision.other) {
+            glm::vec3 normal = glm::normalize(collision.mtv.normal);
+            velocity = velocity - 2.0f * glm::dot(velocity, normal) * normal;
+            velocity *= 0.5f;
+            newPos = currentPos + velocity * deltaTime;
+            if (checkCollision(newPos).other) {
+                delete this;
+                return;
+            }
+        }
+    }
+    if (glm::length(velocity) < 0.1f) {
+        delete this;
+        return;
+    }
+    transform[3] = glm::vec4(newPos, 1.0f);
+}
+
+engine::Collider::Collision engine::Particle::checkCollision(const glm::vec3& position) {
+    std::vector<engine::Collider*>& colliders = entityManager->getColliders();
+    engine::AABB particleAABB = {
+        .min = position - glm::vec3(0.01f),
+        .max = position + glm::vec3(0.01f)
+    };
+    for (const auto& collider : colliders) {
+        engine::AABB otherAABB = collider->getWorldAABB();
+        if (!engine::Collider::aabbIntersects(particleAABB, otherAABB, 0.0f)) {
+            continue;
+        }
+        Collider::ColliderType type = collider->getType();
+        bool collides = false;
+        glm::vec3 normal(0.0f);
+        switch (type) {
+            case Collider::ColliderType::AABB: {
+                collides = true;
+                glm::vec3 center = (otherAABB.min + otherAABB.max) * 0.5f;
+                glm::vec3 toPoint = position - center;
+                glm::vec3 halfSize = (otherAABB.max - otherAABB.min) * 0.5f;
+                glm::vec3 normalized = toPoint / halfSize;
+                float absX = std::abs(normalized.x);
+                float absY = std::abs(normalized.y);
+                float absZ = std::abs(normalized.z);
+                if (absX >= absY && absX >= absZ) {
+                    normal = glm::vec3(normalized.x > 0 ? 1.0f : -1.0f, 0.0f, 0.0f);
+                } else if (absY >= absX && absY >= absZ) {
+                    normal = glm::vec3(0.0f, normalized.y > 0 ? 1.0f : -1.0f, 0.0f);
+                } else {
+                    normal = glm::vec3(0.0f, 0.0f, normalized.z > 0 ? 1.0f : -1.0f);
+                }
+                break;
+            }
+            case Collider::ColliderType::OBB: {
+                OBBCollider* obb = static_cast<OBBCollider*>(collider);
+                glm::mat4 worldTransform = obb->getWorldTransform();
+                glm::vec3 obbCenter = glm::vec3(worldTransform[3]);
+                glm::vec3 halfSize = obb->getHalfSize();
+                glm::vec3 axisX = glm::normalize(glm::vec3(worldTransform[0]));
+                glm::vec3 axisY = glm::normalize(glm::vec3(worldTransform[1]));
+                glm::vec3 axisZ = glm::normalize(glm::vec3(worldTransform[2]));
+                glm::vec3 delta = position - obbCenter;
+                float projX = glm::dot(delta, axisX);
+                float projY = glm::dot(delta, axisY);
+                float projZ = glm::dot(delta, axisZ);
+                if (std::abs(projX) <= halfSize.x && std::abs(projY) <= halfSize.y && std::abs(projZ) <= halfSize.z) {
+                    collides = true;
+                    float distX = halfSize.x - std::abs(projX);
+                    float distY = halfSize.y - std::abs(projY);
+                    float distZ = halfSize.z - std::abs(projZ);
+                    if (distX <= distY && distX <= distZ) {
+                        normal = axisX * (projX > 0 ? 1.0f : -1.0f);
+                    } else if (distY <= distX && distY <= distZ) {
+                        normal = axisY * (projY > 0 ? 1.0f : -1.0f);
+                    } else {
+                        normal = axisZ * (projZ > 0 ? 1.0f : -1.0f);
+                    }
+                }
+                break;
+            }
+            case Collider::ColliderType::ConvexHull: {
+                ConvexHullCollider* hull = static_cast<ConvexHullCollider*>(collider);
+                const std::vector<glm::vec3>& faceAxes = hull->getFaceAxesCached();
+                const std::vector<glm::vec3>& worldVerts = hull->getWorldVerts();
+                bool inside = true;
+                float minDist = std::numeric_limits<float>::max();
+                glm::vec3 closestNormal(0.0f);
+                for (const glm::vec3& faceNormal : faceAxes) {
+                    float hullMax = std::numeric_limits<float>::lowest();
+                    for (const glm::vec3& v : worldVerts) {
+                        hullMax = glm::max(hullMax, glm::dot(v, faceNormal));
+                    }
+                    float pointProj = glm::dot(position, faceNormal);
+                    float dist = hullMax - pointProj;
+                    if (dist < 0) {
+                        inside = false;
+                        break;
+                    }
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestNormal = faceNormal;
+                    }
+                }
+                if (inside) {
+                    collides = true;
+                    normal = closestNormal;
+                }
+                break;
+            }
+        }
+        if (collides) {
+            Collider::Collision collision = {
+                .other = collider,
+                .mtv = {.normal = normal, .penetrationDepth = 0.0f},
+                .worldHitPoint = position
+            };
+            return collision;
+        }
+    }
+    return Collider::Collision{};
+}
+
+engine::ParticleManager::ParticleManager(Renderer* renderer)
+    : renderer(renderer) {
+        renderer->registerParticleManager(this);
+    }
+
+void engine::ParticleManager::init() {
+    VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
+    uint32_t frames = renderer->getMaxFramesInFlight();
+    particleBuffers.resize(frames);
+    particleBufferMemory.resize(frames);
+    for (uint32_t i = 0; i < frames; ++i) {
+        std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
+            bufferSize,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+    }
+    createParticleDescriptorSets();
+}
+
+engine::ParticleManager::~ParticleManager() {
+    for (size_t i = 0; i < particleBuffers.size(); ++i) {
+        vkDestroyBuffer(renderer->getDevice(), particleBuffers[i], nullptr);
+        vkFreeMemory(renderer->getDevice(), particleBufferMemory[i], nullptr);
+    }
+    std::vector<Particle*> particlesCopy = particles;
+    particles.clear();
+    for (auto particle : particlesCopy) {
+        delete particle;
+    }
+}
+
+void engine::ParticleManager::createParticleDescriptorSets() {
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
+    VkDevice device = renderer->getDevice();
+    int frames = renderer->getMaxFramesInFlight();
+    
+    VkImageView depthImageView = renderer->getPassImageView("gbuffer", "Depth");
+    if (depthImageView == VK_NULL_HANDLE) {
+        throw std::runtime_error("Failed to get gbuffer depth image view for particles!");
+    }
+    
+    std::vector<VkDescriptorSetLayout> layouts(frames, shader->descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = shader->descriptorPool,
+        .descriptorSetCount = static_cast<uint32_t>(frames),
+        .pSetLayouts = layouts.data()
+    };
+    descriptorSets.resize(frames);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate particle descriptor sets!");
+    }
+    
+    for (int i = 0; i < frames; ++i) {
+        VkDescriptorBufferInfo bufferInfo = {
+            .buffer = particleBuffers[i],
+            .offset = 0,
+            .range = VK_WHOLE_SIZE
+        };
+        VkDescriptorImageInfo depthImageInfo = {
+            .sampler = VK_NULL_HANDLE,
+            .imageView = depthImageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        };
+        VkDescriptorImageInfo samplerInfo = {
+            .sampler = renderer->getMainTextureSampler(),
+            .imageView = VK_NULL_HANDLE,
+            .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED
+        };
+        std::array<VkWriteDescriptorSet, 3> descriptorWrites = {{
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &bufferInfo
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                .pImageInfo = &depthImageInfo
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSets[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .pImageInfo = &samplerInfo
+            }
+        }};
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }
+}
+
+void engine::ParticleManager::burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime) {
+    glm::vec3 basePos = glm::vec3(transform[3]);
+    glm::vec3 velDir = glm::length(velocity) > 0.001f ? glm::normalize(velocity) : glm::vec3(0.0f, 1.0f, 0.0f);
+    glm::vec3 spawnOffset = velDir * 0.2f + glm::vec3(0.0f, 0.15f, 0.0f);
+    glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), basePos + spawnOffset);
+    float velLength = glm::length(velocity);
+    for (int i = 0; i < count; ++i) {
+        float offsetX = dist(rng) * 0.2f * velLength;
+        float offsetY = dist(rng) * 0.2f * velLength;
+        float offsetZ = dist(rng) * 0.2f * velLength;
+        glm::vec3 velocityOffset = glm::vec3(offsetX, offsetY, offsetZ);
+        new Particle(this, renderer->getEntityManager(), offsetTransform, color, velocity + velocityOffset, lifetime);
+    }
+}
+
+void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
+    VkDevice device = renderer->getDevice();
+    if (particles.size() > maxParticles) {
+        vkDeviceWaitIdle(device);
+        maxParticles = std::max(maxParticles * 2, static_cast<uint32_t>(particles.size()));
+        for (size_t i = 0; i < particleBuffers.size(); ++i) {
+            vkDestroyBuffer(device, particleBuffers[i], nullptr);
+            vkFreeMemory(device, particleBufferMemory[i], nullptr);
+        }
+        particleBuffers.clear();
+        particleBufferMemory.clear();
+        particleBuffers.resize(renderer->getMaxFramesInFlight());
+        particleBufferMemory.resize(renderer->getMaxFramesInFlight());
+        for (size_t i = 0; i < particleBuffers.size(); ++i) {
+            VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
+            std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
+                bufferSize,
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            );
+        }
+        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
+        vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
+        createParticleDescriptorSets();
+    }
+    std::vector<ParticleGPU> gpuData;
+    gpuData.reserve(particles.size());
+    for (const auto& particle : particles) {
+        gpuData.push_back(particle->getGPUData());
+    }
+    if (gpuData.empty()) return;
+    void* data;
+    vkMapMemory(device, particleBufferMemory[currentFrame], 0, gpuData.size() * sizeof(ParticleGPU), 0, &data);
+    memcpy(data, gpuData.data(), gpuData.size() * sizeof(ParticleGPU));
+    vkUnmapMemory(device, particleBufferMemory[currentFrame]);
+}
+
+void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    if (particles.empty()) return;
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+    updateParticleBuffer(currentFrame);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+    Camera* camera = renderer->getEntityManager()->getCamera();
+    if (!camera) return;
+    VkExtent2D extent = renderer->getSwapChainExtent();
+    ParticlePC pushConstants = {
+        .viewProj = camera->getProjectionMatrix() * camera->getViewMatrix(),
+        .screenSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
+        .particleSize = 0.06f,
+        .streakScale = 0.004f
+    };
+    vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);
+    vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(particles.size()), 0, 0);
+}
+
+void engine::ParticleManager::updateAll(float deltaTime) {
+    std::vector<Particle*> particlesCopy = particles;
+    for (auto particle : particlesCopy) {
+        particle->update(deltaTime);
+    }
+}

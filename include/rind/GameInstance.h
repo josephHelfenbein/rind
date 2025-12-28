@@ -9,6 +9,7 @@
 #include <engine/InputManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
+#include <engine/ParticleManager.h>
 
 namespace rind {
     class GameInstance {
@@ -25,5 +26,6 @@ namespace rind {
         std::unique_ptr<engine::InputManager> inputManager;
         std::unique_ptr<engine::UIManager> uiManager;
         std::unique_ptr<engine::ModelManager> modelManager;
+        std::unique_ptr<engine::ParticleManager> particleManager;
     };
 };

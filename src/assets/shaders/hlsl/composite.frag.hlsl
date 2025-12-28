@@ -15,6 +15,9 @@ Texture2D<float4> textTexture;
 Texture2D<float4> ssrTexture;
 
 [[vk::binding(4)]]
+Texture2D<float4> particleTexture;
+
+[[vk::binding(5)]]
 SamplerState sampleSampler;
 
 float3 ACESFilm(float3 x) {
@@ -31,8 +34,9 @@ float4 main(VSOutput input) : SV_Target {
     float4 uiColor = uiTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 textColor = textTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 ssrColor = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
 
-    float3 tonemapped = ACESFilm(sceneColor.rgb + ssrColor.rgb * ssrColor.a);
+    float3 tonemapped = ACESFilm(sceneColor.rgb + ssrColor.rgb * ssrColor.a + particleColor.rgb * particleColor.a);
     float4 sceneUI = lerp(float4(tonemapped, sceneColor.a), uiColor, uiColor.a);
     return lerp(sceneUI, textColor, textColor.a);
 }

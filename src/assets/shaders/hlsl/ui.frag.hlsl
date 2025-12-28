@@ -12,6 +12,7 @@ struct PushConstants {
     float3 tint;
     float4x4 model;
 };
+
 [[vk::push_constant]] PushConstants pc;
 
 float4 main(VSOutput input) : SV_Target {

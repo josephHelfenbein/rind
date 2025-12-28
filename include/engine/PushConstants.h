@@ -46,4 +46,11 @@ namespace engine {
         PointLight pointLights[64];
         glm::uvec4 numPointLights;
     };
+
+    struct ParticlePC {
+        glm::mat4 viewProj;
+        glm::vec2 screenSize;
+        float particleSize;
+        float streakScale;
+    };
 }

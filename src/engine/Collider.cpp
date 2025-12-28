@@ -5,8 +5,14 @@ engine::Collider::Collider(EntityManager* entityManager, const std::string& name
         entityManager->addCollider(this);
     }
 
-std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance) {
-    std::vector<Collider*> results;
+engine::Collider::~Collider() {
+    if (getEntityManager()) {
+        getEntityManager()->removeCollider(this);
+    }
+}
+
+std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, bool sortByDistance) {
+    std::vector<Collision> results;
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
     std::vector<Collider*>& colliders = entityManager->getColliders();
     for (Collider* collider : colliders) {
@@ -26,7 +32,20 @@ std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityMa
                 float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
                 float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
                 if (tNear <= tFar && tFar >= 0.0f && tNear <= maxDistance) {
-                    results.push_back(collider);
+                    float tHit = tNear >= 0.0f ? tNear : tFar;
+                    glm::vec3 hitPoint = rayOrigin + rayDir * tHit;
+                    glm::vec3 normal(0.0f);
+                    if (tNear >= 0.0f) {
+                        if (tmin.x == tNear) normal = glm::vec3(rayDir.x > 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
+                        else if (tmin.y == tNear) normal = glm::vec3(0.0f, rayDir.y > 0 ? -1.0f : 1.0f, 0.0f);
+                        else normal = glm::vec3(0.0f, 0.0f, rayDir.z > 0 ? -1.0f : 1.0f);
+                    }
+                    Collision collision = {
+                        .other = collider,
+                        .mtv = { .normal = normal },
+                        .worldHitPoint = hitPoint
+                    };
+                    results.push_back(collision);
                 }
                 break;
             }
@@ -44,14 +63,21 @@ std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityMa
                 float tMin = 0.0f;
                 float tMax = maxDistance;
                 bool hit = true;
+                int hitAxis = -1;
+                float hitAxisDir = 0.0f;
                 for (int i = 0; i < 3; ++i) {
                     float e = glm::dot(axes[i], delta);
                     float f = glm::dot(axes[i], rayDir);
                     if (std::abs(f) > 1e-6f) {
                         float t1 = (e - halfSizes[i]) / f;
                         float t2 = (e + halfSizes[i]) / f;
-                        if (t1 > t2) std::swap(t1, t2);
-                        tMin = glm::max(tMin, t1);
+                        float sign = 1.0f;
+                        if (t1 > t2) { std::swap(t1, t2); sign = -1.0f; }
+                        if (t1 > tMin) {
+                            tMin = t1;
+                            hitAxis = i;
+                            hitAxisDir = -sign * (f > 0 ? 1.0f : -1.0f);
+                        }
                         tMax = glm::min(tMax, t2);
                         if (tMin > tMax) {
                             hit = false;
@@ -63,7 +89,13 @@ std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityMa
                     }
                 }
                 if (hit && tMax >= 0.0f) {
-                    results.push_back(collider);
+                    glm::vec3 normal = hitAxis >= 0 ? axes[hitAxis] * hitAxisDir : glm::vec3(0.0f);
+                    Collision collision = {
+                        .other = collider,
+                        .mtv = { .normal = normal },
+                        .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
+                    };
+                    results.push_back(collision);
                 }
                 break;
             }
@@ -75,6 +107,7 @@ std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityMa
                 float tMin = 0.0f;
                 float tMax = maxDistance;
                 bool hit = true;
+                glm::vec3 hitNormal(0.0f);
                 for (const glm::vec3& normal : faceAxes) {
                     float hullMin = std::numeric_limits<float>::max();
                     float hullMax = std::numeric_limits<float>::lowest();
@@ -89,7 +122,10 @@ std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityMa
                         float t1 = (hullMin - originProj) / dirProj;
                         float t2 = (hullMax - originProj) / dirProj;
                         if (t1 > t2) std::swap(t1, t2);
-                        tMin = glm::max(tMin, t1);
+                        if (t1 > tMin) {
+                            tMin = t1;
+                            hitNormal = dirProj > 0 ? -normal : normal;
+                        }
                         tMax = glm::min(tMax, t2);
                         if (tMin > tMax) {
                             hit = false;
@@ -101,11 +137,23 @@ std::vector<engine::Collider*> engine::Collider::raycast(EntityManager* entityMa
                     }
                 }
                 if (hit && tMax >= 0.0f) {
-                    results.push_back(collider);
+                    Collision collision = {
+                        .other = collider,
+                        .mtv = { .normal = hitNormal },
+                        .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
+                    };
+                    results.push_back(collision);
                 }
                 break;
             }
         }
+    }
+    if (sortByDistance) {
+        std::sort(results.begin(), results.end(), [&rayOrigin](const Collision& a, const Collision& b) {
+            float distA = glm::length(a.worldHitPoint - rayOrigin);
+            float distB = glm::length(b.worldHitPoint - rayOrigin);
+            return distA < distB;
+        });
     }
     return results;
 }

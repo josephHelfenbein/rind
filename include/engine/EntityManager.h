@@ -131,6 +131,9 @@ namespace engine {
         void addCollider(Collider* collider) {
             colliders.push_back(collider);
         }
+        void removeCollider(Collider* collider) {
+            colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
+        }
         const std::vector<Light*>& getLights() const { return lights; }
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
@@ -144,6 +147,11 @@ namespace engine {
         void updateAll(float deltaTime);
         void renderEntities(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t currentFrame, bool DEBUG_RENDER_LOGS = false);
 
+        void markForDeletion(Entity* entity) {
+            pendingDeletions.push_back(entity);
+        }
+        void processPendingDeletions();
+
     private:
         engine::Renderer* renderer;
 
@@ -152,6 +160,7 @@ namespace engine {
         std::vector<Entity*> movableEntities;
         std::vector<Collider*> colliders;
         std::vector<Light*> lights;
+        std::vector<Entity*> pendingDeletions;
 
         std::vector<VkBuffer> lightsBuffers;
         std::vector<VkDeviceMemory> lightsBuffersMemory;

@@ -319,6 +319,7 @@ rind::GameInstance::GameInstance() {
     std::string fontDirectory = "src/assets/fonts/";
     uiManager = std::make_unique<engine::UIManager>(renderer.get(), fontDirectory);
     modelManager = std::make_unique<engine::ModelManager>(renderer.get(), "src/assets/models/");
+    particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
 }
 
 void rind::GameInstance::run() {

@@ -1,5 +1,6 @@
 #include <rind/Player.h>
 #include <rind/Enemy.h>
+#include <engine/ParticleManager.h>
 
 rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
@@ -106,17 +107,30 @@ void rind::Player::damage(float amount) {
 
 void rind::Player::shoot() {
     std::cout << "Shooting weapon!" << std::endl;
-    std::vector<engine::Collider*> hitColliders = engine::Collider::raycast(
+    glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
         getEntityManager(),
         camera->getWorldPosition(),
-        -glm::normalize(glm::vec3(camera->getWorldTransform()[2])),
-        1000.0f
+        rayDir,
+        1000.0f,
+        true
     );
-    for (engine::Collider* collider : hitColliders) {
-        rind::Enemy* character = dynamic_cast<rind::Enemy*>(collider->getParent());
+    for (engine::Collider::Collision& collision : hits) {
+        if (collision.other->getParent() == this) continue; // ignore self hits
+        glm::vec3 normal = glm::normalize(collision.mtv.normal);
+        glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
+        getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            glm::vec4(1.0f, 0.5f, 0.0f, 1.0f),
+            reflectedDir * 15.0f,
+            15,
+            5.0f
+        );
+        rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent());
         if (character) {
             character->damage(25.0f);
             std::cout << "Hit " << character->getName() << " for 25 damage!" << std::endl;
         }
+        break;
     }
 }

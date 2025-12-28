@@ -144,14 +144,14 @@ void rind::Enemy::update(float deltaTime) {
 
 void rind::Enemy::shoot() {
     std::cout << "Shooting weapon!" << std::endl;
-    std::vector<engine::Collider*> hitColliders = engine::Collider::raycast(
+    std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
         getEntityManager(),
         getWorldPosition(),
         -glm::normalize(glm::vec3(getWorldTransform()[2])),
         1000.0f
     );
-    for (engine::Collider* collider : hitColliders) {
-        rind::Player* character = dynamic_cast<rind::Player*>(collider->getParent());
+    for (engine::Collider::Collision& collision : hits) {
+        rind::Player* character = dynamic_cast<rind::Player*>(collision.other->getParent());
         if (character) {
             character->damage(25.0f);
             std::cout << "Hit " << character->getName() << " for 25 damage!" << std::endl;
@@ -238,6 +238,6 @@ void rind::Enemy::damage(float amount) {
     setHealth(getHealth() - amount);
     if (getHealth() <= 0.0f) {
         std::cout<< "Enemy " << getName() << " has died." << std::endl;
-        delete this;
+        getEntityManager()->markForDeletion(this);
     }
 }

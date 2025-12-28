@@ -34,6 +34,7 @@ namespace engine {
         void registerShaderManager(class ShaderManager* shaderManager) { this->shaderManager = shaderManager; }
         void registerSceneManager(class SceneManager* sceneManager) { this->sceneManager = sceneManager; }
         void registerModelManager(class ModelManager* modelManager) { this->modelManager = modelManager; }
+        void registerParticleManager(class ParticleManager* particleManager) { this->particleManager = particleManager; }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -41,6 +42,7 @@ namespace engine {
         class ShaderManager* getShaderManager() { return shaderManager; }
         class SceneManager* getSceneManager() { return sceneManager; }
         class ModelManager* getModelManager() { return modelManager; }
+        class ParticleManager* getParticleManager() { return particleManager; }
 
         void toggleLockCursor(bool lock);
 
@@ -130,6 +132,7 @@ namespace engine {
         void ensureFallbackShadowCubeTexture();
         void ensureFallback2DTexture();
         void refreshDescriptorSets();
+        VkImageView getPassImageView(const std::string& shaderName, const std::string& attachmentName);
 
         VkDevice getDevice() const { return device; }
         uint32_t getFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
@@ -228,6 +231,7 @@ namespace engine {
         class ShaderManager* shaderManager;
         class SceneManager* sceneManager;
         class ModelManager* modelManager;
+        class ParticleManager* particleManager;
 
         UIObject* hoveredObject = nullptr;
 

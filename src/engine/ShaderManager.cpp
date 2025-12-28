@@ -299,6 +299,20 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         ssrPass->images = images;
     }
 
+    auto particlePass = std::make_shared<PassInfo>();
+    particlePass->name = "ParticlePass";
+    particlePass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "ParticleColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        particlePass->images = images;
+    }
+
     // UI Pass
     auto uiPass = std::make_shared<PassInfo>();
     uiPass->name = "UIPass";
@@ -381,6 +395,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .poolMultiplier = 512,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 5,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 1
+                },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -496,6 +513,41 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shaders.push_back(shader);
     }
 
+    // Particle
+    {
+        GraphicsShader shader = {
+            .name = "particle",
+            .vertex = { shaderPath("particle.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("particle.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .poolMultiplier = 1,
+                .vertexBitBindings = 1,
+                .vertexDescriptorCounts = {
+                    1
+                },
+                .vertexDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                },
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = particlePass,
+                .colorAttachmentCount = 1,
+                .getVertexInputDescriptions = nullptr
+            }
+        };
+        shader.config.setPushConstant<ParticlePC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
     // UI
     {
         GraphicsShader shader = {
@@ -506,6 +558,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .poolMultiplier = 64,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
@@ -547,6 +602,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .poolMultiplier = 256,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
@@ -586,8 +644,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 5,
+                .fragmentBitBindings = 6,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 1, 1
+                },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -603,7 +665,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 0, "lighting", "SceneColor" },
                     { 1, "ui", "UIColor" },
                     { 2, "text", "TextColor" },
-                    { 3, "ssr", "SceneColor"}
+                    { 3, "ssr", "SceneColor"},
+                    { 4, "particle", "ParticleColor"}
                 }
             }
         };
@@ -626,6 +689,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     pushNode(false, gbufferPass.get(), { "gbuffer" });
     pushNode(true, lightingPass.get(), { "lighting" });
     pushNode(true, ssrPass.get(), { "ssr" });
+    pushNode(true, particlePass.get(), { "particle" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });
@@ -675,9 +739,28 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
     }
     const int vertexBindings = std::max(config.vertexBitBindings, 0);
     const int fragmentBindings = std::max(config.fragmentBitBindings, 0);
-    const size_t expectedBuffers = static_cast<size_t>(vertexBindings) * MAX_FRAMES_IN_FLIGHT;
-    if (buffers.size() < expectedBuffers && vertexBindings > 0) {
-        throw std::runtime_error("Insufficient uniform buffers for descriptor set creation!");
+    auto getVertexType = [&](int index) {
+        if (!config.vertexDescriptorTypes.empty() && static_cast<size_t>(index) < config.vertexDescriptorTypes.size()) {
+            return config.vertexDescriptorTypes[static_cast<size_t>(index)];
+        }
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    };
+    auto getVertexCount = [&](int index) {
+        if (!config.vertexDescriptorCounts.empty() && config.vertexDescriptorCounts.size() == static_cast<size_t>(vertexBindings)) {
+            return std::max(config.vertexDescriptorCounts[static_cast<size_t>(index)], 1u);
+        }
+        return 1u;
+    };
+    size_t expectedBuffers = 0;
+    for (int i = 0; i < vertexBindings; ++i) {
+        VkDescriptorType type = getVertexType(i);
+        if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+            expectedBuffers += getVertexCount(i);
+        }
+    }
+    expectedBuffers *= MAX_FRAMES_IN_FLIGHT;
+    if (buffers.size() < expectedBuffers && expectedBuffers > 0) {
+        throw std::runtime_error("Insufficient buffers for descriptor set creation!");
     }
 
     auto getFragmentType = [&](int index) {
@@ -692,9 +775,17 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
         }
         return 1u;
     };
+    auto isInputBinding = [&](uint32_t bindingIndex) {
+        for (const auto& ib : config.inputBindings) {
+            if (ib.binding == bindingIndex) return true;
+        }
+        return false;
+    };
 
     size_t requiredTextureBindings = 0;
     for (int i = 0; i < fragmentBindings; ++i) {
+        const uint32_t actualBinding = static_cast<uint32_t>(vertexBindings + i);
+        if (isInputBinding(actualBinding)) continue;
         const VkDescriptorType type = getFragmentType(i);
         if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
             requiredTextureBindings += getFragmentCount(i);
@@ -704,34 +795,42 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
         throw std::runtime_error("Insufficient textures for descriptor set creation!");
     }
 
-    std::vector<VkDescriptorImageInfo> imageInfos;
-    std::vector<VkDescriptorBufferInfo> bufferInfos;
-    imageInfos.reserve(requiredTextureBindings * MAX_FRAMES_IN_FLIGHT + fragmentBindings * MAX_FRAMES_IN_FLIGHT);
-    bufferInfos.reserve(expectedBuffers);
-    std::vector<VkWriteDescriptorSet> descriptorWrites;
-    descriptorWrites.reserve(static_cast<size_t>(vertexBindings + fragmentBindings) * MAX_FRAMES_IN_FLIGHT);
-
+    size_t inputBindingCount = config.inputBindings.size();    
     for (size_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+        std::vector<VkDescriptorImageInfo> imageInfos;
+        std::vector<VkDescriptorBufferInfo> bufferInfos;
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
+        imageInfos.reserve(requiredTextureBindings + fragmentBindings + inputBindingCount);
+        bufferInfos.reserve(expectedBuffers / MAX_FRAMES_IN_FLIGHT);
+        descriptorWrites.reserve(static_cast<size_t>(vertexBindings + fragmentBindings));
+        
+        size_t bufferIndex = 0;
         for (int binding = 0; binding < vertexBindings; ++binding) {
-            const size_t bufferIndex = frame * static_cast<size_t>(vertexBindings) + static_cast<size_t>(binding);
-            VkBuffer bufferHandle = buffers[bufferIndex];
-            if (bufferHandle == VK_NULL_HANDLE) {
-                throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");
+            const VkDescriptorType type = getVertexType(binding);
+            const uint32_t descriptorCount = getVertexCount(binding);
+            if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+                for (uint32_t c = 0; c < descriptorCount; ++c) {
+                    const size_t idx = frame * (expectedBuffers / MAX_FRAMES_IN_FLIGHT) + bufferIndex++;
+                    VkBuffer bufferHandle = buffers[idx];
+                    if (bufferHandle == VK_NULL_HANDLE) {
+                        throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");
+                    }
+                    bufferInfos.push_back({
+                        .buffer = bufferHandle,
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    });
+                }
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[frame],
+                    .dstBinding = static_cast<uint32_t>(binding),
+                    .dstArrayElement = 0,
+                    .descriptorCount = descriptorCount,
+                    .descriptorType = type,
+                    .pBufferInfo = &bufferInfos[bufferInfos.size() - descriptorCount]
+                });
             }
-            bufferInfos.push_back({
-                .buffer = bufferHandle,
-                .offset = 0,
-                .range = VK_WHOLE_SIZE
-            });
-            descriptorWrites.push_back({
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptorSets[frame],
-                .dstBinding = static_cast<uint32_t>(binding),
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .pBufferInfo = &bufferInfos.back()
-            });
         }
 
         size_t textureIndex = 0;
@@ -739,8 +838,50 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
             const VkDescriptorType type = getFragmentType(frag);
             const uint32_t descriptorCount = getFragmentCount(frag);
             const uint32_t bindingIndex = static_cast<uint32_t>(vertexBindings + frag);
-
+            const GraphicsShader::Config::InputBinding* inputBinding = nullptr;
+            for (const auto& ib : config.inputBindings) {
+                if (ib.binding == bindingIndex) {
+                    inputBinding = &ib;
+                    break;
+                }
+            }
             size_t startIndex = imageInfos.size();
+            if (inputBinding) {
+                ShaderManager* sm = renderer->getShaderManager();
+                GraphicsShader* sourceShader = sm ? sm->getGraphicsShader(inputBinding->sourceShaderName) : nullptr;
+                VkImageView imageView = VK_NULL_HANDLE;
+                
+                if (sourceShader && sourceShader->config.passInfo && sourceShader->config.passInfo->images.has_value()) {
+                    for (auto& img : sourceShader->config.passInfo->images.value()) {
+                        if (img.name == inputBinding->attachmentName) {
+                            imageView = img.imageView;
+                            break;
+                        }
+                    }
+                }
+                
+                if (imageView == VK_NULL_HANDLE) {
+                    throw std::runtime_error("Failed to resolve inputBinding: shader='" + inputBinding->sourceShaderName + 
+                                           "' attachment='" + inputBinding->attachmentName + "' for binding " + std::to_string(bindingIndex));
+                }
+                
+                imageInfos.push_back({
+                    .sampler = VK_NULL_HANDLE,
+                    .imageView = imageView,
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                });
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[frame],
+                    .dstBinding = bindingIndex,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = type,
+                    .pImageInfo = &imageInfos[startIndex]
+                });
+                continue;
+            }
+            
             switch (type) {
                 case VK_DESCRIPTOR_TYPE_SAMPLER: {
                     VkSampler sampler = mainTextureSampler;
@@ -811,11 +952,11 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
                 }
             }
         }
+        if (!descriptorWrites.empty()) {
+            vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
     }
 
-    if (!descriptorWrites.empty()) {
-        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-    }
     return descriptorSets;
 }
 
@@ -825,15 +966,29 @@ void engine::GraphicsShader::createDescriptorSetLayout(engine::Renderer* rendere
     std::vector<VkDescriptorSetLayoutBinding> bindings;
     bindings.reserve(static_cast<size_t>(totalVertexBindings + totalFragmentBindings));
     VkShaderStageFlags uboStageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    auto getVertexType = [&](int index) {
+        if (!config.vertexDescriptorTypes.empty() && static_cast<size_t>(index) < config.vertexDescriptorTypes.size()) {
+            return config.vertexDescriptorTypes[static_cast<size_t>(index)];
+        }
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    };
+    auto getVertexCount = [&](int index) {
+        if (!config.vertexDescriptorCounts.empty() && config.vertexDescriptorCounts.size() == static_cast<size_t>(totalVertexBindings)) {
+            return std::max(config.vertexDescriptorCounts[static_cast<size_t>(index)], 1u);
+        }
+        return 1u;
+    };
     for (int bindingIndex = 0; bindingIndex < totalVertexBindings; ++bindingIndex) {
-        VkDescriptorSetLayoutBinding uboLayoutBinding = {
+        const VkDescriptorType descriptorType = getVertexType(bindingIndex);
+        const uint32_t descriptorCount = getVertexCount(bindingIndex);
+        VkDescriptorSetLayoutBinding vertexLayoutBinding = {
             .binding = static_cast<uint32_t>(bindingIndex),
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
+            .descriptorType = descriptorType,
+            .descriptorCount = descriptorCount,
             .stageFlags = uboStageFlags,
             .pImmutableSamplers = nullptr
         };
-        bindings.push_back(uboLayoutBinding);
+        bindings.push_back(vertexLayoutBinding);
     }
     auto getFragmentType = [&](int index) {
         if (!config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < config.fragmentDescriptorTypes.size()) {
@@ -1123,15 +1278,27 @@ VkShaderModule engine::ShaderManager::createShaderModule(const std::vector<char>
 void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
     int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     std::vector<VkDescriptorPoolSize> poolSizes;
+    std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
     if (config.vertexBitBindings > 0) {
-        VkDescriptorPoolSize uboPoolSize = {
-            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = static_cast<uint32_t>(config.vertexBitBindings * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        auto getVertexType = [&](size_t idx) {
+            if (!config.vertexDescriptorTypes.empty() && idx < config.vertexDescriptorTypes.size()) {
+                return config.vertexDescriptorTypes[idx];
+            }
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         };
-        poolSizes.push_back(uboPoolSize);
+        auto getVertexCount = [&](size_t idx) {
+            if (!config.vertexDescriptorCounts.empty() && config.vertexDescriptorCounts.size() == static_cast<size_t>(config.vertexBitBindings)) {
+                return std::max(config.vertexDescriptorCounts[idx], 1u);
+            }
+            return 1u;
+        };
+        for (size_t i = 0; i < static_cast<size_t>(config.vertexBitBindings); ++i) {
+            const VkDescriptorType type = getVertexType(i);
+            const uint32_t count = getVertexCount(i) * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier;
+            typeCounts[type] += count;
+        }
     }
     if (config.fragmentBitBindings > 0) {
-        std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
         auto getFragmentType = [&](size_t idx) {
             if (!config.fragmentDescriptorTypes.empty() && idx < config.fragmentDescriptorTypes.size()) {
                 return config.fragmentDescriptorTypes[idx];
@@ -1149,12 +1316,12 @@ void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
             const uint32_t count = getFragmentCount(i) * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier;
             typeCounts[type] += count;
         }
-        for (const auto& [type, count] : typeCounts) {
-            poolSizes.push_back({
-                .type = type,
-                .descriptorCount = count
-            });
-        }
+    }
+    for (const auto& [type, count] : typeCounts) {
+        poolSizes.push_back({
+            .type = type,
+            .descriptorCount = count
+        });
     }
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,

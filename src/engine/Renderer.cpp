@@ -2,6 +2,7 @@
 
 #include <engine/InputManager.h>
 #include <engine/EntityManager.h>
+#include <engine/ParticleManager.h>
 #include <engine/UIManager.h>
 #include <engine/TextureManager.h>
 #include <engine/ShaderManager.h>
@@ -169,6 +170,7 @@ void engine::Renderer::initVulkan() {
     textureManager->init();
     ensureFallback2DTexture();
     ensureFallbackShadowCubeTexture();
+    particleManager->init();
     sceneManager->setActiveScene(0);
     uiManager->loadTextures();
     uiManager->loadFonts();
@@ -250,6 +252,7 @@ void engine::Renderer::drawFrame() {
         throw std::runtime_error("Failed to present swap chain image!");
     }
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    entityManager->processPendingDeletions();
 }
 
 void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
@@ -278,6 +281,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     bool gbufferRendered = false;
 
     entityManager->updateAll(deltaTime);
+    particleManager->updateAll(deltaTime);
     entityManager->renderShadows(commandBuffer);
     entityManager->updateLightsUBO(currentFrame);
 
@@ -521,6 +525,11 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
             if (DEBUG_RENDER_LOGS) {
                 std::cout << "[record] pass " << node.passInfo->name << " is inactive, skipping draw (attachments cleared by loadOp)" << std::endl;
             }
+        } else if (node.shaders.find(shaderManager->getGraphicsShader("particle")) != node.shaders.end()) {
+            if (DEBUG_RENDER_LOGS) {
+                std::cout << "[record] rendering Particles" << std::endl;
+            }
+            particleManager->renderParticles(commandBuffer, currentFrame);
         } else if (node.is2D 
         && (node.shaders.find(shaderManager->getGraphicsShader("ui")) != node.shaders.end()
         || node.shaders.find(shaderManager->getGraphicsShader("text")) != node.shaders.end())
@@ -928,6 +937,19 @@ void engine::Renderer::refreshDescriptorSets() {
     vkDeviceWaitIdle(device);
     uiManager->loadTextures();
     createPostProcessDescriptorSets();
+}
+
+VkImageView engine::Renderer::getPassImageView(const std::string& shaderName, const std::string& attachmentName) {
+    auto shader = shaderManager->getGraphicsShader(shaderName);
+    if (!shader || !shader->config.passInfo || !shader->config.passInfo->images.has_value()) {
+        return VK_NULL_HANDLE;
+    }
+    for (const auto& img : shader->config.passInfo->images.value()) {
+        if (img.name == attachmentName) {
+            return img.imageView;
+        }
+    }
+    return VK_NULL_HANDLE;
 }
 
 void engine::Renderer::createImageViews() {

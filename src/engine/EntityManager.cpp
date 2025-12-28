@@ -329,6 +329,15 @@ void engine::EntityManager::updateAll(float deltaTime) {
     loadTextures();
 }
 
+void engine::EntityManager::processPendingDeletions() {
+    for (Entity* entity : pendingDeletions) {
+        if (entity) {
+            removeEntity(entity->getName());
+        }
+    }
+    pendingDeletions.clear();
+}
+
 void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {
     std::vector<Entity*> rootEntities = getRootEntities();
     std::set<GraphicsShader*>& shaders = node.shaders;

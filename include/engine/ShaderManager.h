@@ -69,6 +69,8 @@ namespace engine {
             int poolMultiplier = 1;
             int vertexBitBindings = 1;
             int fragmentBitBindings = 4;
+            std::vector<uint32_t> vertexDescriptorCounts = {};
+            std::vector<VkDescriptorType> vertexDescriptorTypes = {};
             std::vector<uint32_t> fragmentDescriptorCounts = {};
             std::vector<VkDescriptorType> fragmentDescriptorTypes = {};
             VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;

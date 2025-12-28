@@ -21,9 +21,10 @@ namespace engine {
         struct Collision {
             Collider* other = nullptr;
             CollisionMTV mtv;
+            glm::vec3 worldHitPoint{0.0f};
         };
         Collider(EntityManager* entityManager, const std::string& name, glm::mat4 transform);
-        virtual ~Collider() = default;
+        virtual ~Collider();
         virtual ColliderType getType() const = 0;
         virtual AABB getWorldAABB() = 0;
         virtual bool intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform = glm::mat4(1.0f)) = 0;
@@ -35,7 +36,7 @@ namespace engine {
             return glm::vec3(0.0f);
         }
         static bool aabbIntersects(const AABB& a, const AABB& b, float margin = 0.0f);
-        static std::vector<Collider*> raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance = FLT_MAX);
+        static std::vector<Collision> raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance = FLT_MAX, bool sortByDistance = false);
         static AABB aabbFromCorners(const std::array<glm::vec3, 8>& corners);
         static std::array<glm::vec3, 8> getCornersFromAABB(const AABB& aabb);
     protected:
