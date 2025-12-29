@@ -450,11 +450,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 1,
-                .fragmentBitBindings = 6,
+                .fragmentBitBindings = 7,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 64, 1
+                    1, 1, 1, 1, 1, 64, 1
                 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -471,7 +472,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 1, "gbuffer", "Albedo" },
                     { 2, "gbuffer", "Normal" },
                     { 3, "gbuffer", "Material" },
-                    { 4, "gbuffer", "Depth" }
+                    { 4, "gbuffer", "Depth" },
+                    { 5, "particle", "ParticleColor" }
                 }
             }
         };
@@ -522,13 +524,13 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .config = {
                 .poolMultiplier = 1,
                 .vertexBitBindings = 1,
+                .fragmentBitBindings = 2,
                 .vertexDescriptorCounts = {
                     1
                 },
                 .vertexDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                 },
-                .fragmentBitBindings = 2,
                 .fragmentDescriptorCounts = {
                     1, 1
                 },
@@ -644,12 +646,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 6,
+                .fragmentBitBindings = 5,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1, 1
+                    1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -666,7 +667,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 1, "ui", "UIColor" },
                     { 2, "text", "TextColor" },
                     { 3, "ssr", "SceneColor"},
-                    { 4, "particle", "ParticleColor"}
                 }
             }
         };
@@ -687,9 +687,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     };
 
     pushNode(false, gbufferPass.get(), { "gbuffer" });
+    pushNode(true, particlePass.get(), { "particle" });
     pushNode(true, lightingPass.get(), { "lighting" });
     pushNode(true, ssrPass.get(), { "ssr" });
-    pushNode(true, particlePass.get(), { "particle" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });

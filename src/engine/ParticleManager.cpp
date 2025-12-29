@@ -6,20 +6,26 @@
 engine::Particle::Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime)
    : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime) {
         particleManager->registerParticle(this);
+        prevPosition = glm::vec3(transform[3]);
+        prevPrevPosition = prevPosition;
     }
 
 engine::Particle::~Particle() {
-    particleManager->unregisterParticle(this);
+    if (particleManager) {
+        particleManager->unregisterParticle(this);
+    }
 }
 
 void engine::Particle::update(float deltaTime) {
     age += deltaTime;
     if (age >= lifetime) {
-        delete this;
+        markForDeletion();
         return;
     }
     velocity.y -= gravity * deltaTime; // gravity
     glm::vec3 currentPos = glm::vec3(transform[3]);
+    prevPrevPosition = prevPosition;
+    prevPosition = currentPos;
     glm::vec3 newPos = currentPos + velocity * deltaTime;
     if (age > 0.15f) {
         Collider::Collision collision = checkCollision(newPos);
@@ -29,13 +35,13 @@ void engine::Particle::update(float deltaTime) {
             velocity *= 0.5f;
             newPos = currentPos + velocity * deltaTime;
             if (checkCollision(newPos).other) {
-                delete this;
+                markForDeletion();
                 return;
             }
         }
     }
     if (glm::length(velocity) < 0.1f) {
-        delete this;
+        markForDeletion();
         return;
     }
     transform[3] = glm::vec4(newPos, 1.0f);
@@ -246,18 +252,18 @@ void engine::ParticleManager::createParticleDescriptorSets() {
     }
 }
 
-void engine::ParticleManager::burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime) {
-    glm::vec3 basePos = glm::vec3(transform[3]);
-    glm::vec3 velDir = glm::length(velocity) > 0.001f ? glm::normalize(velocity) : glm::vec3(0.0f, 1.0f, 0.0f);
-    glm::vec3 spawnOffset = velDir * 0.2f + glm::vec3(0.0f, 0.15f, 0.0f);
-    glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), basePos + spawnOffset);
-    float velLength = glm::length(velocity);
+void engine::ParticleManager::burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime, float spread) {
+    float velLength = glm::length(velocity) + dist(rng) * 0.1f * glm::length(velocity);
     for (int i = 0; i < count; ++i) {
-        float offsetX = dist(rng) * 0.2f * velLength;
-        float offsetY = dist(rng) * 0.2f * velLength;
-        float offsetZ = dist(rng) * 0.2f * velLength;
+        float offsetX = dist(rng) * spread * velLength;
+        float offsetY = dist(rng) * spread * velLength;
+        float offsetZ = dist(rng) * spread * velLength;
         glm::vec3 velocityOffset = glm::vec3(offsetX, offsetY, offsetZ);
-        new Particle(this, renderer->getEntityManager(), offsetTransform, color, velocity + velocityOffset, lifetime);
+        float particleLifetime = lifetime + dist(rng) * 0.2f * lifetime;
+        glm::vec3 colorOffset = glm::vec3(dist(rng), dist(rng), dist(rng)) * 0.1f;
+        glm::vec4 particleColor = color + glm::vec4(colorOffset, 0.0f);
+        particleColor = glm::clamp(particleColor, glm::vec4(0.0f), glm::vec4(1.0f));
+        new Particle(this, renderer->getEntityManager(), transform, particleColor, velocity + velocityOffset, particleLifetime);
     }
 }
 
@@ -265,7 +271,15 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
     VkDevice device = renderer->getDevice();
     if (particles.size() > maxParticles) {
         vkDeviceWaitIdle(device);
-        maxParticles = std::max(maxParticles * 2, static_cast<uint32_t>(particles.size()));
+        if (particles.size() > hardCap) {
+            size_t toRemove = particles.size() - hardCap;
+            for (size_t i = 0; i < toRemove; ++i) {
+                particles[i]->detachFromManager();
+                delete particles[i];
+            }
+            particles.erase(particles.begin(), particles.begin() + toRemove);
+        }
+        maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.size())), hardCap);
         for (size_t i = 0; i < particleBuffers.size(); ++i) {
             vkDestroyBuffer(device, particleBuffers[i], nullptr);
             vkFreeMemory(device, particleBufferMemory[i], nullptr);
@@ -310,16 +324,31 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
     ParticlePC pushConstants = {
         .viewProj = camera->getProjectionMatrix() * camera->getViewMatrix(),
         .screenSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
-        .particleSize = 0.04f,
-        .streakScale = 0.001f
+        .particleSize = 0.03f,
+        .streakScale = 0.0005f
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);
     vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(particles.size()), 0, 0);
 }
 
 void engine::ParticleManager::updateAll(float deltaTime) {
-    std::vector<Particle*> particlesCopy = particles;
-    for (auto particle : particlesCopy) {
+#if defined(USE_OPENMP)
+    #pragma omp parallel for
+    for (int i = 0; i < static_cast<int>(particles.size()); ++i) {
+        particles[i]->update(deltaTime);
+    }
+#else
+    for (auto particle : particles) {
         particle->update(deltaTime);
     }
+#endif
+    auto it = std::remove_if(particles.begin(), particles.end(), [](Particle* p) {
+        if (p->isMarkedForDeletion()) {
+            p->detachFromManager();
+            delete p;
+            return true;
+        }
+        return false;
+    });
+    particles.erase(it, particles.end());
 }

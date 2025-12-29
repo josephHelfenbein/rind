@@ -10,8 +10,10 @@ namespace engine {
     struct ParticleGPU {
         glm::vec3 position;
         float age;
-        glm::vec3 velocity;
+        glm::vec3 prevPosition;
         float lifetime;
+        glm::vec3 prevPrevPosition;
+        float _pad;
         glm::vec4 color;
     };
     class Particle {
@@ -26,21 +28,30 @@ namespace engine {
             return {
                 .position = glm::vec3(transform[3]),
                 .age = age,
-                .velocity = velocity,
+                .prevPosition = prevPosition,
                 .lifetime = lifetime,
+                .prevPrevPosition = prevPrevPosition,
                 .color = color
             };
         }
+
+        void detachFromManager() { particleManager = nullptr; }
+
+        void markForDeletion() { markedForDeletion = true; }
+        bool isMarkedForDeletion() const { return markedForDeletion; }
 
     private:
         ParticleManager* particleManager;
         EntityManager* entityManager;
         glm::mat4 transform;
+        glm::vec3 prevPosition{0.0f};
+        glm::vec3 prevPrevPosition{0.0f};
         glm::vec3 velocity;
         float gravity = 9.81f;
         float lifetime = 0.0f;
         float age = 0.0f;
         glm::vec4 color;
+        bool markedForDeletion = false;
     };
     class ParticleManager {
     public:
@@ -48,7 +59,7 @@ namespace engine {
         ~ParticleManager();
         void init();
 
-        void burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime);
+        void burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime, float spread);
 
         void registerParticle(Particle* particle) {
             particles.push_back(particle);
@@ -74,6 +85,7 @@ namespace engine {
         std::vector<VkDeviceMemory> particleBufferMemory;
         std::vector<VkDescriptorSet> descriptorSets;
 
-        uint32_t maxParticles = 1000;
+        uint32_t maxParticles = 5000;
+        uint32_t hardCap = 100000;
     };
 };

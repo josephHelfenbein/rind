@@ -108,6 +108,14 @@ void rind::Player::damage(float amount) {
 void rind::Player::shoot() {
     std::cout << "Shooting weapon!" << std::endl;
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+        glm::translate(camera->getWorldTransform(), glm::vec3(0.1f, -0.1f, 0.0f)),
+        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+        rayDir * 15.0f,
+        10,
+        3.0f,
+        0.3f
+    );
     std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
         getEntityManager(),
         camera->getWorldPosition(),
@@ -121,10 +129,27 @@ void rind::Player::shoot() {
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
         getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(1.0f, 0.5f, 0.0f, 1.0f),
-            reflectedDir * 15.0f,
-            20,
-            5.0f
+            glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            reflectedDir * 40.0f,
+            50,
+            4.0f,
+            0.5f
+        );
+        getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            reflectedDir * 25.0f,
+            30,
+            4.0f,
+            0.4f
+        );
+        getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            reflectedDir * 10.0f,
+            50,
+            2.0f,
+            0.3f
         );
         rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent());
         if (character) {

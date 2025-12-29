@@ -33,9 +33,12 @@ Texture2D<float4> gBufferMaterial;
 Texture2D<float> gBufferDepth;
 
 [[vk::binding(5)]]
-TextureCube<float> shadowMaps[64];
+Texture2D<float4> particleTexture;
 
 [[vk::binding(6)]]
+TextureCube<float> shadowMaps[64];
+
+[[vk::binding(7)]]
 SamplerState sampleSampler;
 
 struct PushConstants {
@@ -236,6 +239,8 @@ float4 main(VSOutput input) : SV_Target {
     if (any(isnan(Lo)) || any(isinf(Lo))) {
         Lo = albedoSample * 0.1;
     }
+    float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
+    Lo += particleColor.rgb * particleColor.a;
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, alpha));
     return float4(Lo, alphaOut);
 }

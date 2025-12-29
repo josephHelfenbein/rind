@@ -1982,7 +1982,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 }
 
                 if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
-                    const bool isLightingShadowBinding = (shader->name == "lighting" && frag == 4);
+                    const bool isLightingShadowBinding = (shader->name == "lighting" && frag == 5);
                     
                     if (isLightingShadowBinding) {
                         Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_shadow_cube") : nullptr;
