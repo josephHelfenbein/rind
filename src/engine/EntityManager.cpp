@@ -317,8 +317,8 @@ void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer) {
 
 void engine::EntityManager::updateAll(float deltaTime) {
     std::function<void(Entity*)> traverse = [&](Entity* entity) {
-        entity->updateWorldTransform();
         entity->update(deltaTime);
+        entity->updateWorldTransform();
         for (Entity* child : entity->getChildren()) {
             traverse(child);
         }
@@ -344,11 +344,10 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
     Camera* camera = getCamera();
 
     std::function<void(Entity*)> drawEntity = [&](Entity* entity) {
-        if (!entity->getModel()) return;
         ShaderManager* shaderManager = renderer->getShaderManager();
-        if (!entity->getShader().empty() || shaders.find(shaderManager->getGraphicsShader(entity->getShader())) != shaders.end()) {
-            Model* model = entity->getModel();
-            GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
+        Model* model = entity->getModel();
+        GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
+        if (model && shader && shaders.find(shader) != shaders.end()) {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
             VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
             VkDeviceSize offsets[] = { 0 };

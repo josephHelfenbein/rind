@@ -3,8 +3,8 @@
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
 
-engine::Particle::Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime)
-   : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime) {
+engine::Particle::Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime, float type)
+   : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime), type(type) {
         particleManager->registerParticle(this);
         prevPosition = glm::vec3(transform[3]);
         prevPrevPosition = prevPosition;
@@ -20,6 +20,9 @@ void engine::Particle::update(float deltaTime) {
     age += deltaTime;
     if (age >= lifetime) {
         markForDeletion();
+        return;
+    }
+    if (type == 1.0f) {
         return;
     }
     velocity.y -= gravity * deltaTime; // gravity
@@ -265,6 +268,12 @@ void engine::ParticleManager::burstParticles(const glm::mat4& transform, const g
         particleColor = glm::clamp(particleColor, glm::vec4(0.0f), glm::vec4(1.0f));
         new Particle(this, renderer->getEntityManager(), transform, particleColor, velocity + velocityOffset, particleLifetime);
     }
+}
+
+void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime) {
+    Particle* p = new Particle(this, renderer->getEntityManager(), glm::translate(glm::mat4(1.0f), start), color, glm::vec3(0.0f), lifetime, 1.0f);
+    p->setPrevPosition(dir);
+    p->setPrevPrevPosition(start);
 }
 
 void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {

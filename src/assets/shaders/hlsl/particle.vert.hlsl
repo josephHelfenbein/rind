@@ -13,7 +13,7 @@ struct ParticleData {
     float3 prevPosition;
     float lifetime;
     float3 prevPrevPosition;
-    float _pad;
+    float type;
     float4 color;
 };
 
@@ -43,6 +43,39 @@ float hash(uint seed) {
 VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
     VSOutput output;
     ParticleData p = particles[instanceID];
+    
+    if (p.type > 0.5) {
+        float3 startPos = p.position;
+        float3 dir = p.prevPosition;
+        float3 endPos = startPos + dir;
+        
+        float3 lineDir = normalize(dir);
+        float3 worldUp = float3(0, 1, 0);
+        float3 perpWorld = cross(lineDir, worldUp);
+        if (length(perpWorld) < 0.001) {
+            perpWorld = cross(lineDir, float3(1, 0, 0));
+        }
+        perpWorld = normalize(perpWorld);
+        
+        float width = 0.03;
+        
+        float2 localOffset = offsets[vertexID];
+        
+        float t = localOffset.y * 0.5 + 0.5;
+        float3 worldPos = lerp(startPos, endPos, t);
+        worldPos += perpWorld * localOffset.x * width;
+        float4 posClip = mul(float4(worldPos, 1.0), pc.viewProj);
+        
+        posClip.z -= 0.001 * posClip.w;
+        
+        output.gl_Position = posClip;
+        output.uv = float2(localOffset.x * 0.5 + 0.5, t);
+        output.age = p.age / p.lifetime;
+        output.color = p.color;
+        output.color.a = -1.0; // marks this as a trail
+        return output;
+    }
+
     float4 clipPos = mul(float4(p.position, 1.0), pc.viewProj);
     float3 trailDir = bezierTangent(p.prevPrevPosition, p.prevPosition, p.position, 1.0);
     float trailLen = length(trailDir);

@@ -239,10 +239,7 @@ void engine::CharacterEntity::rotate(const glm::vec3& delta) {
         }
     }
     if (delta.z != 0.0f) {
-        Entity* head = this->getChildByName("camera");
-        if (!head) {
-            head = this->getChildByName("head");
-        }
+        Entity* head = getHead();
         if (head) {
             glm::mat4 currentTransform = head->getTransform();
             glm::quat currentRotation = glm::quat_cast(currentTransform);

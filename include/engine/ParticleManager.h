@@ -13,12 +13,12 @@ namespace engine {
         glm::vec3 prevPosition;
         float lifetime;
         glm::vec3 prevPrevPosition;
-        float _pad;
+        float type;
         glm::vec4 color;
     };
     class Particle {
     public:
-        Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime);
+        Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime, float type = 0.0f);
         ~Particle();
         void update(float deltaTime);
 
@@ -31,11 +31,15 @@ namespace engine {
                 .prevPosition = prevPosition,
                 .lifetime = lifetime,
                 .prevPrevPosition = prevPrevPosition,
+                .type = type,
                 .color = color
             };
         }
 
         void detachFromManager() { particleManager = nullptr; }
+
+        void setPrevPosition(const glm::vec3& pos) { prevPosition = pos; }
+        void setPrevPrevPosition(const glm::vec3& pos) { prevPrevPosition = pos; }
 
         void markForDeletion() { markedForDeletion = true; }
         bool isMarkedForDeletion() const { return markedForDeletion; }
@@ -50,6 +54,7 @@ namespace engine {
         float gravity = 9.81f;
         float lifetime = 0.0f;
         float age = 0.0f;
+        float type = 0.0f;
         glm::vec4 color;
         bool markedForDeletion = false;
     };
@@ -60,6 +65,7 @@ namespace engine {
         void init();
 
         void burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime, float spread);
+        void spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime);
 
         void registerParticle(Particle* particle) {
             particles.push_back(particle);

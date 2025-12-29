@@ -4,18 +4,50 @@
 
 rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
+        engine::Entity* head = new engine::Entity(
+            entityManager,
+            "player_head",
+            "",
+            glm::mat4(1.0f),
+            {},
+            true
+        );
+        addChild(head);
+        setHead(head);
         camera = new engine::Camera(
             entityManager,
             "camera",
             glm::mat4(1.0f),
             60.0f,
             16.0f/9.0f,
-            0.1f,
+            0.01f,
             1000.0f,
             true
         );
-        addChild(camera);
+        head->addChild(camera);
         entityManager->setCamera(camera);
+        std::vector<std::string> gunMaterial = {
+            "materials_lasergun_albedo",
+            "materials_lasergun_metallic",
+            "materials_lasergun_roughness",
+            "materials_lasergun_normal"
+        };
+        engine::Entity* gunModel = new engine::Entity(
+            entityManager,
+            "lasergun",
+            "gbuffer",
+            glm::scale(
+                glm::rotate(
+                    glm::translate(glm::mat4(1.0f), glm::vec3(0.55856, -0.273792, -0.642208)),
+                    glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)
+                ),
+                glm::vec3(0.16f)
+            ),
+            gunMaterial,
+            true
+        );
+        gunModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("lasergun"));
+        head->addChild(gunModel);
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.6f, 0.0f)),
@@ -108,8 +140,11 @@ void rind::Player::damage(float amount) {
 void rind::Player::shoot() {
     std::cout << "Shooting weapon!" << std::endl;
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    constexpr float framePrediction = 0.016f;
+    glm::vec3 velocityOffset = getVelocity() * framePrediction;
+    glm::vec3 gunPos = glm::vec3(camera->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f)) + velocityOffset;
     getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
-        glm::translate(camera->getWorldTransform(), glm::vec3(0.1f, -0.1f, 0.0f)),
+        glm::translate(glm::mat4(1.0f), gunPos),
         glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
         rayDir * 15.0f,
         10,
@@ -123,8 +158,10 @@ void rind::Player::shoot() {
         1000.0f,
         true
     );
+    glm::vec3 endPos = gunPos + rayDir * 1000.0f;
     for (engine::Collider::Collision& collision : hits) {
         if (collision.other->getParent() == this) continue; // ignore self hits
+        endPos = collision.worldHitPoint;
         glm::vec3 normal = glm::normalize(collision.mtv.normal);
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
         getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
@@ -158,4 +195,10 @@ void rind::Player::shoot() {
         }
         break;
     }
+    getEntityManager()->getRenderer()->getParticleManager()->spawnTrail(
+        gunPos,
+        endPos - gunPos,
+        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+        0.05f
+    );
 }

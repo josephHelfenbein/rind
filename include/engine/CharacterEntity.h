@@ -23,9 +23,13 @@ namespace engine {
         void setHealth(float health) { this->health = health; }
 
         const glm::vec3& getPressed() const { return pressed; }
+        const glm::vec3& getVelocity() const { return velocity; }
 
         void setCollider(OBBCollider* collider) { this->collider = collider; }
         OBBCollider* getCollider() const { return collider; }
+
+        void setHead(Entity* head) { this->head = head; }
+        Entity* getHead() const { return head; }
 
         Collider::Collision willCollide(const glm::mat4& deltaTransform);
     private:
@@ -35,6 +39,7 @@ namespace engine {
         glm::vec3 dashing = glm::vec3(0.0f);
         glm::vec3 dashVelocity = glm::vec3(0.0f); // persistent dash impulse that decays
         OBBCollider* collider = nullptr;
+        Entity* head = nullptr;
         const float moveSpeed = 10.0f;
         const float dashDecayRate = 8.0f; // how fast dash velocity decays
         const float jumpSpeed = 1.5f;
