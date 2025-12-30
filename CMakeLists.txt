@@ -176,6 +176,9 @@ if(IS_MACOS)
         "-framework Cocoa"
         "-framework IOKit"
         "-framework CoreVideo"
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+        "-framework AudioUnit"
     )
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${Vulkan_INCLUDE_DIRS} 

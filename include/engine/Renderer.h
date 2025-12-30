@@ -35,6 +35,7 @@ namespace engine {
         void registerSceneManager(class SceneManager* sceneManager) { this->sceneManager = sceneManager; }
         void registerModelManager(class ModelManager* modelManager) { this->modelManager = modelManager; }
         void registerParticleManager(class ParticleManager* particleManager) { this->particleManager = particleManager; }
+        void registerAudioManager(class AudioManager* audioManager) { this->audioManager = audioManager; }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -43,6 +44,7 @@ namespace engine {
         class SceneManager* getSceneManager() { return sceneManager; }
         class ModelManager* getModelManager() { return modelManager; }
         class ParticleManager* getParticleManager() { return particleManager; }
+        class AudioManager* getAudioManager() { return audioManager; }
 
         void toggleLockCursor(bool lock);
 
@@ -232,6 +234,7 @@ namespace engine {
         class SceneManager* sceneManager;
         class ModelManager* modelManager;
         class ParticleManager* particleManager;
+        class AudioManager* audioManager;
 
         UIObject* hoveredObject = nullptr;
 

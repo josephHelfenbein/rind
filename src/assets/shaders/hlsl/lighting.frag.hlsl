@@ -138,20 +138,24 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float distanceBias = baseBias * (nearPlane / max(currentDistance, nearPlane));
     float bias = baseBias + slopeBias + distanceBias;
     float shadow = 0.0;
+    float totalWeight = 0.0;
     uint samples = 20;
     float diskRadius = (1.0 + (length(pc.camPos - fragPos)) / farPlane) / 25.0;
+    float penumbraSize = 0.015 * (currentDistance / farPlane);
     for (uint i = 0; i < samples; ++i) {
         float3 offsetDir = sampleOffsetDirections[i];
         offsetDir = normalize(offsetDir);
         offsetDir = offsetDir - dot(offsetDir, sampleDir) * sampleDir;
         offsetDir = normalize(offsetDir);
+        float offsetLen = length(sampleOffsetDirections[i]);
+        float weight = exp(-offsetLen * offsetLen * 0.5);
         float3 sampleOffset = sampleDir + offsetDir * diskRadius;
         float sampleDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleOffset);
-        if (currentDepth - bias > sampleDepth) {
-            shadow += 1.0;
-        }
+        float diff = (currentDepth - bias) - sampleDepth;
+        shadow += smoothstep(0.0, penumbraSize, diff) * weight;
+        totalWeight += weight;
     }
-    shadow /= samples;
+    shadow /= totalWeight;
     shadow *= shadowFade;
     return 1.0 - shadow;
 }
@@ -234,7 +238,7 @@ float4 main(VSOutput input) : SV_Target {
         contribution = clamp(contribution, float3(0.0, 0.0, 0.0), float3(100.0, 100.0, 100.0));
         Lo += contribution;
     }
-    float3 ambient = float3(0.03, 0.03, 0.03) * albedoSample;
+    float3 ambient = float3(0.02, 0.02, 0.02) * albedoSample;
     Lo += ambient;
     if (any(isnan(Lo)) || any(isinf(Lo))) {
         Lo = albedoSample * 0.1;

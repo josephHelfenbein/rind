@@ -12,6 +12,7 @@
 #include <engine/Light.h>
 #include <engine/io.h>
 #include <engine/PushConstants.h>
+#include <engine/AudioManager.h>
 
 #include <utility>
 #include <unordered_set>
@@ -281,6 +282,14 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     bool gbufferRendered = false;
 
     entityManager->updateAll(deltaTime);
+    audioManager->update();
+    if (entityManager->getCamera()) {
+        Camera* cam = entityManager->getCamera();
+        glm::vec3 pos = cam->getWorldPosition();
+        glm::vec3 fwd = -glm::normalize(glm::vec3(cam->getWorldTransform()[2]));
+        glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
+        audioManager->updateListener(pos, fwd, up);
+    }
     particleManager->updateAll(deltaTime);
     entityManager->renderShadows(commandBuffer);
     entityManager->updateLightsUBO(currentFrame);

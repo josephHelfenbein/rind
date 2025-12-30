@@ -2,6 +2,7 @@
 
 #include <engine/EntityManager.h>
 #include <engine/Collider.h>
+#include <engine/AudioManager.h>
 
 namespace engine {
     class CharacterEntity : public Entity {

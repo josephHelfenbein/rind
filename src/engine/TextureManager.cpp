@@ -69,26 +69,36 @@ void engine::TextureManager::init() {
             }
             stbi_set_flip_vertically_on_load(false);
             void* pixels = nullptr;
-            int texWidth, texHeight, texChannels;
+            int texWidth = 0, texHeight = 0, texChannels = 0;
             bool isHDR = false;
+            std::vector<uint16_t> float16Pixels;
             if (filePath.ends_with(".hdr")) {
-                pixels = stbi_loadf(filePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                float* floatPixels = stbi_loadf(filePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                if (!floatPixels) {
+                    std::cerr << "Failed to load HDR texture: " << filePath << std::endl;
+                    continue;
+                }
+                size_t numPixels = static_cast<size_t>(texWidth) * static_cast<size_t>(texHeight);
+                float16Pixels.resize(numPixels * 4);
+                for (size_t i = 0; i < numPixels * 4; ++i) {
+                    float16Pixels[i] = floatToHalf(floatPixels[i]);
+                }
+                stbi_image_free(floatPixels);
+                pixels = float16Pixels.data();
                 isHDR = true;
             } else {
                 pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                if (!pixels) {
+                    std::cerr << "Failed to load texture: " << filePath << std::endl;
+                    continue;
+                }
                 isHDR = false;
             }
             VkFormat format;
             VkDeviceSize pixelSize;
             if (isHDR) {
                 format = VK_FORMAT_R16G16B16A16_SFLOAT;
-                float* floatPixels = static_cast<float*>(pixels);
-                size_t numPixels = static_cast<size_t>(texWidth) * static_cast<size_t>(texHeight);
-                std::vector<uint16_t> float16Pixels(numPixels * 4);
-                for (size_t i = 0; i < numPixels * 4; ++i) {
-                    float16Pixels[i] = floatToHalf(floatPixels[i]);
-                }
-                pixelSize = numPixels * 4 * sizeof(uint16_t);
+                pixelSize = static_cast<VkDeviceSize>(texWidth) * static_cast<VkDeviceSize>(texHeight) * 4 * sizeof(uint16_t);
             } else {
                 bool isNoncolorMap = textureName.find("metallic") != std::string::npos 
                 || textureName.find("roughness") != std::string::npos 
@@ -112,7 +122,9 @@ void engine::TextureManager::init() {
                 1,
                 0
             );
-            stbi_image_free(pixels);
+            if (!isHDR) {
+                stbi_image_free(pixels);
+            }
             renderer->transitionImageLayout(
                 textureImage,
                 format,

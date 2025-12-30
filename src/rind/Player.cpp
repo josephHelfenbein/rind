@@ -159,6 +159,7 @@ void rind::Player::shoot() {
         true
     );
     glm::vec3 endPos = gunPos + rayDir * 1000.0f;
+    engine::AudioManager* audioManager = getEntityManager()->getRenderer()->getAudioManager();
     for (engine::Collider::Collision& collision : hits) {
         if (collision.other->getParent() == this) continue; // ignore self hits
         endPos = collision.worldHitPoint;
@@ -191,10 +192,14 @@ void rind::Player::shoot() {
         rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent());
         if (character) {
             character->damage(25.0f);
+            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
             std::cout << "Hit " << character->getName() << " for 25 damage!" << std::endl;
+        } else {
+            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);
         }
         break;
     }
+    audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
     getEntityManager()->getRenderer()->getParticleManager()->spawnTrail(
         gunPos,
         endPos - gunPos,

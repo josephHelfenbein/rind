@@ -10,6 +10,7 @@
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
 #include <engine/ParticleManager.h>
+#include <engine/AudioManager.h>
 
 namespace rind {
     class GameInstance {
@@ -27,5 +28,6 @@ namespace rind {
         std::unique_ptr<engine::UIManager> uiManager;
         std::unique_ptr<engine::ModelManager> modelManager;
         std::unique_ptr<engine::ParticleManager> particleManager;
+        std::unique_ptr<engine::AudioManager> audioManager;
     };
 };

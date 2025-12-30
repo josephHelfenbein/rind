@@ -13,3 +13,6 @@
 [submodule "include/external/fastgltf"]
 	path = include/external/fastgltf
 	url = https://github.com/spnda/fastgltf
+[submodule "include/external/miniaudio"]
+	path = include/external/miniaudio
+	url = https://github.com/mackron/miniaudio

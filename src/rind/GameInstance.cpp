@@ -54,11 +54,11 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "ui_crosshair",
         engine::Corner::Center
     );
-    std::vector<std::string> metalMaterial = {
-        "materials_metal_albedo",
-        "materials_metal_metallic",
-        "materials_metal_roughness",
-        "materials_metal_normal"
+    std::vector<std::string> rockMaterial = {
+        "materials_rock_albedo",
+        "materials_rock_metallic",
+        "materials_rock_roughness",
+        "materials_rock_normal"
     };
     std::vector<std::string> wallsMaterial = {
         "materials_walls_albedo",
@@ -72,12 +72,18 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "materials_light_roughness",
         "materials_light_normal"
     };
+    std::vector<std::string> groundMaterial = {
+        "materials_ground_albedo",
+        "materials_ground_metallic",
+        "materials_ground_roughness",
+        "materials_ground_normal"
+    };
     engine::Entity* groundplatform = new engine::Entity(
         entityManager,
         "groundplatform",
         "gbuffer",
         glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.8f, 0.0f)), glm::vec3(1.5f, 1.0f, 1.5f)),
-        metalMaterial
+        groundMaterial
     );
     engine::Model* platformModel = modelManager ? modelManager->getModel("groundplatform") : nullptr;
     engine::Model* platformColliderModel = modelManager ? modelManager->getModel("groundplatform-collider") : nullptr;
@@ -99,7 +105,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "groundblock",
         "gbuffer",
         glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
-        metalMaterial
+        groundMaterial
     );
     engine::Model* groundModel = modelManager ? modelManager->getModel("groundblock") : nullptr;
     groundblock->setModel(groundModel);
@@ -122,7 +128,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "groundcubes",
         "gbuffer",
         glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
-        metalMaterial
+        rockMaterial
     );
     groundcubes->setModel(groundCubesModel);
 
@@ -132,7 +138,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "trueground",
         "gbuffer",
         glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
-        metalMaterial
+        rockMaterial
     );
     trueground->setModel(trueGroundModel);
 
@@ -320,6 +326,7 @@ rind::GameInstance::GameInstance() {
     uiManager = std::make_unique<engine::UIManager>(renderer.get(), fontDirectory);
     modelManager = std::make_unique<engine::ModelManager>(renderer.get(), "src/assets/models/");
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
+    audioManager = std::make_unique<engine::AudioManager>(renderer.get(), "src/assets/audio/");
 }
 
 void rind::GameInstance::run() {
