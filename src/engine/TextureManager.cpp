@@ -64,7 +64,7 @@ void engine::TextureManager::init() {
             std::string textureBaseName = std::filesystem::path(fileName).stem().string();
             std::string textureName = parentPath + textureBaseName;
             if (textures.find(textureName) != textures.end()) {
-                std::cout << std::format("Warning: Duplicate texture name detected: {}. Skipping {}\n", textureName, filePath);
+                std::cout << "Warning: Duplicate texture name detected: " << textureName << ". Skipping " << filePath << "\n";
                 continue;
             }
             stbi_set_flip_vertically_on_load(false);

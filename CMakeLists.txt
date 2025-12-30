@@ -348,12 +348,17 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     )
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(${PROJECT_NAME} PRIVATE
+        /FS
         $<$<CONFIG:Release>:/O2 /Oi /Ot /Gy /GL /fp:fast /DNDEBUG>
         $<$<CONFIG:Debug>:/W4 /Zi /Od>
     )
     set_target_properties(${PROJECT_NAME} PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
+endif()
+
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /FS)
 endif()
 
 if(IS_MACOS)

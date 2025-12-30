@@ -155,7 +155,7 @@ namespace engine {
 
     class UIManager {
     public:
-        UIManager(Renderer* renderer, std::string& fontDirectory);
+        UIManager(Renderer* renderer, std::string fontDirectory);
         ~UIManager();
 
         void addObject(UIObject* object);

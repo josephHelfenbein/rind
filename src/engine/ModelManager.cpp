@@ -30,7 +30,7 @@ void engine::Model::loadFromFile() {
     }
     fastgltf::GltfDataBuffer data = std::move(dataResult.get());
     fastgltf::Parser parser{};
-    constexpr auto gltfOptions = fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers;
+    constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
     auto load = parser.loadGltfBinary(data, pathObj.parent_path(), gltfOptions);
     if (!load) {
         throw std::runtime_error("Failed to parse model file: " + filepath + " Error: " + fastgltf::getErrorName(load.error()).data());
@@ -48,12 +48,12 @@ void engine::Model::loadFromFile() {
     std::vector<uint32_t> tempIndices;
     for (const auto& primitive : mesh.primitives) {
         if (!primitive.indicesAccessor.has_value()) {
-            std::cerr<<std::format("Warning: Primitive in model {} has no indices. Skipping.\n", filepath);
+            std::cerr << "Warning: Primitive in model " << filepath << " has no indices. Skipping.\n";
             continue;
         }
         const auto possitionAttr = primitive.findAttribute("POSITION");
         if (possitionAttr == primitive.attributes.end()) {
-            std::cerr<<std::format("Warning: Primitive in model {} has no POSITION attribute. Skipping.\n", filepath);
+            std::cerr << "Warning: Primitive in model " << filepath << " has no POSITION attribute. Skipping.\n";
             continue;
         }
         const fastgltf::Accessor& indexAccessor = gltf.accessors[primitive.indicesAccessor.value()];
@@ -213,7 +213,7 @@ std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> engine::Model::loadVert
     }
     fastgltf::GltfDataBuffer data = std::move(dataResult.get());
     fastgltf::Parser parser{};
-    constexpr auto gltfOptions = fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers;
+    constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
     auto load = parser.loadGltfBinary(data, pathObj.parent_path(), gltfOptions);
     if (!load) {
         throw std::runtime_error("Failed to parse model file: " + filepath + " Error: " + fastgltf::getErrorName(load.error()).data());
@@ -276,7 +276,7 @@ void engine::ModelManager::init() {
             std::string modelBaseName = std::filesystem::path(fileName).stem().string();
             std::string modelName = parentPath + modelBaseName;
             if (models.find(modelName) != models.end()) {
-                std::cout << std::format("Warning: Duplicate model name detected: {}. Skipping {}\n", modelName, filePath);
+                std::cout << "Warning: Duplicate model name detected: " << modelName << ". Skipping " << filePath << "\n";
                 continue;
             }
             Model* model = new Model(modelName, filePath, renderer);

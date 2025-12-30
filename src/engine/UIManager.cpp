@@ -56,7 +56,7 @@ void engine::UIObject::removeChild(TextObject* child) {
     child->setParent(nullptr);
 }
 
-engine::UIManager::UIManager(Renderer* renderer, std::string& fontDirectory)
+engine::UIManager::UIManager(Renderer* renderer, std::string fontDirectory)
     : renderer(renderer), fontDirectory(std::move(fontDirectory)) {
         renderer->registerUIManager(this);
     }
@@ -87,7 +87,7 @@ engine::UIManager::~UIManager() {
 
 void engine::UIManager::addObject(UIObject* object) {
     if (objects.find(object->getName()) != objects.end()) {
-        std::cout << std::format("Warning: Duplicate UIObject name detected: {}. Overwriting existing object.\n", object->getName());
+        std::cout << "Warning: Duplicate UIObject name detected: " << object->getName() << ". Overwriting existing object.\n";
         if (std::holds_alternative<TextObject*>(objects[object->getName()])) {
             delete std::get<TextObject*>(objects[object->getName()]);
         } else{
@@ -100,7 +100,7 @@ void engine::UIManager::addObject(UIObject* object) {
 void engine::UIManager::addObject(TextObject* object) {
     const std::string& key = object->getName();
     if (objects.find(key) != objects.end()) {
-        std::cout << std::format("Warning: Duplicate TextObject name detected: {}. Overwriting existing object.\n", key);
+        std::cout << "Warning: Duplicate TextObject name detected: " << key << ". Overwriting existing object.\n";
         if (std::holds_alternative<TextObject*>(objects[key])) {
             delete std::get<TextObject*>(objects[key]);
         } else{
@@ -187,7 +187,7 @@ void engine::UIManager::loadTextures() {
         if (!object->getDescriptorSets().empty() || object->getTexture().empty()) continue;
         engine::Texture* texture = renderer->getTextureManager()->getTexture(object->getTexture());
         if (!texture) {
-            std::cout << std::format("Warning: Texture {} for UIObject {} not found.\n", object->getTexture(), name);
+            std::cout << "Warning: Texture " << object->getTexture() << " for UIObject " << name << " not found.\n";
             continue;
         }
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
@@ -211,7 +211,7 @@ void engine::UIManager::loadFonts() {
             std::string fileName = std::filesystem::path(filePath).filename().string();
             std::string fontName = parentPath + std::filesystem::path(fileName).stem().string();
             if (fonts.find(fontName) != fonts.end()) {
-                std::cout << std::format("Warning: Duplicate font name detected: {}. Skipping {}\n", fontName, filePath);
+                std::cout << "Warning: Duplicate font name detected: " << fontName << ". Skipping " << filePath << "\n";
                 continue;
             }
             FT_Library ft;
@@ -221,7 +221,7 @@ void engine::UIManager::loadFonts() {
             }
             FT_Face face;
             if (FT_New_Face(ft, filePath.c_str(), 0, &face)) {
-                std::cout << std::format("Error: Failed to load font {}\n", filePath);
+                std::cout << "Error: Failed to load font " << filePath << "\n";
                 FT_Done_FreeType(ft);
                 continue;
             }
@@ -237,7 +237,7 @@ void engine::UIManager::loadFonts() {
             font.characters.clear();
             for (unsigned char c = 0; c < 128; c++) {
                 if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
-                    std::cout << std::format("Warning: Failed to load Glyph {} from font {}\n", c, fontName);
+                    std::cout << "Warning: Failed to load Glyph " << c << " from font " << fontName << "\n";
                     continue;
                 }
                 Character character;

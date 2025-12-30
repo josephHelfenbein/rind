@@ -19,7 +19,7 @@ engine::AudioManager::AudioManager(Renderer* renderer, std::string audioDirector
         std::filesystem::path p(filePath);
         std::string baseName = p.stem().string(); // strip trailing extension
         if (m_soundPaths.find(baseName) != m_soundPaths.end()) {
-            std::cout << std::format("Warning: Duplicate audio file name detected: {}. Skipping {}\n", baseName, filePath);
+            std::cout << "Warning: Duplicate audio file name detected: " << baseName << ". Skipping " << filePath << "\n";
             continue;
         }
         m_soundPaths[baseName] = filePath;

@@ -4,7 +4,6 @@
 #include <engine/PushConstants.h>
 #include <glm/glm.hpp>
 
-#include <format>
 #include <iostream>
 #include <utility>
 #include <unordered_set>
@@ -20,7 +19,7 @@ engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string sha
             std::filesystem::path p(filePath);
             std::string baseName = p.stem().string(); // strip trailing .spv
             if (foundShaderFiles.find(baseName) != foundShaderFiles.end()) {
-                std::cout << std::format("Warning: Duplicate shader file name detected: {}. Skipping {}\n", baseName, filePath);
+                std::cout << "Warning: Duplicate shader file name detected: " << baseName << ". Skipping " << filePath << "\n";
                 continue;
             }
             foundShaderFiles[baseName] = filePath;
@@ -106,7 +105,7 @@ void engine::ShaderManager::loadGraphicsShader(const std::string& name) {
         shader->createPipeline(renderer);
         shader->createDescriptorPool(renderer);
     } else {
-        std::cout << std::format("Warning: Graphics shader {} not found.\n", name);
+        std::cout << "Warning: Graphics shader " << name << " not found.\n";
     }
 }
 
@@ -122,14 +121,14 @@ void engine::ShaderManager::loadComputeShader(const std::string& name) {
         shader->createPipeline(renderer);
         shader->createDescriptorPool(renderer);
     } else {
-        std::cout << std::format("Warning: Compute shader {} not found.\n", name);
+        std::cout << "Warning: Compute shader " << name << " not found.\n";
     }
 }
 
 void engine::ShaderManager::addGraphicsShader(GraphicsShader shader) {
     const std::string name = shader.name;
     if (graphicsShaderMap.contains(name)) {
-        std::cout << std::format("Warning: Graphics shader {} already added. Skipping duplicate.\n", name);
+        std::cout << "Warning: Graphics shader " << name << " already added. Skipping duplicate.\n";
         return;
     }
     auto shaderPtr = std::make_unique<GraphicsShader>(std::move(shader));
@@ -141,7 +140,7 @@ void engine::ShaderManager::addGraphicsShader(GraphicsShader shader) {
 void engine::ShaderManager::addComputeShader(ComputeShader shader) {
     const std::string name = shader.name;
     if (computeShaderMap.contains(name)) {
-        std::cout << std::format("Warning: Compute shader {} already added. Skipping duplicate.\n", name);
+        std::cout << "Warning: Compute shader " << name << " already added. Skipping duplicate.\n";
         return;
     }
     auto shaderPtr = std::make_unique<ComputeShader>(std::move(shader));
@@ -716,7 +715,7 @@ void engine::ShaderManager::resolveRenderGraphShaders() {
                     node.passInfo = it->second->config.passInfo.get();
                 }
             } else {
-                std::cout << std::format("Warning: Render graph shader '{}' not found.\n", shaderName);
+                std::cout << "Warning: Render graph shader '" << shaderName << "' not found.\n";
             }
         }
     }

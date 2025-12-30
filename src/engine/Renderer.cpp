@@ -1811,7 +1811,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             VkResult poolReset = vkResetDescriptorPool(device, shader->descriptorPool, 0);
             if (poolReset != VK_SUCCESS) {
-                throw std::runtime_error(std::format("Failed to reset descriptor pool for shader '{}'!", shader->name));
+                throw std::runtime_error("Failed to reset descriptor pool for shader '" + shader->name + "'!");
             }
         }
 
@@ -1842,7 +1842,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
 
         shader->descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
         if (vkAllocateDescriptorSets(device, &allocInfo, shader->descriptorSets.data()) != VK_SUCCESS) {
-            throw std::runtime_error(std::format("Failed to allocate descriptor sets for shader '{}'!", shader->name));
+            throw std::runtime_error("Failed to allocate descriptor sets for shader '" + shader->name + "'!");
         }
 
         size_t maxImageInfosPerFrame = 0;
@@ -1864,7 +1864,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     entityManager->createLightsUBO();
                 }
                 if (i >= lightsBuffers.size() || lightsBuffers[i] == VK_NULL_HANDLE) {
-                    std::cout << std::format("Warning: Lights UBO buffer missing for frame {} after ensure. Skipping descriptor write.\n", i);
+                    std::cout << "Warning: Lights UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
                 } else {
                     bufferInfos.push_back({
                         .buffer = lightsBuffers[i],
@@ -1885,14 +1885,13 @@ void engine::Renderer::createPostProcessDescriptorSets() {
             for (const auto& binding : shader->config.inputBindings) {
                 auto sourceShader = shaderManager->getGraphicsShader(binding.sourceShaderName);
                 if (!sourceShader) {
-                    std::cout << std::format("Warning: Source shader '{}' for binding {} in shader '{}' not found.\n", 
-                        binding.sourceShaderName, binding.binding, shader->name);
+                    std::cout << "Warning: Source shader '" << binding.sourceShaderName << "' for binding " << binding.binding << " in shader '" << shader->name << "' not found.\n";
                     continue;
                 }
 
                 auto renderPass = sourceShader->config.passInfo;
                 if (!renderPass || !renderPass->images.has_value()) {
-                    std::cout << std::format("Warning: Render pass for shader '{}' has no images.\n", binding.sourceShaderName);
+                    std::cout << "Warning: Render pass for shader '" << binding.sourceShaderName << "' has no images.\n";
                     continue;
                 }
 
@@ -1905,7 +1904,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 }
 
                 if (imageView == VK_NULL_HANDLE) {
-                    std::cout << std::format("Warning: Attachment '{}' not found in shader '{}'.\n", binding.attachmentName, binding.sourceShaderName);
+                    std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found in shader '" << binding.sourceShaderName << "'.\n";
                     continue;
                 }
 
@@ -2023,7 +2022,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                             fallbackTex = textureManager->getTexture("fallback_white_2d");
                         }
                         if (!fallbackTex || fallbackTex->imageView == VK_NULL_HANDLE || fallbackTex->image == VK_NULL_HANDLE) {
-                            std::cout << std::format("Warning: No fallback texture available for shader '{}' binding {}. Skipping descriptor write.\n", shader->name, vertexBindings + frag);
+                            std::cout << "Warning: No fallback texture available for shader '" << shader->name << "' binding " << (vertexBindings + frag) << ". Skipping descriptor write.\n";
                             continue;
                         }
                         for (uint32_t c = 0; c < descriptorCount; ++c) {

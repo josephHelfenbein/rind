@@ -322,8 +322,7 @@ rind::GameInstance::GameInstance() {
     sceneManager = std::make_unique<engine::SceneManager>(renderer.get(), std::move(scenes));
     textureManager = std::make_unique<engine::TextureManager>(renderer.get(), "src/assets/textures/");
     shaderManager = std::make_unique<engine::ShaderManager>(renderer.get(), "src/assets/shaders/compiled/");
-    std::string fontDirectory = "src/assets/fonts/";
-    uiManager = std::make_unique<engine::UIManager>(renderer.get(), fontDirectory);
+    uiManager = std::make_unique<engine::UIManager>(renderer.get(), "src/assets/fonts/");
     modelManager = std::make_unique<engine::ModelManager>(renderer.get(), "src/assets/models/");
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get(), "src/assets/audio/");

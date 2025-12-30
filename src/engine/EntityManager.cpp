@@ -205,7 +205,7 @@ void engine::EntityManager::loadTextures() {
         engine::GraphicsShader *shader = renderer->getShaderManager()->getGraphicsShader(entity->getShader());
         if (!shader) {
             if (!entity->getShader().empty()) {
-                std::cout << std::format("Warning: Shader {} for Entity {} not found.\n", entity->getShader(), name);
+                std::cout << "Warning: Shader " << entity->getShader() << " for Entity " << name << " not found.\n";
             }
             continue;
         }
