@@ -1,6 +1,8 @@
 #include <rind/Player.h>
 #include <rind/Enemy.h>
 #include <engine/ParticleManager.h>
+#include <engine/UIManager.h>
+#include <engine/SceneManager.h>
 
 rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
@@ -19,7 +21,6 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             "camera",
             glm::mat4(1.0f),
             60.0f,
-            16.0f/9.0f,
             0.01f,
             1000.0f,
             true
@@ -56,12 +57,16 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         );
         addChild(box);
         setCollider(box);
-        inputManager->registerCallback([this](const std::vector<engine::InputEvent>& events) {
+        inputManager->registerCallback("playerInput", [this](const std::vector<engine::InputEvent>& events) {
             this->registerInput(events);
         });
     }
 
 void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) {
+    if (inputsDisconnected) {
+        inputManager->unregisterCallback("playerInput");
+        return;
+    }
     for (const auto& event : events) {
         if (event.type == engine::InputEvent::Type::KeyPress) {
             switch (event.keyEvent.key) {
@@ -80,6 +85,9 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 case GLFW_KEY_SPACE:
                     jump(5.0f);
                     break;
+                case GLFW_KEY_LEFT_SHIFT:
+                    canDash = true;
+                    break;
                 default:
                     break;
             }
@@ -96,6 +104,9 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     break;
                 case GLFW_KEY_D:
                     stopMove(glm::vec3(0.0f, 0.0f, 1.0f));
+                    break;
+                case GLFW_KEY_LEFT_SHIFT:
+                    canDash = false;
                     break;
                 default:
                     break;
@@ -116,34 +127,66 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
         }
     }
     const glm::vec3 currentPress = getPressed();
-    if (currentPress != lastPress && glm::length(currentPress) > 1e-6f) {
-        lastPress = currentPress;
-        lastPressTime = std::chrono::steady_clock::now();
-    } else if (glm::length(currentPress) > 1e-6f) {
+    if (glm::length(currentPress) > 1e-6f) {
         auto now = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastPressTime).count();
-        if (duration >= 100 && duration <= 400 && (now - lastDashTime) >= std::chrono::duration<float>(dashCooldown)) {
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastDashTime).count();
+        if (duration >= dashCooldown && canDash) {
             dash(currentPress, 100.0f);
             lastDashTime = now;
         }
-        lastPressTime = now;
     }
 }
 
 void rind::Player::damage(float amount) {
     setHealth(getHealth() - amount);
-    if (getHealth() <= 0.0f) {
-        std::cout << "Player has died. Game Over." << std::endl;
+    if (getHealth() <= 0.0f && !isDead) {
+        isDead = true;
+        stopMove(getPressed(), false);
+        engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
+        engine::UIObject* windowTint = new engine::UIObject(
+            uiManager,
+            glm::mat4(1.0f), 
+            "deathWindowTint",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.25f),
+            "ui_window"
+        );
+        engine::TextObject* diedText = new engine::TextObject(
+            uiManager,
+            glm::mat4(1.0f), 
+            "deathWindowText",
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+            "You Died!",
+            "Lato"
+        );
+        engine::SceneManager* sceneManager = getEntityManager()->getRenderer()->getSceneManager();
+        engine::ButtonObject* quitButton = new engine::ButtonObject(
+            uiManager,
+            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -100.0f, 0.0f)), glm::vec3(0.15, 0.05, 1.0)),
+            "deathMenuButton",
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+            "ui_window",
+            "Menu",
+            "Lato",
+            [sceneManager]() {
+                sceneManager->setActiveScene(0);
+            }
+        );
+        windowTint->addChild(quitButton);
+        getEntityManager()->getRenderer()->refreshDescriptorSets();
+        getEntityManager()->getRenderer()->getInputManager()->setUIFocused(true);
+        getEntityManager()->getRenderer()->toggleLockCursor(false);
+        inputsDisconnected = true;
     }
 }
 
 void rind::Player::shoot() {
-    std::cout << "Shooting weapon!" << std::endl;
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
     constexpr float framePrediction = 0.016f;
     glm::vec3 velocityOffset = getVelocity() * framePrediction;
     glm::vec3 gunPos = glm::vec3(camera->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f)) + velocityOffset;
-    getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+   engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
+    particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
         rayDir * 15.0f,
@@ -165,7 +208,7 @@ void rind::Player::shoot() {
         endPos = collision.worldHitPoint;
         glm::vec3 normal = glm::normalize(collision.mtv.normal);
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
-        getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+        particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
             reflectedDir * 40.0f,
@@ -173,7 +216,7 @@ void rind::Player::shoot() {
             4.0f,
             0.5f
         );
-        getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+        particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
             reflectedDir * 25.0f,
@@ -181,7 +224,7 @@ void rind::Player::shoot() {
             4.0f,
             0.4f
         );
-        getEntityManager()->getRenderer()->getParticleManager()->burstParticles(
+        particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
             reflectedDir * 10.0f,
@@ -189,21 +232,22 @@ void rind::Player::shoot() {
             2.0f,
             0.3f
         );
-        rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent());
-        if (character) {
+        if (rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent())) {
             character->damage(25.0f);
+            if (character->getState() == EnemyState::Idle) {
+                character->rotateToPlayer();
+            }
             audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
-            std::cout << "Hit " << character->getName() << " for 25 damage!" << std::endl;
         } else {
             audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);
         }
         break;
     }
     audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
-    getEntityManager()->getRenderer()->getParticleManager()->spawnTrail(
+    particleManager->spawnTrail(
         gunPos,
         endPos - gunPos,
         glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
-        0.05f
+        0.1f
     );
 }

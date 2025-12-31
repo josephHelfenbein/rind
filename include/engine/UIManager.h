@@ -37,7 +37,7 @@ namespace engine {
 
     class TextObject {
     public:
-        TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string text, std::string font, Corner anchorCorner = Corner::Center);
+        TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string text, std::string font, Corner anchorCorner = Corner::Center);
         ~TextObject() = default;
 
         const std::string& getText() const { return text; }
@@ -50,7 +50,7 @@ namespace engine {
         const std::string& getFont() const { return font; }
         bool isEnabled() const { return enabled; }
         void setEnabled(bool enabled) { this->enabled = enabled; }
-        glm::vec3 getTint() const { return tint; }
+        glm::vec4 getTint() const { return tint; }
         Corner getAnchorCorner() const { return anchorCorner; }
         glm::vec2 getScale() const;
         float getVerticalOffsetRatio() const { return verticalOffsetRatio; }
@@ -59,7 +59,7 @@ namespace engine {
     private:
         UIManager* uiManager;
         std::string name;
-        glm::vec3 tint;
+        glm::vec4 tint;
         std::string text;
         std::string font;
         glm::mat4 transform;
@@ -71,7 +71,7 @@ namespace engine {
 
     class UIObject {
     public:
-        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr, std::function<void()>* onStopHover = nullptr);
+        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr, std::function<void()>* onStopHover = nullptr);
         virtual ~UIObject();
 
         const std::string& getName() const { return name; }
@@ -93,7 +93,7 @@ namespace engine {
 
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
-        glm::vec3 getTint() const { return tint; }
+        glm::vec4 getTint() const { return tint; }
         Corner getAnchorCorner() const { return anchorCorner; }
         std::function<void()>* getOnHover() const { return onHover; }
         std::function<void()>* getOnStopHover() const { return onStopHover; }
@@ -101,7 +101,7 @@ namespace engine {
     private:
         UIManager* uiManager;
         std::string name;
-        glm::vec3 tint;
+        glm::vec4 tint;
         glm::mat4 transform;
         Corner anchorCorner;
         std::string texture;
@@ -115,7 +115,7 @@ namespace engine {
 
     class ButtonObject : public UIObject {
     public:
-        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, glm::vec3 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
+        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
             : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
                 TextObject* textObj = new TextObject(uiManager, glm::mat4(1.0f), name + "_text", textColor, text, font, Corner::Center);
                 this->addChild(textObj);

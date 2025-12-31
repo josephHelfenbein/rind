@@ -11,6 +11,9 @@ static inline glm::mat4 applyWorldTranslation(const glm::mat4& transform, const 
 
 void engine::CharacterEntity::update(float deltaTime) {
     updateMovement(deltaTime);
+    if (getWorldPosition().y < -30) {
+        damage(health);
+    }
 }
 
 void engine::CharacterEntity::updateMovement(float deltaTime) {

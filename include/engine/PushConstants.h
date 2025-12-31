@@ -16,8 +16,7 @@ namespace engine {
     };
 
     struct UIPC {
-        glm::vec3 tint;
-        float _pad;
+        glm::vec4 tint;
         glm::mat4 model;
     };
 

@@ -9,12 +9,12 @@ Texture2D<float4> sampleTexture;
 SamplerState sampleSampler;
 
 struct PushConstants {
-    float3 tint;
+    float4 tint;
     float4x4 model;
 };
 
 [[vk::push_constant]] PushConstants pc;
 
 float4 main(VSOutput input) : SV_Target {
-    return sampleTexture.Sample(sampleSampler, input.texCoord) * float4(pc.tint, 1.0);
+    return sampleTexture.Sample(sampleSampler, input.texCoord) * pc.tint;
 }

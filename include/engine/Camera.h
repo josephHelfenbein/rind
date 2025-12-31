@@ -11,10 +11,12 @@
 namespace engine {
     class Camera  : public Entity {
     public:
-        Camera(EntityManager* entityManager, const std::string& name, glm::mat4 transform, float fovY, float aspectRatio, float nearPlane, float farPlane, bool isMovable = true)
+        Camera(EntityManager* entityManager, const std::string& name, glm::mat4 transform, float fovY, float nearPlane, float farPlane, bool isMovable = true)
             : Entity(entityManager, name, "", transform, {}, isMovable),
-              fovY(fovY), aspectRatio(aspectRatio), nearPlane(nearPlane), farPlane(farPlane) {
+              fovY(fovY), nearPlane(nearPlane), farPlane(farPlane) {
                 entityManager->setCamera(this);
+                VkExtent2D swapChainExtent = entityManager->getRenderer()->getSwapChainExtent();
+                aspectRatio = static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
               }
 
         void setPerspective(float fovY, float aspectRatio, float nearPlane, float farPlane) {
@@ -24,6 +26,9 @@ namespace engine {
             this->farPlane = farPlane;
         }
 
+        void setAspectRatio(float aspectRatio) {
+            this->aspectRatio = aspectRatio;
+        }
         float getFovY() const { return fovY; }
         float getAspectRatio() const { return aspectRatio; }
         float getNearPlane() const { return nearPlane; }

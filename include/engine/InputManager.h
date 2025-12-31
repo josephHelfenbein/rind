@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <functional>
+#include <map>
 
 namespace engine {
     struct InputEvent {
@@ -33,7 +34,8 @@ namespace engine {
 
         void processInput(GLFWwindow* window);
         void dispatch(const std::vector<InputEvent>& events);
-        void registerCallback(std::function<void(const std::vector<InputEvent>&)> callback);
+        void registerCallback(const std::string& name, std::function<void(const std::vector<InputEvent>&)> callback);
+        void unregisterCallback(const std::string& name);
 
         void setCursorLocked(bool locked) { isCursorLocked = locked; }
         void setUIFocused(bool focused) { isUIFocused = focused; }
@@ -45,7 +47,8 @@ namespace engine {
         }
 
     private:
-        std::vector<std::function<void(const std::vector<InputEvent>&)>> callbacks;
+        std::map<std::string, std::function<void(const std::vector<InputEvent>&)>> callbacks;
+        std::vector<std::string> unregisterQueue;
         int keyStates[GLFW_KEY_LAST + 1] = {0};
         int mouseButtonStates[GLFW_MOUSE_BUTTON_LAST + 1] = {0};
         bool hasMousePosition = false;

@@ -3,12 +3,12 @@
 #include <filesystem>
 #include <limits>
 
-engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
+engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
     : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover) {
         uiManager->addObject(this);
     }
 
-engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec3 tint, std::string text, std::string font, Corner anchorCorner)
+engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string text, std::string font, Corner anchorCorner)
     : uiManager(uiManager), name(std::move(name)), tint(tint), text(std::move(text)), font(std::move(font)), transform(transform), anchorCorner(anchorCorner) {
         uiManager->addObject(this);
     }
@@ -601,18 +601,19 @@ engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, do
         LayoutRect designRect = resolveDesignRect(node, parentRect);
         const float invLayout = layoutScale > 0.0f ? 1.0f / layoutScale : 0.0f;
         glm::vec2 mouseDesign = (mousePosF - canvasOrigin) * invLayout;
-        if (mouseDesign.x >= designRect.position.x
-        && mouseDesign.x <= designRect.position.x + designRect.size.x
-        && mouseDesign.y >= designRect.position.y
-        && mouseDesign.y <= designRect.position.y + designRect.size.y) {
-            hoveredObject = node;
-            foundHover = true;
-            return;
-        }
+        bool isOverNode = mouseDesign.x >= designRect.position.x
+            && mouseDesign.x <= designRect.position.x + designRect.size.x
+            && mouseDesign.y >= designRect.position.y
+            && mouseDesign.y <= designRect.position.y + designRect.size.y;
         for (const auto& child : node->getChildren()) {
             if (std::holds_alternative<UIObject*>(child)) {
                 traverse(std::get<UIObject*>(child), designRect);
+                if (foundHover) return;
             }
+        }
+        if (isOverNode && !foundHover) {
+            hoveredObject = node;
+            foundHover = true;
         }
     };
     LayoutRect rootRect = {

@@ -64,13 +64,25 @@ void engine::InputManager::processInput(GLFWwindow* window) {
 }
 
 void engine::InputManager::dispatch(const std::vector<InputEvent>& events) {
-    for (const auto& callback : callbacks) {
+    if (unregisterQueue.size()) {
+        for (const std::string& name : unregisterQueue) {
+            if (callbacks.find(name) != callbacks.end()) {
+                callbacks.erase(name);
+            }
+        }
+        unregisterQueue.clear();
+    }
+    for (const auto& [name, callback] : callbacks) {
         callback(events);
     }
 }
 
-void engine::InputManager::registerCallback(std::function<void(const std::vector<InputEvent>&)> callback) {
+void engine::InputManager::registerCallback(const std::string& name, std::function<void(const std::vector<InputEvent>&)> callback) {
     if (callback) {
-        callbacks.push_back(std::move(callback));
+        callbacks[name] = std::move(callback);
     }
+}
+
+void engine::InputManager::unregisterCallback(const std::string& name) {
+    unregisterQueue.push_back(name);
 }

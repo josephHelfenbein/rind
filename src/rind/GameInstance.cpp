@@ -18,7 +18,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         uiManager,
         glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 1.0f)),
         "TitleText",
-        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "Rind",
         "Lato",
         engine::Corner::Center
@@ -27,8 +27,8 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         uiManager,
         glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -100.0f, 0.0f)), glm::vec3(0.15, 0.05, 1.0)),
         "StartButton",
-        glm::vec3(0.5f, 0.5f, 0.6f),
-        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
         "Start Game",
         "Lato",
@@ -50,7 +50,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         uiManager,
         glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)),
         "crosshair",
-        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
         "ui_crosshair",
         engine::Corner::Center
     );
@@ -296,16 +296,6 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         glm::translate(glm::mat4(1.0f), glm::vec3(8.0f, 5.0f, 0.0f)),
         {}
     );
-    enemy1->setModel(modelManager->getModel("cube"));
-    engine::Entity* face = new engine::Entity(
-        entityManager,
-        "enemy1_face",
-        "gbuffer",
-        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, -0.51f)), glm::vec3(0.5f, 0.5f, 1.0f)),
-        {}
-    );
-    face->setModel(modelManager->getModel("cube"));
-    enemy1->addChild(face);
     renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);
 };

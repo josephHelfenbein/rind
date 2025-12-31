@@ -376,7 +376,7 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
                 }
             } else if (type == std::type_index(typeid(UIPC))) {
                 UIPC pc = {
-                    .tint = glm::vec3(1.0f),
+                    .tint = glm::vec4(1.0f),
                     .model = entity->getWorldTransform()
                 };
                 vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(UIPC), &pc);

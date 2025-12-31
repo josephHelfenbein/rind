@@ -24,6 +24,10 @@ namespace rind {
 
         bool checkVisibilityOfPlayer();
 
+        EnemyState getState() const { return state; }
+        
+        void rotateToPlayer();
+
     private:
         EnemyState state = EnemyState::Idle;
         Player* targetPlayer = nullptr;
@@ -35,7 +39,7 @@ namespace rind {
             .max = glm::vec3(5.0f, 2.5f, 0.0f)
         };
 
-        float shootingCooldown = 0.2f;
+        float shootingCooldown = 0.5f;
         std::chrono::steady_clock::time_point lastShotTime = std::chrono::steady_clock::now();
 
         glm::vec3 wanderTarget = glm::vec3(0.0f);

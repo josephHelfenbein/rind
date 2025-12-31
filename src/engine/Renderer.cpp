@@ -940,6 +940,10 @@ void engine::Renderer::recreateSwapChain() {
     ensureFallback2DTexture();
     ensureFallbackShadowCubeTexture();
     createPostProcessDescriptorSets();
+    if (entityManager && entityManager->getCamera()) {
+        float newAspect = static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
+        entityManager->getCamera()->setAspectRatio(newAspect);
+    }
     GraphicsShader* particleShader = shaderManager->getGraphicsShader("particle");
     if (particleShader && particleShader->descriptorPool != VK_NULL_HANDLE) {
         vkResetDescriptorPool(device, particleShader->descriptorPool, 0);
