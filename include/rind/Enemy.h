@@ -1,6 +1,8 @@
 #pragma once
 
 #include <engine/CharacterEntity.h>
+#include <engine/AudioManager.h>
+#include <engine/ParticleManager.h>
 #include <rind/Player.h>
 #include <random>
 
@@ -19,6 +21,11 @@ namespace rind {
 
         void wander();
         void wanderTo(float deltaTime);
+        void setWanderTarget(const glm::vec3& target) {
+            waiting = false;
+            wandering = true;
+            wanderTarget = target;
+        }
 
         void shoot();
 
@@ -29,6 +36,8 @@ namespace rind {
         void rotateToPlayer();
 
     private:
+        engine::AudioManager* audioManager = nullptr;
+        engine::ParticleManager* particleManager = nullptr;
         EnemyState state = EnemyState::Idle;
         Player* targetPlayer = nullptr;
         std::mt19937 rng{std::random_device{}()};

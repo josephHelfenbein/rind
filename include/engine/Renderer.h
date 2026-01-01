@@ -148,6 +148,7 @@ namespace engine {
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
+        float getDeltaTime() const { return deltaTime; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;

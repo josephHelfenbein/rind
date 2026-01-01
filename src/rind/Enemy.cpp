@@ -25,6 +25,8 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
         face->setModel(entityManager->getRenderer()->getModelManager()->getModel("cube"));
         addChild(face);
         setHead(face);
+        audioManager = getEntityManager()->getRenderer()->getAudioManager();
+        particleManager = getEntityManager()->getRenderer()->getParticleManager();
     }
 
 void rind::Enemy::update(float deltaTime) {
@@ -40,6 +42,7 @@ void rind::Enemy::update(float deltaTime) {
                     wandering = false;
                     waiting = false;
                     stopMove(getPressed(), false);
+                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, true);
                 }
                 break;
             }
@@ -47,6 +50,7 @@ void rind::Enemy::update(float deltaTime) {
                 if (!checkVisibilityOfPlayer()) {
                     state = EnemyState::Idle;
                     stopMove(getPressed(), false);
+                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, true);
                     break;
                 }
                 glm::mat4 t = getTransform();
@@ -169,8 +173,6 @@ void rind::Enemy::shoot() {
     constexpr float framePrediction = 0.016f;
     glm::vec3 velocityOffset = getVelocity() * framePrediction;
     glm::vec3 gunPos = glm::vec3(getHead()->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f)) + velocityOffset;
-    engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
-    engine::AudioManager* audioManager = getEntityManager()->getRenderer()->getAudioManager();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),

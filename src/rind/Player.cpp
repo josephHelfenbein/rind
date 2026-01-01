@@ -185,7 +185,7 @@ void rind::Player::shoot() {
     constexpr float framePrediction = 0.016f;
     glm::vec3 velocityOffset = getVelocity() * framePrediction;
     glm::vec3 gunPos = glm::vec3(camera->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f)) + velocityOffset;
-   engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
+    engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
@@ -236,6 +236,11 @@ void rind::Player::shoot() {
             character->damage(25.0f);
             if (character->getState() == EnemyState::Idle) {
                 character->rotateToPlayer();
+                if (!character->checkVisibilityOfPlayer()) {
+                    character->setWanderTarget(getWorldPosition());
+                    character->wanderTo(getEntityManager()->getRenderer()->getDeltaTime());
+                    audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, true);
+                }
             }
             audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
         } else {
