@@ -98,7 +98,7 @@ namespace engine {
                 pushConstantType = std::type_index(typeid(T));
             }
             
-            std::function<void(VkVertexInputBindingDescription&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
+            std::function<void(std::vector<VkVertexInputBindingDescription>&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
         } config;
 
         VkPipeline pipeline{};

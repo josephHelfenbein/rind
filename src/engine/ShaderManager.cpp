@@ -218,6 +218,11 @@ namespace {
         glm::vec2 pos;
         glm::vec2 texCoord;
     };
+
+    struct SkinnedVertex {
+        glm::vec4 joints;  // 4 joint indices as floats
+        glm::vec4 weights; // 4 joint weights
+    };
 }
 
 std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders() {
@@ -340,7 +345,10 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .name = "shadow",
             .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .config = {
-                .vertexBitBindings = 0,
+                .poolMultiplier = 512,
+                .vertexBitBindings = 1,
+                .vertexDescriptorCounts = { 1 },
+                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
                 .fragmentBitBindings = 0,
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = true,
@@ -348,16 +356,31 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = true,
                 .passInfo = shadowPass,
                 .colorAttachmentCount = 0,
-                .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
-                    binding.binding = 0;
-                    binding.stride = sizeof(Vertex);
-                    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(2);
+                    bindings[0].binding = 0;
+                    bindings[0].stride = sizeof(Vertex);
+                    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-                    attributes.resize(1);
+                    bindings[1].binding = 1;
+                    bindings[1].stride = sizeof(SkinnedVertex);
+                    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                    attributes.resize(3);
                     attributes[0].binding = 0;
                     attributes[0].location = 0;
                     attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
                     attributes[0].offset = offsetof(Vertex, pos);
+
+                    attributes[1].binding = 1;
+                    attributes[1].location = 1;
+                    attributes[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attributes[1].offset = offsetof(SkinnedVertex, joints);
+
+                    attributes[2].binding = 1;
+                    attributes[2].location = 2;
+                    attributes[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attributes[2].offset = offsetof(SkinnedVertex, weights);
                 }
             }
         };
@@ -392,7 +415,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("gbuffer.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .poolMultiplier = 512,
-                .vertexBitBindings = 0,
+                .vertexBitBindings = 1,
+                .vertexDescriptorCounts = { 1 },
+                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
                 .fragmentBitBindings = 5,
                 .fragmentDescriptorCounts = {
                     1, 1, 1, 1, 1
@@ -409,12 +434,17 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = true,
                 .passInfo = gbufferPass,
                 .colorAttachmentCount = 3,
-                .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
-                    binding.binding = 0;
-                    binding.stride = sizeof(Vertex);
-                    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(2);
+                    bindings[0].binding = 0;
+                    bindings[0].stride = sizeof(Vertex);
+                    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-                    attributes.resize(4);
+                    bindings[1].binding = 1;
+                    bindings[1].stride = sizeof(SkinnedVertex);
+                    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                    attributes.resize(6);
                     attributes[0].binding = 0;
                     attributes[0].location = 0;
                     attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -434,6 +464,16 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     attributes[3].location = 3;
                     attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
                     attributes[3].offset = offsetof(Vertex, tangent);
+
+                    attributes[4].binding = 1;
+                    attributes[4].location = 4;
+                    attributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attributes[4].offset = offsetof(SkinnedVertex, joints);
+
+                    attributes[5].binding = 1;
+                    attributes[5].location = 5;
+                    attributes[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attributes[5].offset = offsetof(SkinnedVertex, weights);
                 }
             }
         };
@@ -571,10 +611,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .passInfo = uiPass,
                 .colorAttachmentCount = 1,
-                .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
-                    binding.binding = 0;
-                    binding.stride = sizeof(UIVertex);
-                    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(1);
+                    bindings[0].binding = 0;
+                    bindings[0].stride = sizeof(UIVertex);
+                    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
                     attributes.resize(2);
                     attributes[0].binding = 0;
@@ -615,10 +656,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .passInfo = textPass,
                 .colorAttachmentCount = 1,
-                .getVertexInputDescriptions = [](VkVertexInputBindingDescription& binding, std::vector<VkVertexInputAttributeDescription>& attributes) {
-                    binding.binding = 0;
-                    binding.stride = sizeof(UIVertex);
-                    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(1);
+                    bindings[0].binding = 0;
+                    bindings[0].stride = sizeof(UIVertex);
+                    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
                     attributes.resize(2);
                     attributes[0].binding = 0;
@@ -1097,17 +1139,17 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
         .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
         .pDynamicStates = dynamicStates.data()
     };
-    VkVertexInputBindingDescription bindingDescription{};
+    std::vector<VkVertexInputBindingDescription> bindingDescriptions;
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     if (config.getVertexInputDescriptions) {
-        config.getVertexInputDescriptions(bindingDescription, attributeDescriptions);
+        config.getVertexInputDescriptions(bindingDescriptions, attributeDescriptions);
     }
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = bindingDescription.stride != 0u ? 1u : 0u,
-        .pVertexBindingDescriptions = bindingDescription.stride != 0u ? &bindingDescription : nullptr,
+        .vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size()),
+        .pVertexBindingDescriptions = bindingDescriptions.empty() ? nullptr : bindingDescriptions.data(),
         .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
-        .pVertexAttributeDescriptions = attributeDescriptions.data()
+        .pVertexAttributeDescriptions = attributeDescriptions.empty() ? nullptr : attributeDescriptions.data()
     };
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,

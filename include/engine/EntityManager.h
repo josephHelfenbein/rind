@@ -16,6 +16,14 @@ namespace engine {
     class Collider;
     class Entity {
     public:
+        struct AnimationState {
+            std::string currentAnimation = "";
+            float currentTime = 0.0f;
+            bool looping = true;
+            float playbackSpeed = 1.0f;
+            std::string prevAnimation = "";
+            float blendFactor = 1.0f; // 0.0 - 1.0
+        };
         Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false);
 
         virtual ~Entity();
@@ -45,8 +53,11 @@ namespace engine {
         const std::vector<std::string>& getTextures() const { return textures; }
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         void setDescriptorSets(const std::vector<VkDescriptorSet>& sets) { descriptorSets = sets; }
+        const std::vector<VkDescriptorSet>& getShadowDescriptorSets() const { return shadowDescriptorSets; }
+        void setShadowDescriptorSets(const std::vector<VkDescriptorSet>& sets) { shadowDescriptorSets = sets; }
 
         std::vector<VkBuffer>& getUniformBuffers() { return uniformBuffers; }
+        std::vector<VkDeviceMemory>& getUniformBuffersMemory() { return uniformBuffersMemory; }
         void ensureUniformBuffers(Renderer* renderer, GraphicsShader* shader);
         void destroyUniformBuffers(Renderer* renderer);
 
@@ -62,6 +73,14 @@ namespace engine {
             return nullptr;
         }
 
+        bool getCastShadow() const { return castShadow; }
+        void setCastShadow(bool cast) { castShadow = cast; }
+
+        void playAnimation(const std::string& animationName, bool loop = true, float speed = 1.0f);
+        void updateAnimation(float deltaTime);
+        const std::vector<glm::mat4>& getJointMatrices() const { return jointMatrices; }
+        bool isAnimated() const { return model && model->hasAnimations() && !animState.currentAnimation.empty(); }
+
     private:
         std::string name;
         std::string shader;
@@ -71,6 +90,7 @@ namespace engine {
         bool isMovable;
 
         std::vector<VkDescriptorSet> descriptorSets;
+        std::vector<VkDescriptorSet> shadowDescriptorSets;
         std::vector<VkBuffer> uniformBuffers;
         std::vector<VkDeviceMemory> uniformBuffersMemory;
         size_t uniformBufferStride = 0;
@@ -78,6 +98,10 @@ namespace engine {
         EntityManager* entityManager;
 
         Model* model = nullptr;
+        AnimationState animState;
+        std::vector<glm::mat4> jointMatrices;
+
+        bool castShadow = true;
 
         std::vector<Entity*> children;
         Entity* parent = nullptr;
@@ -140,7 +164,8 @@ namespace engine {
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
         std::vector<Collider*>& getColliders() { return colliders; }
         void createAllShadowMaps();
-        void renderShadows(VkCommandBuffer commandBuffer);
+        void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
+        VkBuffer getDummySkinningBuffer() const { return dummySkinningBuffer; }
 
         Renderer* getRenderer() const { return renderer; }
 
@@ -165,5 +190,10 @@ namespace engine {
         std::vector<VkBuffer> lightsBuffers;
         std::vector<VkDeviceMemory> lightsBuffersMemory;
         Camera* camera = nullptr;
+
+        VkBuffer dummySkinningBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory dummySkinningBufferMemory = VK_NULL_HANDLE;
+        void createDummySkinningBuffer();
+        void destroyDummySkinningBuffer();
     };
 };

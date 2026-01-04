@@ -48,6 +48,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             true
         );
         gunModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("lasergun"));
+        gunModel->setCastShadow(false);
         head->addChild(gunModel);
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
@@ -57,6 +58,37 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         );
         addChild(box);
         setCollider(box);
+        engine::Entity* playerModel = new engine::Entity(
+            entityManager,
+            "playerModel",
+            "gbuffer",
+            glm::scale(
+                glm::rotate(
+                    glm::translate(
+                        glm::mat4(1.0f), glm::vec3(0.0f, -0.45f, 0.2f)
+                    ),
+                    glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f)
+                ),
+                glm::vec3(0.22f)
+            ),
+            gunMaterial,
+            true
+        );
+        playerModel->setCastShadow(false);
+        playerModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot-visible"));
+        addChild(playerModel);
+        playerModel->playAnimation("Run", true, 1.0f);
+        engine::Entity* playerShadow = new engine::Entity(
+            entityManager,
+            "playerShadow",
+            "shadow",
+            glm::mat4(1.0f),
+            {},
+            true
+        );
+        playerShadow->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot"));
+        playerModel->addChild(playerShadow);
+        playerShadow->playAnimation("Run", true, 1.0f);
         inputManager->registerCallback("playerInput", [this](const std::vector<engine::InputEvent>& events) {
             this->registerInput(events);
         });

@@ -31,7 +31,7 @@ namespace engine {
 
         void createShadowMaps(engine::Renderer* renderer);
         void bakeShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
-        void renderShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
+        void renderShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame);
         bool isBaked() const { return shadowBaked; }
 
     private:

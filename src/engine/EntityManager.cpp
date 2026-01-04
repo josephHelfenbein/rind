@@ -2,6 +2,10 @@
 #include <engine/Camera.h>
 #include <engine/Light.h>
 #include <engine/Collider.h>
+#include <glm/gtc/quaternion.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
     : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable) {
@@ -84,14 +88,25 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
     uniformBufferStride = requiredStride;
     uniformBuffers.resize(frames * requiredStride, VK_NULL_HANDLE);
     uniformBuffersMemory.resize(frames * requiredStride, VK_NULL_HANDLE);
+    
+    constexpr size_t MAX_JOINTS = 128;
+    constexpr size_t JOINT_MATRIX_UBO_SIZE = MAX_JOINTS * sizeof(glm::mat4);
+    
+    std::vector<glm::mat4> identityMatrices(MAX_JOINTS, glm::mat4(1.0f));
+    
     for (size_t frame = 0; frame < frames; ++frame) {
         for (size_t binding = 0; binding < requiredStride; ++binding) {
             const size_t index = frame * requiredStride + binding;
             std::tie(uniformBuffers[index], uniformBuffersMemory[index]) = renderer->createBuffer(
-                sizeof(shader->config.pushConstantRange.size),
+                JOINT_MATRIX_UBO_SIZE,
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
+            void* data;
+            if (vkMapMemory(renderer->getDevice(), uniformBuffersMemory[index], 0, JOINT_MATRIX_UBO_SIZE, 0, &data) == VK_SUCCESS) {
+                memcpy(data, identityMatrices.data(), JOINT_MATRIX_UBO_SIZE);
+                vkUnmapMemory(renderer->getDevice(), uniformBuffersMemory[index]);
+            }
         }
     }
 }
@@ -119,12 +134,127 @@ void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
     uniformBufferStride = 0;
 }
 
+void engine::Entity::playAnimation(const std::string& animationName, bool loop, float speed) {
+    if (!model || !model->hasAnimations()) return;
+    const auto* clip = model->getAnimation(animationName);
+    if (!clip) {
+        std::cerr << "Animation '" << animationName << "' not found on model\n";
+        return;
+    }
+    if (!animState.currentAnimation.empty() && animState.currentAnimation != animationName) {
+        animState.prevAnimation = animState.currentAnimation;
+        animState.blendFactor = 0.0f;
+    }
+    animState.currentAnimation = animationName;
+    animState.currentTime = 0.0f;
+    animState.looping = loop;
+    animState.playbackSpeed = speed;
+    const auto& skeleton = model->getSkeleton();
+    if (jointMatrices.size() != skeleton.size()) {
+        jointMatrices.resize(skeleton.size(), glm::mat4(1.0f));
+    }
+}
+
+void engine::Entity::updateAnimation(float deltaTime) {
+    if (!model || !model->hasAnimations() || animState.currentAnimation.empty()) return;
+    const auto* clip = model->getAnimation(animState.currentAnimation);
+    if (!clip) return;
+    const auto& skeleton = model->getSkeleton();
+    if (skeleton.empty()) return;
+    animState.currentTime += deltaTime * animState.playbackSpeed;
+    if (animState.currentTime > clip->duration) {
+        if (animState.looping) {
+            animState.currentTime = fmod(animState.currentTime, clip->duration);
+        } else {
+            animState.currentTime = clip->duration;
+        }
+    }
+    if (jointMatrices.size() != skeleton.size()) {
+        jointMatrices.resize(skeleton.size(), glm::mat4(1.0f));
+    }
+    std::vector<glm::vec3> localTranslations(skeleton.size());
+    std::vector<glm::quat> localRotations(skeleton.size());
+    std::vector<glm::vec3> localScales(skeleton.size());
+    
+    for (size_t i = 0; i < skeleton.size(); ++i) {
+        const auto& joint = skeleton[i];
+        glm::vec3 skew;
+        glm::vec4 perspective;
+        glm::decompose(joint.localTransform, localScales[i], localRotations[i], localTranslations[i], skew, perspective);
+    }
+    for (const auto& channel : clip->channels) {
+        if (channel.targetNode >= skeleton.size()) continue;        
+        const auto& sampler = clip->samplers[channel.samplerIndex];
+        if (sampler.inputTimes.empty()) continue;
+        float t = animState.currentTime;
+        size_t keyIndex = 0;
+        for (size_t i = 0; i < sampler.inputTimes.size() - 1; ++i) {
+            if (t >= sampler.inputTimes[i] && t < sampler.inputTimes[i + 1]) {
+                keyIndex = i;
+                break;
+            }
+            if (i == sampler.inputTimes.size() - 2) {
+                keyIndex = i;
+            }
+        }
+        float t0 = sampler.inputTimes[keyIndex];
+        float t1 = sampler.inputTimes[std::min(keyIndex + 1, sampler.inputTimes.size() - 1)];
+        float factor = (t1 > t0) ? glm::clamp((t - t0) / (t1 - t0), 0.0f, 1.0f) : 0.0f;
+        const glm::vec4& v0 = sampler.outputValues[keyIndex];
+        const glm::vec4& v1 = sampler.outputValues[std::min(keyIndex + 1, sampler.outputValues.size() - 1)];
+        size_t nodeIdx = channel.targetNode;
+        switch (channel.path) {
+            case Model::AnimationChannel::Path::TRANSLATION: {
+                if (sampler.interpolation == Model::AnimationSampler::Interpolation::STEP) {
+                    localTranslations[nodeIdx] = glm::vec3(v0);
+                } else {
+                    localTranslations[nodeIdx] = glm::mix(glm::vec3(v0), glm::vec3(v1), factor);
+                }
+                break;
+            }
+            case Model::AnimationChannel::Path::ROTATION: {
+                glm::quat q0(v0.w, v0.x, v0.y, v0.z);
+                glm::quat q1(v1.w, v1.x, v1.y, v1.z);
+                if (sampler.interpolation == Model::AnimationSampler::Interpolation::STEP) {
+                    localRotations[nodeIdx] = q0;
+                } else {
+                    localRotations[nodeIdx] = glm::slerp(q0, q1, factor);
+                }
+                break;
+            }
+            case Model::AnimationChannel::Path::SCALE: {
+                if (sampler.interpolation == Model::AnimationSampler::Interpolation::STEP) {
+                    localScales[nodeIdx] = glm::vec3(v0);
+                } else {
+                    localScales[nodeIdx] = glm::mix(glm::vec3(v0), glm::vec3(v1), factor);
+                }
+                break;
+            }
+        }
+    }
+    std::vector<glm::mat4> globalTransforms(skeleton.size());
+    for (size_t i = 0; i < skeleton.size(); ++i) {
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), localTranslations[i]);
+        glm::mat4 R = glm::mat4_cast(localRotations[i]);
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), localScales[i]);
+        glm::mat4 localTransform = T * R * S;
+        int parentIdx = skeleton[i].parentIndex;
+        if (parentIdx >= 0 && parentIdx < static_cast<int>(i)) {
+            globalTransforms[i] = globalTransforms[parentIdx] * localTransform;
+        } else {
+            globalTransforms[i] = localTransform;
+        }
+        jointMatrices[i] = globalTransforms[i] * skeleton[i].inverseBindMatrix;
+    }
+}
+
 engine::EntityManager::EntityManager(engine::Renderer* renderer) : renderer(renderer) {
     renderer->registerEntityManager(this);
 }
 
 engine::EntityManager::~EntityManager() {
     clear();
+    destroyDummySkinningBuffer();
     VkDevice device = renderer->getDevice();
     for (auto& buffer : lightsBuffers) {
         if (buffer != VK_NULL_HANDLE) {
@@ -138,6 +268,40 @@ engine::EntityManager::~EntityManager() {
     }
     lightsBuffers.clear();
     lightsBuffersMemory.clear();
+}
+
+void engine::EntityManager::createDummySkinningBuffer() {
+    struct SkinnedVertex {
+        glm::vec4 joints{0.0f};
+        glm::vec4 weights{0.0f};
+    };
+    constexpr size_t MAX_DUMMY_VERTICES = 65536;
+    constexpr size_t BUFFER_SIZE = MAX_DUMMY_VERTICES * sizeof(SkinnedVertex);
+    
+    std::tie(dummySkinningBuffer, dummySkinningBufferMemory) = renderer->createBuffer(
+        BUFFER_SIZE,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    
+    VkDevice device = renderer->getDevice();
+    void* data;
+    if (vkMapMemory(device, dummySkinningBufferMemory, 0, BUFFER_SIZE, 0, &data) == VK_SUCCESS) {
+        memset(data, 0, BUFFER_SIZE);
+        vkUnmapMemory(device, dummySkinningBufferMemory);
+    }
+}
+
+void engine::EntityManager::destroyDummySkinningBuffer() {
+    VkDevice device = renderer->getDevice();
+    if (dummySkinningBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, dummySkinningBuffer, nullptr);
+        dummySkinningBuffer = VK_NULL_HANDLE;
+    }
+    if (dummySkinningBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, dummySkinningBufferMemory, nullptr);
+        dummySkinningBufferMemory = VK_NULL_HANDLE;
+    }
 }
 
 void engine::EntityManager::addEntity(const std::string& name, Entity* entity) {
@@ -196,6 +360,9 @@ void engine::EntityManager::clear() {
 }
 
 void engine::EntityManager::loadTextures() {
+    if (dummySkinningBuffer == VK_NULL_HANDLE) {
+        createDummySkinningBuffer();
+    }
     for (auto& [name, entity] : entities) {
         if (!entity->getDescriptorSets().empty()) continue;
         std::vector<std::string> textures = entity->getTextures();
@@ -267,6 +434,13 @@ void engine::EntityManager::loadTextures() {
         }
         entity->ensureUniformBuffers(renderer, shader);
         entity->setDescriptorSets(shader->createDescriptorSets(renderer, texturePtrs, entity->getUniformBuffers()));
+        if (entity->getCastShadow() && !entity->getUniformBuffers().empty()) {
+            GraphicsShader* shadowShader = renderer->getShaderManager()->getGraphicsShader("shadow");
+            if (shadowShader && entity->getShadowDescriptorSets().empty()) {
+                std::vector<Texture*> noTextures;
+                entity->setShadowDescriptorSets(shadowShader->createDescriptorSets(renderer, noTextures, entity->getUniformBuffers()));
+            }
+        }
     }
 }
 
@@ -308,16 +482,17 @@ void engine::EntityManager::createAllShadowMaps() {
     }
 }
 
-void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer) {
+void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
     auto& lights = getLights();
     for (auto& light : lights) {
-        light->renderShadowMap(renderer, commandBuffer);
+        light->renderShadowMap(renderer, commandBuffer, currentFrame);
     }
 }
 
 void engine::EntityManager::updateAll(float deltaTime) {
     std::function<void(Entity*)> traverse = [&](Entity* entity) {
         entity->update(deltaTime);
+        entity->updateAnimation(deltaTime);
         entity->updateWorldTransform();
         for (Entity* child : entity->getChildren()) {
             traverse(child);
@@ -330,6 +505,8 @@ void engine::EntityManager::updateAll(float deltaTime) {
 }
 
 void engine::EntityManager::processPendingDeletions() {
+    if (pendingDeletions.empty()) return;
+    vkDeviceWaitIdle(renderer->getDevice());
     for (Entity* entity : pendingDeletions) {
         if (entity) {
             removeEntity(entity->getName());
@@ -343,16 +520,43 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
     std::set<GraphicsShader*>& shaders = node.shaders;
     Camera* camera = getCamera();
 
+    auto updateJointMatricesUBO = [&](Entity* entity) {
+        if (!entity->isAnimated()) return;
+        const auto& jointMatrices = entity->getJointMatrices();
+        if (jointMatrices.empty()) return;
+        auto& uniformBuffers = entity->getUniformBuffers();
+        if (uniformBuffers.empty()) return;
+        const size_t stride = 1;
+        const size_t bufferIndex = currentFrame * stride + 0;
+        if (bufferIndex >= uniformBuffers.size()) return;
+        VkBuffer buffer = uniformBuffers[bufferIndex];
+        if (buffer == VK_NULL_HANDLE) return;
+        void* data;
+        VkDeviceMemory memory = entity->getUniformBuffersMemory()[bufferIndex];
+        if (vkMapMemory(renderer->getDevice(), memory, 0, jointMatrices.size() * sizeof(glm::mat4), 0, &data) == VK_SUCCESS) {
+            memcpy(data, jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
+            vkUnmapMemory(renderer->getDevice(), memory);
+        }
+    };
+
     std::function<void(Entity*)> drawEntity = [&](Entity* entity) {
         ShaderManager* shaderManager = renderer->getShaderManager();
         Model* model = entity->getModel();
         GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
         if (model && shader && shaders.find(shader) != shaders.end()) {
+            updateJointMatricesUBO(entity);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
             VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
             vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
+            if (model->hasSkinning()) {
+                VkBuffer skinBuffers[] = { model->getSkinningBuffer().first };
+                vkCmdBindVertexBuffers(commandBuffer, 1, 1, skinBuffers, offsets);
+            } else {
+                VkBuffer dummyBuffers[] = { dummySkinningBuffer };
+                vkCmdBindVertexBuffers(commandBuffer, 1, 1, dummyBuffers, offsets);
+            }
             
             std::type_index type = shader->config.pushConstantType;
             if (type == std::type_index(typeid(GBufferPC))) {
@@ -361,7 +565,8 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
                         .model = entity->getWorldTransform(),
                         .view = camera->getViewMatrix(),
                         .projection = camera->getProjectionMatrix(),
-                        .camPos = camera->getWorldPosition()
+                        .camPos = camera->getWorldPosition(),
+                        .flags = model->hasSkinning() ? 1u : 0u
                     };
                     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
                 }

@@ -171,7 +171,10 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     std::function<void(Entity*, glm::mat4&)> drawStaticEntity = [&](Entity* entity, glm::mat4& viewProj) {
-        if (!entity->getIsMovable() && entity->getModel() && entity->getShader() == "gbuffer") {
+        if (!entity->getIsMovable() 
+         && entity->getModel() 
+         && (entity->getShader() == "gbuffer" || entity->getShader() == "shadow") 
+         && entity->getCastShadow()) {
             Model* model = entity->getModel();
             VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
             VkDeviceSize offsets[] = { 0 };
@@ -236,7 +239,7 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     shadowBaked = true;
 }
 
-void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandBuffer) {
+void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame) {
     if (!hasShadowMap) {
         createShadowMaps(renderer);
     }
@@ -244,6 +247,28 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         bakeShadowMap(renderer, commandBuffer);
     }
     GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("shadow");
+    EntityManager* entityManager = renderer->getEntityManager();
+    VkBuffer dummySkinningBuffer = entityManager->getDummySkinningBuffer();
+    
+    auto updateJointMatricesUBO = [&](Entity* entity) {
+        if (!entity->isAnimated()) return;
+        const auto& jointMatrices = entity->getJointMatrices();
+        if (jointMatrices.empty()) return;
+        auto& uniformBuffers = entity->getUniformBuffers();
+        if (uniformBuffers.empty()) return;
+        const size_t stride = 1;
+        const size_t bufferIndex = currentFrame * stride + 0;
+        if (bufferIndex >= uniformBuffers.size()) return;
+        VkBuffer buffer = uniformBuffers[bufferIndex];
+        if (buffer == VK_NULL_HANDLE) return;
+        void* data;
+        VkDeviceMemory memory = entity->getUniformBuffersMemory()[bufferIndex];
+        if (vkMapMemory(renderer->getDevice(), memory, 0, jointMatrices.size() * sizeof(glm::mat4), 0, &data) == VK_SUCCESS) {
+            memcpy(data, jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
+            vkUnmapMemory(renderer->getDevice(), memory);
+        }
+    };
+    
     VkImageLayout previousDepthLayout = shadowImageReady
         ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         : VK_IMAGE_LAYOUT_UNDEFINED;
@@ -327,16 +352,45 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
         std::function<void(Entity*, glm::mat4&)> drawMovableEntity = [&](Entity* entity, glm::mat4& viewProj) {
-            if (entity->getModel() && entity->getShader() == "gbuffer") {
+            if (entity->getModel() 
+             && (entity->getShader() == "gbuffer" || entity->getShader() == "shadow")
+             && entity->getCastShadow()) {
                 Model* model = entity->getModel();
+                updateJointMatricesUBO(entity);
                 VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
                 VkDeviceSize offsets[] = { 0 };
                 vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
                 vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
+                
+                if (model->hasSkinning()) {
+                    VkBuffer skinBuffers[] = { model->getSkinningBuffer().first };
+                    vkCmdBindVertexBuffers(commandBuffer, 1, 1, skinBuffers, offsets);
+                } else {
+                    VkBuffer dummyBuffers[] = { dummySkinningBuffer };
+                    vkCmdBindVertexBuffers(commandBuffer, 1, 1, dummyBuffers, offsets);
+                }
+                
+                const auto& shadowDS = entity->getShadowDescriptorSets();
+                if (!shadowDS.empty()) {
+                    const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(shadowDS.size() - 1));
+                    vkCmdBindDescriptorSets(
+                        commandBuffer,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        shader->pipelineLayout,
+                        0,
+                        1,
+                        &shadowDS[dsIndex],
+                        0,
+                        nullptr
+                    );
+                }
+                
                 ShadowPC pc = {
                     .model = entity->getWorldTransform(),
                     .viewProj = viewProj,
-                    .lightPos = glm::vec4(lightPos, radius)
+                    .lightPos = glm::vec4(lightPos, radius),
+                    .flags = model->hasSkinning() ? 1u : 0u,
+                    .pad = {0, 0, 0}
                 };
                 vkCmdPushConstants(
                     commandBuffer,

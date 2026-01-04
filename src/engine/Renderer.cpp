@@ -291,7 +291,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         audioManager->updateListener(pos, fwd, up);
     }
     particleManager->updateAll(deltaTime);
-    entityManager->renderShadows(commandBuffer);
+    entityManager->renderShadows(commandBuffer, currentFrame);
     entityManager->updateLightsUBO(currentFrame);
 
     for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {

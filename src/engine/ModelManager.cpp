@@ -1,5 +1,9 @@
 #include <engine/ModelManager.h>
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <unordered_map>
+
 engine::Model::Model(std::string name, std::string filepath, Renderer* renderer) : name(name), filepath(filepath), renderer(renderer) {}
 
 engine::Model::~Model() {
@@ -19,6 +23,14 @@ engine::Model::~Model() {
     if (indexBufferMemory != VK_NULL_HANDLE) {
         vkFreeMemory(device, indexBufferMemory, nullptr);
         indexBufferMemory = VK_NULL_HANDLE;
+    }
+    if (skinningBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, skinningBuffer, nullptr);
+        skinningBuffer = VK_NULL_HANDLE;
+    }
+    if (skinningBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, skinningBufferMemory, nullptr);
+        skinningBufferMemory = VK_NULL_HANDLE;
     }
 }
 
@@ -43,9 +55,136 @@ void engine::Model::loadFromFile() {
     if (mesh.primitives.empty()) {
         throw std::runtime_error("Mesh contains no primitives: " + filepath);
     }
+    std::unordered_map<size_t, int> nodeToJointIndex;
+    if (!gltf.skins.empty()) {
+        const auto& skin = gltf.skins[0];
+        std::vector<glm::mat4> inverseBindMatrices;
+        if (skin.inverseBindMatrices.has_value()) {
+            const fastgltf::Accessor& ibmAccessor = gltf.accessors[skin.inverseBindMatrices.value()];
+            inverseBindMatrices.reserve(ibmAccessor.count);
+            fastgltf::iterateAccessor<glm::mat4>(gltf, ibmAccessor,
+                [&](glm::mat4 mat) {
+                    inverseBindMatrices.push_back(mat);
+                });
+        }
+        for (size_t i = 0; i < skin.joints.size(); ++i) {
+            nodeToJointIndex[skin.joints[i]] = static_cast<int>(i);
+        }
+        skeleton.resize(skin.joints.size());
+        for (size_t i = 0; i < skin.joints.size(); ++i) {
+            size_t nodeIndex = skin.joints[i];
+            const fastgltf::Node& node = gltf.nodes[nodeIndex];
+            Joint& joint = skeleton[i];
+            joint.name = node.name;
+            joint.inverseBindMatrix = (i < inverseBindMatrices.size()) ? inverseBindMatrices[i] : glm::mat4(1.0f);
+            joint.localTransform = glm::mat4(1.0f);
+            if (auto* trs = std::get_if<fastgltf::TRS>(&node.transform)) {
+                glm::vec3 translation(trs->translation[0], trs->translation[1], trs->translation[2]);
+                glm::quat rotation(trs->rotation[3], trs->rotation[0], trs->rotation[1], trs->rotation[2]);
+                glm::vec3 scale(trs->scale[0], trs->scale[1], trs->scale[2]);
+                glm::mat4 T = glm::translate(glm::mat4(1.0f), translation);
+                glm::mat4 R = glm::mat4_cast(rotation);
+                glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+                joint.localTransform = T * R * S;
+            } else if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&node.transform)) {
+                std::memcpy(&joint.localTransform, mat, sizeof(glm::mat4));
+            }
+            joint.parentIndex = -1;
+            for (size_t j = 0; j < gltf.nodes.size(); ++j) {
+                const auto& potentialParent = gltf.nodes[j];
+                for (const auto& childIdx : potentialParent.children) {
+                    if (childIdx == nodeIndex) {
+                        auto it = nodeToJointIndex.find(j);
+                        if (it != nodeToJointIndex.end()) {
+                            joint.parentIndex = it->second;
+                        }
+                        break;
+                    }
+                }
+                if (joint.parentIndex != -1) {
+                    break;
+                }
+            }
+        }
+    }
+    const auto& animations = gltf.animations;
+    for (const auto& anim : animations) {
+        AnimationClip animationClip{};
+        animationClip.name = anim.name;
+        float animDuration = 0.0f;
+        std::vector<AnimationChannel> channels;
+        for (const auto& chan : anim.channels) {
+            AnimationChannel channel{};
+            channel.samplerIndex = chan.samplerIndex;
+            size_t nodeIndex = chan.nodeIndex.has_value() ? chan.nodeIndex.value() : 0;
+            auto it = nodeToJointIndex.find(nodeIndex);
+            if (it == nodeToJointIndex.end()) {
+                continue;
+            }
+            channel.targetNode = static_cast<size_t>(it->second);
+            switch (chan.path) {
+                case fastgltf::AnimationPath::Translation:
+                    channel.path = AnimationChannel::Path::TRANSLATION;
+                    break;
+                case fastgltf::AnimationPath::Rotation:
+                    channel.path = AnimationChannel::Path::ROTATION;
+                    break;
+                case fastgltf::AnimationPath::Scale:
+                    channel.path = AnimationChannel::Path::SCALE;
+                    break;
+                default:
+                    std::cerr << "Warning: Unsupported animation channel path in model " << filepath << "\n";
+                    continue;
+            };
+            channels.push_back(channel);
+        }
+        animationClip.channels = std::move(channels);
+        std::vector<AnimationSampler> samplers;
+        for (const auto& sampler : anim.samplers) {
+            AnimationSampler keyframes{};
+            switch (sampler.interpolation) {
+                case fastgltf::AnimationInterpolation::Linear:
+                    keyframes.interpolation = AnimationSampler::Interpolation::LINEAR;
+                    break;
+                case fastgltf::AnimationInterpolation::Step:
+                    keyframes.interpolation = AnimationSampler::Interpolation::STEP;
+                    break;
+                case fastgltf::AnimationInterpolation::CubicSpline:
+                    keyframes.interpolation = AnimationSampler::Interpolation::CUBICSPLINE;
+                    break;
+                default:
+                    std::cerr << "Warning: Unsupported animation sampler interpolation in model " << filepath << "\n";
+                    continue;
+            };
+            const fastgltf::Accessor& inputAccessor = gltf.accessors[sampler.inputAccessor];
+            float maxTime = 0.0f;
+            fastgltf::iterateAccessor<float>(gltf, inputAccessor,
+                [&](float time) {
+                    keyframes.inputTimes.push_back(time);
+                    if (time > maxTime) {
+                        maxTime = time;
+                    }
+                });
+            if (maxTime > animDuration) {
+                animDuration = maxTime;
+            }
+            const fastgltf::Accessor& outputAccessor = gltf.accessors[sampler.outputAccessor];
+            fastgltf::iterateAccessor<glm::vec4>(gltf, outputAccessor,
+                [&](glm::vec4 value) {
+                    keyframes.outputValues.push_back(value);
+                });
+            samplers.push_back(keyframes);
+        }
+        animationClip.samplers = std::move(samplers);
+        animationClip.duration = animDuration;
+        animationsMap[animationClip.name] = animationClip;
+    }
+    
     constexpr std::size_t floatsPerVertex = 11; // pos(3), normal(3), uv(2), tangent(4)
     std::vector<float> tempVertices;
     std::vector<uint32_t> tempIndices;
+    std::vector<float> skinningData; // 4 joint indices + 4 weights per vertex
+    bool hasSkinningData = false;
     for (const auto& primitive : mesh.primitives) {
         if (!primitive.indicesAccessor.has_value()) {
             std::cerr << "Warning: Primitive in model " << filepath << " has no indices. Skipping.\n";
@@ -74,6 +213,7 @@ void engine::Model::loadFromFile() {
             tempVertices[base + 10] = 0.0f; // tangent.z
         }
         tempIndices.reserve(tempIndices.size() + indexAccessor.count);
+        skinningData.resize(vertexCount * 8, 0.0f); // 4 joint indices + 4 weights per vertex
         fastgltf::iterateAccessor<std::uint32_t>(gltf, gltf.accessors[primitive.indicesAccessor.value()], 
             [&](std::uint32_t index) {
                 tempIndices.push_back(static_cast<uint32_t>(initialVertexCount + index));
@@ -176,9 +316,45 @@ void engine::Model::loadFromFile() {
                 tempVertices[base + 10] = t.z;
             }
         }
+        const auto jointsAttr = primitive.findAttribute("JOINTS_0");
+        const auto weightsAttr = primitive.findAttribute("WEIGHTS_0");
+        if (jointsAttr != primitive.attributes.end() && weightsAttr != primitive.attributes.end()) {
+            hasSkinningData = true;
+            const fastgltf::Accessor& jointsAccessor = gltf.accessors[jointsAttr->accessorIndex];
+            const fastgltf::Accessor& weightsAccessor = gltf.accessors[weightsAttr->accessorIndex];
+            fastgltf::iterateAccessorWithIndex<fastgltf::math::uvec4>(gltf, jointsAccessor,
+                [&](fastgltf::math::uvec4 jointIndices, std::size_t index) {
+                    const std::size_t base = index * 8;
+                    skinningData[base + 0] = static_cast<float>(jointIndices[0]);
+                    skinningData[base + 1] = static_cast<float>(jointIndices[1]);
+                    skinningData[base + 2] = static_cast<float>(jointIndices[2]);
+                    skinningData[base + 3] = static_cast<float>(jointIndices[3]);
+                });
+            fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(gltf, weightsAccessor,
+                [&](fastgltf::math::fvec4 jointWeights, std::size_t index) {
+                    const std::size_t base = index * 8;
+                    skinningData[base + 4] = jointWeights[0];
+                    skinningData[base + 5] = jointWeights[1];
+                    skinningData[base + 6] = jointWeights[2];
+                    skinningData[base + 7] = jointWeights[3];
+                });
+        }
     }
     if (tempVertices.empty() || tempIndices.empty()) {
         throw std::runtime_error("No valid geometry found in model: " + filepath);
+    }
+    if (hasSkinningData && !skinningData.empty()) {
+        std::tie(skinningBuffer, skinningBufferMemory) = renderer->createBuffer(
+            sizeof(float) * skinningData.size(),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        );
+        renderer->copyDataToBuffer(
+            skinningData.data(),
+            sizeof(float) * skinningData.size(),
+            skinningBuffer,
+            skinningBufferMemory
+        );
     }
     std::tie(vertexBuffer, vertexBufferMemory) = renderer->createBuffer(
         sizeof(float) * tempVertices.size(),
