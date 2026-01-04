@@ -32,6 +32,8 @@ namespace engine {
         void setHead(Entity* head) { this->head = head; }
         Entity* getHead() const { return head; }
 
+        float getRotateSpeed() const { return rotateSpeed; }
+
         Collider::Collision willCollide(const glm::mat4& deltaTransform);
     private:
         float health = 100.0f;
@@ -45,6 +47,7 @@ namespace engine {
         const float dashDecayRate = 8.0f; // how fast dash velocity decays
         const float jumpSpeed = 1.5f;
         const float coyoteTime = 0.10f;
+        float rotateSpeed = 0.0f;
         const float groundedNormalThreshold = 0.5f; // normals with y > threshold count as ground
         float gravity = 9.81f;
         bool grounded = false;

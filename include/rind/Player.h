@@ -10,6 +10,8 @@ namespace rind {
     public:
         Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures);
 
+        void update(float deltaTime) override;
+
         void registerInput(const std::vector<engine::InputEvent>& events);
         void shoot();
         void damage(float amount) override;

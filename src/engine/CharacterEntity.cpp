@@ -14,6 +14,7 @@ void engine::CharacterEntity::update(float deltaTime) {
     if (getWorldPosition().y < -30) {
         damage(health);
     }
+    if (rotateSpeed != 0.0f) rotateSpeed = 0.0f;
 }
 
 void engine::CharacterEntity::updateMovement(float deltaTime) {
@@ -239,6 +240,7 @@ void engine::CharacterEntity::rotate(const glm::vec3& delta) {
 
         if (allowRotation) {
             setTransform(newTransform);
+            rotateSpeed = delta.y * 60.0f;
         }
     }
     if (delta.z != 0.0f) {

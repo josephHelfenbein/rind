@@ -80,6 +80,7 @@ namespace engine {
         void updateAnimation(float deltaTime);
         const std::vector<glm::mat4>& getJointMatrices() const { return jointMatrices; }
         bool isAnimated() const { return model && model->hasAnimations() && !animState.currentAnimation.empty(); }
+        AnimationState& getAnimationState() { return animState; }
 
     private:
         std::string name;

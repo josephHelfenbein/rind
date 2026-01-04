@@ -161,6 +161,12 @@ void engine::Entity::updateAnimation(float deltaTime) {
     if (!clip) return;
     const auto& skeleton = model->getSkeleton();
     if (skeleton.empty()) return;
+    
+    const float blendSpeed = 8.0f;
+    if (animState.blendFactor < 1.0f) {
+        animState.blendFactor = glm::min(1.0f, animState.blendFactor + deltaTime * blendSpeed);
+    }
+    
     animState.currentTime += deltaTime * animState.playbackSpeed;
     if (animState.currentTime > clip->duration) {
         if (animState.looping) {
@@ -181,6 +187,71 @@ void engine::Entity::updateAnimation(float deltaTime) {
         glm::vec3 skew;
         glm::vec4 perspective;
         glm::decompose(joint.localTransform, localScales[i], localRotations[i], localTranslations[i], skew, perspective);
+    }
+    std::vector<glm::vec3> prevTranslations;
+    std::vector<glm::quat> prevRotations;
+    std::vector<glm::vec3> prevScales;
+    const Model::AnimationClip* prevClip = nullptr;
+    
+    if (animState.blendFactor < 1.0f && !animState.prevAnimation.empty()) {
+        prevClip = model->getAnimation(animState.prevAnimation);
+        if (prevClip) {
+            prevTranslations = localTranslations;
+            prevRotations = localRotations;
+            prevScales = localScales;
+            float prevTime = fmod(animState.currentTime, prevClip->duration);
+            
+            for (const auto& channel : prevClip->channels) {
+                if (channel.targetNode >= skeleton.size()) continue;        
+                const auto& sampler = prevClip->samplers[channel.samplerIndex];
+                if (sampler.inputTimes.empty()) continue;
+                float t = prevTime;
+                size_t keyIndex = 0;
+                for (size_t i = 0; i < sampler.inputTimes.size() - 1; ++i) {
+                    if (t >= sampler.inputTimes[i] && t < sampler.inputTimes[i + 1]) {
+                        keyIndex = i;
+                        break;
+                    }
+                    if (i == sampler.inputTimes.size() - 2) {
+                        keyIndex = i;
+                    }
+                }
+                float t0 = sampler.inputTimes[keyIndex];
+                float t1 = sampler.inputTimes[std::min(keyIndex + 1, sampler.inputTimes.size() - 1)];
+                float factor = (t1 > t0) ? glm::clamp((t - t0) / (t1 - t0), 0.0f, 1.0f) : 0.0f;
+                const glm::vec4& v0 = sampler.outputValues[keyIndex];
+                const glm::vec4& v1 = sampler.outputValues[std::min(keyIndex + 1, sampler.outputValues.size() - 1)];
+                size_t nodeIdx = channel.targetNode;
+                switch (channel.path) {
+                    case Model::AnimationChannel::Path::TRANSLATION: {
+                        if (sampler.interpolation == Model::AnimationSampler::Interpolation::STEP) {
+                            prevTranslations[nodeIdx] = glm::vec3(v0);
+                        } else {
+                            prevTranslations[nodeIdx] = glm::mix(glm::vec3(v0), glm::vec3(v1), factor);
+                        }
+                        break;
+                    }
+                    case Model::AnimationChannel::Path::ROTATION: {
+                        glm::quat q0(v0.w, v0.x, v0.y, v0.z);
+                        glm::quat q1(v1.w, v1.x, v1.y, v1.z);
+                        if (sampler.interpolation == Model::AnimationSampler::Interpolation::STEP) {
+                            prevRotations[nodeIdx] = q0;
+                        } else {
+                            prevRotations[nodeIdx] = glm::slerp(q0, q1, factor);
+                        }
+                        break;
+                    }
+                    case Model::AnimationChannel::Path::SCALE: {
+                        if (sampler.interpolation == Model::AnimationSampler::Interpolation::STEP) {
+                            prevScales[nodeIdx] = glm::vec3(v0);
+                        } else {
+                            prevScales[nodeIdx] = glm::mix(glm::vec3(v0), glm::vec3(v1), factor);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
     }
     for (const auto& channel : clip->channels) {
         if (channel.targetNode >= skeleton.size()) continue;        
@@ -230,6 +301,14 @@ void engine::Entity::updateAnimation(float deltaTime) {
                 }
                 break;
             }
+        }
+    }
+    if (prevClip && animState.blendFactor < 1.0f) {
+        float blend = animState.blendFactor;
+        for (size_t i = 0; i < skeleton.size(); ++i) {
+            localTranslations[i] = glm::mix(prevTranslations[i], localTranslations[i], blend);
+            localRotations[i] = glm::slerp(prevRotations[i], localRotations[i], blend);
+            localScales[i] = glm::mix(prevScales[i], localScales[i], blend);
         }
     }
     std::vector<glm::mat4> globalTransforms(skeleton.size());

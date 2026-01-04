@@ -65,7 +65,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             glm::scale(
                 glm::rotate(
                     glm::translate(
-                        glm::mat4(1.0f), glm::vec3(0.0f, -0.45f, 0.2f)
+                        glm::mat4(1.0f), glm::vec3(0.0f, -0.4f, 0.2f)
                     ),
                     glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f)
                 ),
@@ -93,6 +93,28 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             this->registerInput(events);
         });
     }
+
+void rind::Player::update(float deltaTime) {
+    const glm::vec3& vel = getVelocity();
+    float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
+    float rotateSpeed = getRotateSpeed();
+    float speed = horizontalSpeed + std::abs(rotateSpeed);
+    if (speed > 0.1f) {
+        if (getChildByName("playerModel")->getAnimationState().currentAnimation != "Run") {
+            getChildByName("playerModel")->playAnimation("Run", true, speed / 5.0f);
+            getChildByName("playerModel")->getChildByName("playerShadow")->playAnimation("Run", true, speed / 5.0f);
+        } else {
+            getChildByName("playerModel")->getAnimationState().playbackSpeed = speed / 5.0f;
+            getChildByName("playerModel")->getChildByName("playerShadow")->getAnimationState().playbackSpeed = speed / 5.0f;
+        }
+    } else {
+        if (getChildByName("playerModel")->getAnimationState().currentAnimation != "Idle") {
+            getChildByName("playerModel")->playAnimation("Idle", true, 1.0f);
+            getChildByName("playerModel")->getChildByName("playerShadow")->playAnimation("Idle", true, 1.0f);
+        }
+    }
+    engine::CharacterEntity::update(deltaTime);
+}
 
 void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) {
     if (inputsDisconnected) {
