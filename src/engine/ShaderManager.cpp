@@ -347,9 +347,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .config = {
                 .poolMultiplier = 512,
                 .vertexBitBindings = 1,
+                .fragmentBitBindings = 0,
                 .vertexDescriptorCounts = { 1 },
                 .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
-                .fragmentBitBindings = 0,
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = true,
                 .depthCompare = VK_COMPARE_OP_LESS,
@@ -416,9 +416,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .config = {
                 .poolMultiplier = 512,
                 .vertexBitBindings = 1,
+                .fragmentBitBindings = 5, 
                 .vertexDescriptorCounts = { 1 },
                 .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
-                .fragmentBitBindings = 5,
                 .fragmentDescriptorCounts = {
                     1, 1, 1, 1, 1
                 },
@@ -837,7 +837,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
     }
 
     size_t inputBindingCount = config.inputBindings.size();    
-    for (size_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+    for (int frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
         std::vector<VkDescriptorImageInfo> imageInfos;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -851,7 +851,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
             const uint32_t descriptorCount = getVertexCount(binding);
             if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
                 for (uint32_t c = 0; c < descriptorCount; ++c) {
-                    const size_t idx = frame * (expectedBuffers / MAX_FRAMES_IN_FLIGHT) + bufferIndex++;
+                    const size_t idx = static_cast<size_t>(frame) * (expectedBuffers / static_cast<size_t>(MAX_FRAMES_IN_FLIGHT)) + bufferIndex++;
                     VkBuffer bufferHandle = buffers[idx];
                     if (bufferHandle == VK_NULL_HANDLE) {
                         throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");

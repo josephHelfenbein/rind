@@ -7,7 +7,7 @@ namespace engine {
         glm::mat4 view;
         glm::mat4 projection;
         glm::vec3 camPos;
-        uint flags; // bit 0 = has skinning
+        uint32_t flags; // bit 0 = has skinning
     };
 
     struct LightingPC {
@@ -25,8 +25,8 @@ namespace engine {
         glm::mat4 model;
         glm::mat4 viewProj;
         glm::vec4 lightPos; // xyz = pos, w = radius
-        uint flags; // bit 0 = has skinning
-        uint pad[3];
+        uint32_t flags; // bit 0 = has skinning
+        uint32_t pad[3];
     };
 
     struct SSRPC {
