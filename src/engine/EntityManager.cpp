@@ -114,7 +114,7 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
     uniformBufferStride = requiredStride;
     uniformBuffers.resize(frames * requiredStride, VK_NULL_HANDLE);
     uniformBuffersMemory.resize(frames * requiredStride, VK_NULL_HANDLE);
-    
+    uniformBuffersMapped.resize(frames * requiredStride, nullptr);
     constexpr size_t MAX_JOINTS = 128;
     constexpr size_t JOINT_MATRIX_UBO_SIZE = MAX_JOINTS * sizeof(glm::mat4);
     
@@ -128,10 +128,8 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
-            void* data;
-            if (vkMapMemory(renderer->getDevice(), uniformBuffersMemory[index], 0, JOINT_MATRIX_UBO_SIZE, 0, &data) == VK_SUCCESS) {
-                memcpy(data, identityMatrices.data(), JOINT_MATRIX_UBO_SIZE);
-                vkUnmapMemory(renderer->getDevice(), uniformBuffersMemory[index]);
+            if (vkMapMemory(renderer->getDevice(), uniformBuffersMemory[index], 0, JOINT_MATRIX_UBO_SIZE, 0, &uniformBuffersMapped[index]) == VK_SUCCESS) {
+                memcpy(uniformBuffersMapped[index], identityMatrices.data(), JOINT_MATRIX_UBO_SIZE);
             }
         }
     }
@@ -142,10 +140,17 @@ void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
     if (device == VK_NULL_HANDLE) {
         uniformBuffers.clear();
         uniformBuffersMemory.clear();
+        uniformBuffersMapped.clear();
         uniformBufferStride = 0;
         return;
     }
     for (size_t i = 0; i < uniformBuffers.size(); ++i) {
+        if (i < uniformBuffersMapped.size() && uniformBuffersMapped[i] != nullptr) {
+            if (i < uniformBuffersMemory.size() && uniformBuffersMemory[i] != VK_NULL_HANDLE) {
+                vkUnmapMemory(device, uniformBuffersMemory[i]);
+            }
+            uniformBuffersMapped[i] = nullptr;
+        }
         if (uniformBuffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(device, uniformBuffers[i], nullptr);
             uniformBuffers[i] = VK_NULL_HANDLE;
@@ -157,6 +162,7 @@ void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
     }
     uniformBuffers.clear();
     uniformBuffersMemory.clear();
+    uniformBuffersMapped.clear();
     uniformBufferStride = 0;
 }
 
@@ -361,18 +367,23 @@ engine::EntityManager::~EntityManager() {
     clear();
     destroyDummySkinningBuffer();
     VkDevice device = renderer->getDevice();
-    for (auto& buffer : lightsBuffers) {
-        if (buffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device, buffer, nullptr);
+    for (size_t i = 0; i < lightBuffersMapped.size(); ++i) {
+        if (lightBuffersMapped[i] != nullptr && i < lightsBuffersMemory.size() && lightsBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, lightsBuffersMemory[i]);
+            lightBuffersMapped[i] = nullptr;
         }
     }
-    for (auto& memory : lightsBuffersMemory) {
-        if (memory != VK_NULL_HANDLE) {
-            vkFreeMemory(device, memory, nullptr);
+    for (size_t i = 0; i < lightsBuffers.size(); ++i) {
+        if (lightsBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, lightsBuffers[i], nullptr);
+        }
+        if (i < lightsBuffersMemory.size() && lightsBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, lightsBuffersMemory[i], nullptr);
         }
     }
     lightsBuffers.clear();
     lightsBuffersMemory.clear();
+    lightBuffersMapped.clear();
 }
 
 void engine::EntityManager::createDummySkinningBuffer() {
@@ -492,7 +503,7 @@ void engine::EntityManager::loadTextures() {
         } else if (shader->name == "ui") {
             defaultTextures = { "ui_window" };
         }
-        for (int i = 0; i < textures.size(); ++i) {
+        for (size_t i = 0; i < textures.size(); ++i) {
             Texture* found = textureManager->getTexture(textures[i]);
             if (!found && i < defaultTextures.size()) {
                 found = textureManager->getTexture(defaultTextures[i]);
@@ -530,7 +541,7 @@ void engine::EntityManager::loadTextures() {
             return 1u;
         };
         size_t requiredTextures = 0;
-        for (int i = 0; i < fragmentBindings; ++i) {
+        for (size_t i = 0; i < static_cast<size_t>(fragmentBindings); ++i) {
             VkDescriptorType type = getFragmentType(i);
             if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
                 requiredTextures += getFragmentCount(i);
@@ -556,12 +567,14 @@ void engine::EntityManager::createLightsUBO() {
     const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
     lightsBuffers.resize(frames, VK_NULL_HANDLE);
     lightsBuffersMemory.resize(frames, VK_NULL_HANDLE);
+    lightBuffersMapped.resize(frames, nullptr);
     for (size_t frame = 0; frame < frames; ++frame) {
         std::tie(lightsBuffers[frame], lightsBuffersMemory[frame]) = renderer->createBuffer(
             sizeof(engine::LightsUBO),
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
+        vkMapMemory(renderer->getDevice(), lightsBuffersMemory[frame], 0, sizeof(engine::LightsUBO), 0, &lightBuffersMapped[frame]);
     }
 }
 
@@ -580,7 +593,7 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
         lightsUBO.pointLights[i] = lights[i]->getPointLightData();
     }
     lightsUBO.numPointLights = glm::uvec4(count, 0, 0, 0);
-    renderer->copyDataToBuffer(&lightsUBO, sizeof(lightsUBO), lightsBuffers[frameIndex], lightsBuffersMemory[frameIndex]);
+    memcpy(lightBuffersMapped[frameIndex], &lightsUBO, sizeof(lightsUBO));
 }
 
 void engine::EntityManager::createAllShadowMaps() {
@@ -657,10 +670,7 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
         if (buffer == VK_NULL_HANDLE) return;
         void* data;
         VkDeviceMemory memory = entity->getUniformBuffersMemory()[bufferIndex];
-        if (vkMapMemory(renderer->getDevice(), memory, 0, jointMatrices.size() * sizeof(glm::mat4), 0, &data) == VK_SUCCESS) {
-            memcpy(data, jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
-            vkUnmapMemory(renderer->getDevice(), memory);
-        }
+        memcpy(entity->getUniformBuffersMapped()[bufferIndex], jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
     };
 
     std::function<void(Entity*)> drawEntity = [&](Entity* entity) {

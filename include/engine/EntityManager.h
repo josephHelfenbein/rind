@@ -60,6 +60,7 @@ namespace engine {
 
         std::vector<VkBuffer>& getUniformBuffers() { return uniformBuffers; }
         std::vector<VkDeviceMemory>& getUniformBuffersMemory() { return uniformBuffersMemory; }
+        std::vector<void*>& getUniformBuffersMapped() { return uniformBuffersMapped; }
         void ensureUniformBuffers(Renderer* renderer, GraphicsShader* shader);
         void destroyUniformBuffers(Renderer* renderer);
 
@@ -96,6 +97,7 @@ namespace engine {
         std::vector<VkDescriptorSet> shadowDescriptorSets;
         std::vector<VkBuffer> uniformBuffers;
         std::vector<VkDeviceMemory> uniformBuffersMemory;
+        std::vector<void*> uniformBuffersMapped;
         size_t uniformBufferStride = 0;
 
         EntityManager* entityManager;
@@ -194,6 +196,7 @@ namespace engine {
 
         std::vector<VkBuffer> lightsBuffers;
         std::vector<VkDeviceMemory> lightsBuffersMemory;
+        std::vector<void*> lightBuffersMapped;
         Camera* camera = nullptr;
 
         VkBuffer dummySkinningBuffer = VK_NULL_HANDLE;

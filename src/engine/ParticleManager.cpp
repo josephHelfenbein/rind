@@ -166,21 +166,32 @@ void engine::ParticleManager::init() {
     uint32_t frames = renderer->getMaxFramesInFlight();
     particleBuffers.resize(frames);
     particleBufferMemory.resize(frames);
+    particleBuffersMapped.resize(frames);
     for (uint32_t i = 0; i < frames; ++i) {
         std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
             bufferSize,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
+        vkMapMemory(renderer->getDevice(), particleBufferMemory[i], 0, bufferSize, 0, &particleBuffersMapped[i]);
     }
     createParticleDescriptorSets();
 }
 
 engine::ParticleManager::~ParticleManager() {
+    for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {
+        if (particleBuffersMapped[i] != nullptr && i < particleBufferMemory.size() && particleBufferMemory[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(renderer->getDevice(), particleBufferMemory[i]);
+            particleBuffersMapped[i] = nullptr;
+        }
+    }
     for (size_t i = 0; i < particleBuffers.size(); ++i) {
         vkDestroyBuffer(renderer->getDevice(), particleBuffers[i], nullptr);
         vkFreeMemory(renderer->getDevice(), particleBufferMemory[i], nullptr);
     }
+    particleBuffers.clear();
+    particleBufferMemory.clear();
+    particleBuffersMapped.clear();
     std::vector<Particle*> particlesCopy = particles;
     particles.clear();
     for (auto particle : particlesCopy) {
@@ -299,14 +310,22 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
             particles.erase(particles.begin(), particles.begin() + toRemove);
         }
         maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.size())), hardCap);
+        for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {
+            if (particleBuffersMapped[i] != nullptr && i < particleBufferMemory.size() && particleBufferMemory[i] != VK_NULL_HANDLE) {
+                vkUnmapMemory(device, particleBufferMemory[i]);
+                particleBuffersMapped[i] = nullptr;
+            }
+        }
         for (size_t i = 0; i < particleBuffers.size(); ++i) {
             vkDestroyBuffer(device, particleBuffers[i], nullptr);
             vkFreeMemory(device, particleBufferMemory[i], nullptr);
         }
         particleBuffers.clear();
         particleBufferMemory.clear();
+        particleBuffersMapped.clear();
         particleBuffers.resize(renderer->getMaxFramesInFlight());
         particleBufferMemory.resize(renderer->getMaxFramesInFlight());
+        particleBuffersMapped.resize(renderer->getMaxFramesInFlight(), nullptr);
         for (size_t i = 0; i < particleBuffers.size(); ++i) {
             VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
             std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
@@ -314,6 +333,7 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
+            vkMapMemory(device, particleBufferMemory[i], 0, bufferSize, 0, &particleBuffersMapped[i]);
         }
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
         vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
@@ -325,10 +345,7 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
         gpuData.push_back(particle->getGPUData());
     }
     if (gpuData.empty()) return;
-    void* data;
-    vkMapMemory(device, particleBufferMemory[currentFrame], 0, gpuData.size() * sizeof(ParticleGPU), 0, &data);
-    memcpy(data, gpuData.data(), gpuData.size() * sizeof(ParticleGPU));
-    vkUnmapMemory(device, particleBufferMemory[currentFrame]);
+    memcpy(particleBuffersMapped[currentFrame], gpuData.data(), gpuData.size() * sizeof(ParticleGPU));
 }
 
 void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame) {

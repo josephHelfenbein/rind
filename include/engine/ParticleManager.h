@@ -90,6 +90,7 @@ namespace engine {
 
         std::vector<VkBuffer> particleBuffers;
         std::vector<VkDeviceMemory> particleBufferMemory;
+        std::vector<void*> particleBuffersMapped;
         std::vector<VkDescriptorSet> descriptorSets;
 
         uint32_t maxParticles = 5000;
