@@ -1,4 +1,5 @@
 #include <engine/SceneManager.h>
+#include <engine/ParticleManager.h>
 
 engine::SceneManager::SceneManager(Renderer* renderer, std::vector<std::unique_ptr<Scene>> scenes)
     : renderer(renderer), scenes(std::move(scenes)) {
@@ -15,6 +16,7 @@ void engine::SceneManager::setActiveScene(int index) {
     vkDeviceWaitIdle(renderer->getDevice());
     renderer->getEntityManager()->clear();
     renderer->getUIManager()->clear();
+    renderer->getParticleManager()->clear();
     scenes[index]->run(renderer);
     renderer->refreshDescriptorSets();
 }

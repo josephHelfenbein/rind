@@ -2,6 +2,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
+#include <engine/SpatialGrid.h>
 
 engine::Particle::Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, float lifetime, float type)
    : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime), type(type) {
@@ -30,7 +31,12 @@ void engine::Particle::update(float deltaTime) {
     prevPrevPosition = prevPosition;
     prevPosition = currentPos;
     glm::vec3 newPos = currentPos + velocity * deltaTime;
-    if (age > 0.15f) {
+    float speedSq = glm::dot(velocity, velocity);
+    if (speedSq < 0.01f) {
+        markForDeletion();
+        return;
+    }
+    if (age > 0.15f && speedSq > 1.0f) {
         Collider::Collision collision = checkCollision(newPos);
         if (collision.other) {
             glm::vec3 normal = glm::normalize(collision.mtv.normal);
@@ -43,20 +49,18 @@ void engine::Particle::update(float deltaTime) {
             }
         }
     }
-    if (glm::length(velocity) < 0.1f) {
-        markForDeletion();
-        return;
-    }
     transform[3] = glm::vec4(newPos, 1.0f);
 }
 
 engine::Collider::Collision engine::Particle::checkCollision(const glm::vec3& position) {
-    std::vector<engine::Collider*>& colliders = entityManager->getColliders();
+    const float particleRadius = 0.05f;
     engine::AABB particleAABB = {
-        .min = position - glm::vec3(0.01f),
-        .max = position + glm::vec3(0.01f)
+        .min = position - glm::vec3(particleRadius),
+        .max = position + glm::vec3(particleRadius)
     };
-    for (const auto& collider : colliders) {
+    std::vector<engine::Collider*> candidates;
+    entityManager->getSpatialGrid().query(particleAABB, candidates);
+    for (const auto& collider : candidates) {
         engine::AABB otherAABB = collider->getWorldAABB();
         if (!engine::Collider::aabbIntersects(particleAABB, otherAABB, 0.0f)) {
             continue;
@@ -181,6 +185,12 @@ engine::ParticleManager::~ParticleManager() {
     particles.clear();
     for (auto particle : particlesCopy) {
         delete particle;
+    }
+}
+
+void engine::ParticleManager::clear() {
+    for (auto particle : particles) {
+        particle->markForDeletion();
     }
 }
 

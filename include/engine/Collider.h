@@ -70,8 +70,20 @@ namespace engine {
         AABB getWorldAABB() override;
         bool intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform = glm::mat4(1.0f)) override;
         glm::vec3 getHalfSize() const { return halfSize; }
+        
+        void ensureCached();
+        const std::array<glm::vec3, 8>& getCornersCache() const { return cornersCache; }
+        const std::array<glm::vec3, 3>& getAxesCache() const { return axesCache; }
+        glm::vec3 getCenterCache() const { return centerCache; }
+        
     private:
         glm::vec3 halfSize;
+        
+        mutable std::array<glm::vec3, 8> cornersCache;
+        mutable std::array<glm::vec3, 3> axesCache;
+        mutable glm::vec3 centerCache{0.0f};
+        mutable uint32_t lastTransformGeneration = 0;
+        mutable bool isCached = false;
     };
     class ConvexHullCollider : public Collider {
     public:
@@ -88,6 +100,7 @@ namespace engine {
         glm::vec3 getWorldCenter() const { return worldCenter; }
         void setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform = glm::mat4(1.0f));
         void setVertsFromModel(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const glm::mat4& transform);
+
     private:
         std::vector<glm::vec3> localVerts;
         std::vector<glm::ivec3> localTris;
@@ -95,7 +108,7 @@ namespace engine {
         std::vector<glm::vec3> edgeAxesCached;
         std::vector<glm::vec3> faceAxesCached;
         glm::vec3 worldCenter{0.0f};
-        glm::mat4 lastTransform{1.0f};
+        uint32_t lastTransformGeneration = 0;
         bool isCached = false;
         void ensureCached();
         void buildConvexData(const std::vector<glm::vec3>& verts, const std::vector<glm::ivec3>& tris, const glm::mat4& transform, std::vector<glm::vec3>& outVerts, std::vector<glm::vec3>& outEdgeAxes, std::vector<glm::vec3>& outFaceAxes, glm::vec3& outCenter);

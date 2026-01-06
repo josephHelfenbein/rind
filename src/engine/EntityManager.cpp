@@ -7,6 +7,29 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 
+void engine::EntityManager::addCollider(Collider* collider) {
+    colliders.push_back(collider);
+    spatialGridDirty = true;
+}
+
+void engine::EntityManager::removeCollider(Collider* collider) {
+    spatialGrid.remove(collider);
+    colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
+}
+
+void engine::EntityManager::rebuildSpatialGrid() {
+    spatialGrid.rebuild(colliders);
+}
+
+void engine::EntityManager::updateDynamicColliders() {
+    for (Collider* c : colliders) {
+        Entity* parent = c->getParent();
+        if (parent && parent->getIsMovable()) {
+            spatialGrid.update(c, c->getWorldAABB());
+        }
+    }
+}
+
 engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable) 
     : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable) {
         entityManager->addEntity(name, this);
@@ -39,7 +62,10 @@ void engine::Entity::updateWorldTransform() {
         Entity* current = hierarchy[i];
         transform = transform * current->transform;
     }
-    worldTransform = transform;
+    if (worldTransform != transform) {
+        worldTransform = transform;
+        ++transformGeneration;
+    }
 }
 
 glm::vec3 engine::Entity::getWorldPosition() const {
@@ -421,6 +447,7 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
             setCamera(nullptr);
         }
         if (Collider* collider = dynamic_cast<Collider*>(entity)) {
+            spatialGrid.remove(collider);
             colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
         }
         entities.erase(it);
@@ -430,6 +457,8 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
 void engine::EntityManager::clear() {
     movableEntities.clear();
     lights.clear();
+    colliders.clear();
+    spatialGrid.clear();
     std::vector<Entity*> rootsSnapshot;
     rootsSnapshot.swap(rootEntities);
     for (Entity* root : rootsSnapshot) {
@@ -569,6 +598,22 @@ void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer, uint32_
 }
 
 void engine::EntityManager::updateAll(float deltaTime) {
+    if (spatialGridDirty) {
+        std::function<void(Entity*)> updateTransforms = [&](Entity* entity) {
+            entity->updateWorldTransform();
+            for (Entity* child : entity->getChildren()) {
+                updateTransforms(child);
+            }
+        };
+        for (Entity* rootEntity : rootEntities) {
+            updateTransforms(rootEntity);
+        }
+        rebuildSpatialGrid();
+        spatialGridDirty = false;
+    } else {
+        updateDynamicColliders();
+    }
+    
     std::function<void(Entity*)> traverse = [&](Entity* entity) {
         entity->update(deltaTime);
         entity->updateAnimation(deltaTime);

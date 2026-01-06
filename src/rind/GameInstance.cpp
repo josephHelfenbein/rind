@@ -109,7 +109,8 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     );
     engine::Model* groundModel = modelManager ? modelManager->getModel("groundblock") : nullptr;
     groundblock->setModel(groundModel);
-    auto [vertices, indices] = groundModel->loadVertsForModel();
+    engine::Model* groundColliderModel = modelManager ? modelManager->getModel("groundblock-collider") : nullptr;
+    auto [vertices, indices] = groundColliderModel->loadVertsForModel();
     engine::ConvexHullCollider* groundCollider = new engine::ConvexHullCollider(
         entityManager,
         glm::mat4(1.0f),

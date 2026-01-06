@@ -62,11 +62,18 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     if (!grounded || velocity.y > 0.0f) {
         velocity.y -= gravity * deltaTime;
     }
-    // subset integration: horizontal and vertical
-    const float MAX_STEP = 0.02f; // 20 ms
     const float totalMoveLength = glm::length(velocity * deltaTime);
-    int steps = totalMoveLength > 0.0f ? static_cast<int>(glm::ceil(totalMoveLength / (MAX_STEP * moveSpeed))) : 1;
-    steps = glm::clamp(steps, 1, 8);
+    int steps;
+    if (totalMoveLength < 0.01f) {
+        steps = 1; // small movement
+    } else if (totalMoveLength < 0.1f) {
+        steps = 2; // slow movement
+    } else if (totalMoveLength < 0.3f) {
+        steps = 3; // normal movement
+    } else {
+        steps = glm::min(static_cast<int>(glm::ceil(totalMoveLength / 0.1f)), 6); // fast movement
+    }
+    
     const float subDt = deltaTime / static_cast<float>(steps);
     glm::vec3 frameVelocity = velocity;
     bool touchedGround = false;
@@ -262,32 +269,31 @@ engine::Collider::Collision engine::CharacterEntity::willCollide(const glm::mat4
         return Collider::Collision();
     }
     AABB myAABB = collider->getWorldAABB();
-    if (glm::length(glm::vec3(deltaTransform[3])) > 1e-6f) {
-        myAABB.min += glm::vec3(deltaTransform[3]);
-        myAABB.max += glm::vec3(deltaTransform[3]);
+    glm::vec3 delta = glm::vec3(deltaTransform[3]);
+    if (glm::length(delta) > 1e-6f) {
+        myAABB.min += delta;
+        myAABB.max += delta;
     }
-    for (auto& [entityName, entity] : getEntityManager()->getEntities()) {
-        if (entity == this) {
-            continue;
-        }
-        Collider* otherCollider = nullptr;
-        for (auto& child : entity->getChildren()) {
-            otherCollider = dynamic_cast<Collider*>(child);
-            if (otherCollider) {
-                break;
-            }
-        }
-        if (!otherCollider) {
+    const float margin = 0.1f;
+    AABB queryAABB = {
+        myAABB.min - glm::vec3(margin),
+        myAABB.max + glm::vec3(margin)
+    };
+    std::vector<Collider*> candidates;
+    getEntityManager()->getSpatialGrid().query(queryAABB, candidates);
+    
+    for (Collider* otherCollider : candidates) {
+        if (otherCollider == collider) {
             continue;
         }
         AABB otherAABB = otherCollider->getWorldAABB();
-        bool aabbIntersect = Collider::aabbIntersects(myAABB, otherAABB, 0.002);
-        if (aabbIntersect) {
-            Collider::Collision collision;
-            if (collider->intersectsMTV(*otherCollider, collision.mtv, deltaTransform)) {
-                collision.other = otherCollider;
-                return collision;
-            }
+        if (!Collider::aabbIntersects(myAABB, otherAABB, 0.002f)) {
+            continue;
+        }
+        Collider::Collision collision;
+        if (collider->intersectsMTV(*otherCollider, collision.mtv, deltaTransform)) {
+            collision.other = otherCollider;
+            return collision;
         }
     }
     return Collider::Collision();

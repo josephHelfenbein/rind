@@ -63,6 +63,7 @@ namespace engine {
         ParticleManager(engine::Renderer* renderer);
         ~ParticleManager();
         void init();
+        void clear();
 
         void burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime, float spread);
         void spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime);

@@ -4,6 +4,7 @@
 #include <engine/ShaderManager.h>
 #include <engine/TextureManager.h>
 #include <engine/ModelManager.h>
+#include <engine/SpatialGrid.h>
 #include <string>
 #include <map>
 #include <vector>
@@ -45,8 +46,9 @@ namespace engine {
         Entity* getParent() const { return parent; }
         void setParent(Entity* parent) { this->parent = parent; }
         glm::mat4 getTransform() const { return transform; }
-        void setTransform(const glm::mat4& transform) { this->transform = transform; }
+        void setTransform(const glm::mat4& transform) { this->transform = transform; ++transformGeneration; }
         glm::mat4 getWorldTransform() const { return worldTransform; }
+        uint32_t getTransformGeneration() const { return transformGeneration; }
         glm::vec3 getWorldPosition() const;
         std::string getShader() const { return shader; }
 
@@ -106,6 +108,7 @@ namespace engine {
 
         std::vector<Entity*> children;
         Entity* parent = nullptr;
+        uint32_t transformGeneration = 0;
     };
 
     class EntityManager {
@@ -153,17 +156,16 @@ namespace engine {
         void addLight(Light* light) {
             lights.push_back(light);
         }
-        void addCollider(Collider* collider) {
-            colliders.push_back(collider);
-        }
-        void removeCollider(Collider* collider) {
-            colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
-        }
+        void addCollider(Collider* collider);
+        void removeCollider(Collider* collider);
         const std::vector<Light*>& getLights() const { return lights; }
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
         std::vector<Collider*>& getColliders() { return colliders; }
+        SpatialGrid& getSpatialGrid() { return spatialGrid; }
+        void rebuildSpatialGrid();
+        void updateDynamicColliders();
         void createAllShadowMaps();
         void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         VkBuffer getDummySkinningBuffer() const { return dummySkinningBuffer; }
@@ -187,6 +189,8 @@ namespace engine {
         std::vector<Collider*> colliders;
         std::vector<Light*> lights;
         std::vector<Entity*> pendingDeletions;
+        SpatialGrid spatialGrid{10.0f};
+        bool spatialGridDirty = true;
 
         std::vector<VkBuffer> lightsBuffers;
         std::vector<VkDeviceMemory> lightsBuffersMemory;
