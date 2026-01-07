@@ -43,6 +43,7 @@
 src/assets/shaders/compiled
 
 .DS_Store
+.cache
 
 build
 bin

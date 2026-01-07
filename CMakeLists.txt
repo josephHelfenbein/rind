@@ -8,70 +8,41 @@ set(IS_WINDOWS FALSE)
 set(IS_MACOS FALSE)
 set(IS_LINUX FALSE)
 if(WIN32)
-    set(IS_WINDOWS TRUE)
+  set(IS_WINDOWS TRUE)
 elseif(APPLE)
-    set(IS_MACOS TRUE)
+  set(IS_MACOS TRUE)
 else()
-    set(IS_LINUX TRUE)
+  set(IS_LINUX TRUE)
 endif()
 
 set(VK_SDK_PATH $ENV{VK_SDK_PATH})
 if(NOT VK_SDK_PATH AND DEFINED ENV{VULKAN_SDK})
-    set(VK_SDK_PATH $ENV{VULKAN_SDK})
+  set(VK_SDK_PATH $ENV{VULKAN_SDK})
 endif()
 if(APPLE AND NOT VK_SDK_PATH)
-    # Try to auto-detect a locally installed LunarG Vulkan SDK on macOS
-    set(_LUNARG_BASE "$ENV{HOME}/VulkanSDK")
-    if(IS_DIRECTORY "${_LUNARG_BASE}")
-        file(GLOB _LUNARG_SDK_CANDIDATES "${_LUNARG_BASE}/*")
-        if(_LUNARG_SDK_CANDIDATES)
-            list(SORT _LUNARG_SDK_CANDIDATES)
-            list(REVERSE _LUNARG_SDK_CANDIDATES)
-            foreach(_SDK_PATH IN LISTS _LUNARG_SDK_CANDIDATES)
-                if(IS_DIRECTORY "${_SDK_PATH}/macOS/lib")
-                    set(VK_SDK_PATH ${_SDK_PATH})
-                    message(STATUS "Detected LunarG Vulkan SDK at ${VK_SDK_PATH}")
-                    break()
-                endif()
-            endforeach()
+  # Try to auto-detect a locally installed LunarG Vulkan SDK on macOS
+  set(_LUNARG_BASE "$ENV{HOME}/VulkanSDK")
+  if(IS_DIRECTORY "${_LUNARG_BASE}")
+    file(GLOB _LUNARG_SDK_CANDIDATES "${_LUNARG_BASE}/*")
+    if(_LUNARG_SDK_CANDIDATES)
+      list(SORT _LUNARG_SDK_CANDIDATES)
+      list(REVERSE _LUNARG_SDK_CANDIDATES)
+      foreach(_SDK_PATH IN LISTS _LUNARG_SDK_CANDIDATES)
+        if(IS_DIRECTORY "${_SDK_PATH}/macOS/lib")
+          set(VK_SDK_PATH ${_SDK_PATH})
+          message(STATUS "Detected LunarG Vulkan SDK at ${VK_SDK_PATH}")
+          break()
         endif()
+      endforeach()
     endif()
+  endif()
 endif()
 if(IS_WINDOWS AND NOT VK_SDK_PATH)
-    message(STATUS "VK_SDK_PATH not set; will try find_package(Vulkan) on Windows")
+  message(STATUS "VK_SDK_PATH not set; will try find_package(Vulkan) on Windows")
 endif()
 
-if(IS_MACOS)
-    include_directories(/usr/local/include)
-    link_directories(/usr/local/lib)
-    if(NOT VK_SDK_PATH)
-        find_package(Vulkan REQUIRED)
-        include_directories(${Vulkan_INCLUDE_DIRS})
-    else()
-        include_directories(${VK_SDK_PATH}/Include)
-        link_directories(${VK_SDK_PATH}/macOS/lib)
-    endif()
-elseif(IS_WINDOWS)
-    if(VK_SDK_PATH)
-        include_directories(${VK_SDK_PATH}/Include)
-        link_directories(${VK_SDK_PATH}/Lib)
-    elseif(DEFINED ENV{VULKAN_SDK})
-        include_directories($ENV{VULKAN_SDK}/Include)
-        link_directories($ENV{VULKAN_SDK}/Lib)
-    else()
-        find_package(Vulkan REQUIRED)
-        include_directories(${Vulkan_INCLUDE_DIRS})
-    endif()
-endif()
-
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/include/external/glm)
-include_directories(${CMAKE_SOURCE_DIR}/include/external/glfw/include)
-include_directories(${CMAKE_SOURCE_DIR}/include/external/fastgltf/include)
-include_directories(${CMAKE_SOURCE_DIR}/include/external/freetype/include)
-include_directories(${CMAKE_SOURCE_DIR}/include/external)
 if(IS_WINDOWS)
-    link_directories(${CMAKE_SOURCE_DIR}/include)
+  link_directories(${CMAKE_SOURCE_DIR}/include)
 endif()
 
 set(FASTGLTF_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
@@ -80,7 +51,7 @@ set(FASTGLTF_ENABLE_DOCS OFF CACHE BOOL "" FORCE)
 set(FASTGLTF_COMPILE_AS_CPP20 ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/fastgltf)
 if(TARGET fastgltf)
-    target_compile_options(fastgltf PRIVATE -Wno-nan-infinity-disabled)
+  target_compile_options(fastgltf PRIVATE -Wno-nan-infinity-disabled)
 endif()
 
 set(SOURCES
@@ -96,7 +67,49 @@ list(APPEND SOURCES ${ENGINE_SOURCES} ${GAME_SOURCES} ${RIND_SOURCES})
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 if(IS_MACOS)
-    find_program(DXC_EXECUTABLE dxc
+  target_include_directories(${PROJECT_NAME} PRIVATE
+        /usr/local/include
+        /opt/homebrew/include
+    )
+  target_link_directories(${PROJECT_NAME} PRIVATE
+        /usr/local/lib
+        /opt/homebrew/lib
+    )
+  if(NOT VK_SDK_PATH)
+    find_package(Vulkan REQUIRED)
+    include_directories(${Vulkan_INCLUDE_DIRS})
+  else()
+    target_include_directories(${PROJECT_NAME} PRIVATE
+      "${VK_SDK_PATH}/macOS/include"
+    )
+    target_link_directories(${PROJECT_NAME} PRIVATE
+      "${VK_SDK_PATH}/macOS/lib"
+    )
+  endif()
+elseif(IS_WINDOWS)
+  if(VK_SDK_PATH)
+    include_directories(${VK_SDK_PATH}/Include)
+    link_directories(${VK_SDK_PATH}/Lib)
+  elseif(DEFINED ENV{VULKAN_SDK})
+    include_directories($ENV{VULKAN_SDK}/Include)
+    link_directories($ENV{VULKAN_SDK}/Lib)
+  else()
+    find_package(Vulkan REQUIRED)
+    include_directories(${Vulkan_INCLUDE_DIRS})
+  endif()
+endif()
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/external
+    ${CMAKE_SOURCE_DIR}/include/external/glm
+    ${CMAKE_SOURCE_DIR}/include/external/glfw/include
+    ${CMAKE_SOURCE_DIR}/include/external/fastgltf/include
+    ${CMAKE_SOURCE_DIR}/include/external/freetype/include
+)
+
+if(IS_MACOS)
+  find_program(DXC_EXECUTABLE dxc
         HINTS
             ${VK_SDK_PATH}/macOS/bin
             /usr/local/bin
@@ -105,13 +118,13 @@ if(IS_MACOS)
             /Users/$ENV{USER}/VulkanSDK/*/macOS/bin
     )
 elseif(IS_WINDOWS)
-    find_program(DXC_EXECUTABLE dxc
+  find_program(DXC_EXECUTABLE dxc
         HINTS
             ${VK_SDK_PATH}/Bin
             $ENV{VULKAN_SDK}/Bin
     )
 else() # Linux
-    find_program(DXC_EXECUTABLE dxc
+  find_program(DXC_EXECUTABLE dxc
         HINTS
             ${VK_SDK_PATH}/bin
             $ENV{VULKAN_SDK}/bin
@@ -121,7 +134,7 @@ else() # Linux
 endif()
 
 if(NOT DXC_EXECUTABLE)
-    message(FATAL_ERROR "dxc not found! Please install Vulkan SDK.")
+  message(FATAL_ERROR "dxc not found! Please install Vulkan SDK.")
 endif()
 
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled)
@@ -133,29 +146,29 @@ file(GLOB_RECURSE HLSL_SOURCE_FILES
 set(SPIRV_BINARY_FILES)
 
 foreach(HLSL ${HLSL_SOURCE_FILES})
-    get_filename_component(FILE_NAME ${HLSL} NAME)
-    
-    if(FILE_NAME MATCHES "\\.vert\\.hlsl$")
-        set(SHADER_PROFILE "vs_6_0")
-    elseif(FILE_NAME MATCHES "\\.frag\\.hlsl$")
-        set(SHADER_PROFILE "ps_6_0")
-    elseif(FILE_NAME MATCHES "\\.comp\\.hlsl$")
-        set(SHADER_PROFILE "cs_6_0")
-    else()
-        message(WARNING "Could not determine shader stage for ${FILE_NAME}")
-        continue()
-    endif()
+  get_filename_component(FILE_NAME ${HLSL} NAME)
 
-    string(REPLACE ".hlsl" ".spv" SPIRV_NAME ${FILE_NAME})
-    set(SPIRV "${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled/${SPIRV_NAME}")
-    
-    add_custom_command(
+  if(FILE_NAME MATCHES "\\.vert\\.hlsl$")
+    set(SHADER_PROFILE "vs_6_0")
+  elseif(FILE_NAME MATCHES "\\.frag\\.hlsl$")
+    set(SHADER_PROFILE "ps_6_0")
+  elseif(FILE_NAME MATCHES "\\.comp\\.hlsl$")
+    set(SHADER_PROFILE "cs_6_0")
+  else()
+    message(WARNING "Could not determine shader stage for ${FILE_NAME}")
+    continue()
+  endif()
+
+  string(REPLACE ".hlsl" ".spv" SPIRV_NAME ${FILE_NAME})
+  set(SPIRV "${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled/${SPIRV_NAME}")
+
+  add_custom_command(
         OUTPUT ${SPIRV}
         COMMAND ${DXC_EXECUTABLE} -spirv -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
         DEPENDS ${HLSL}
         COMMENT "Compiling ${FILE_NAME} to SPIR-V"
     )
-    list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+  list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach(HLSL)
 
 add_custom_target(
@@ -167,12 +180,12 @@ add_custom_target(
 add_dependencies(${PROJECT_NAME} Shaders)
 
 if(IS_MACOS)
-    find_package(Vulkan REQUIRED)
-    find_package(glfw3 REQUIRED)
-    find_package(Freetype REQUIRED)
-    
-    target_link_libraries(${PROJECT_NAME} 
-        ${Vulkan_LIBRARIES} 
+  find_package(Vulkan REQUIRED)
+  find_package(glfw3 REQUIRED)
+  find_package(Freetype REQUIRED)
+
+  target_link_libraries(${PROJECT_NAME}
+        ${Vulkan_LIBRARIES}
         glfw
         ${FREETYPE_LIBRARIES}
         fastgltf::fastgltf
@@ -183,89 +196,90 @@ if(IS_MACOS)
         "-framework AudioToolbox"
         "-framework AudioUnit"
     )
-    target_include_directories(${PROJECT_NAME} PRIVATE
-        ${Vulkan_INCLUDE_DIRS} 
+  target_include_directories(${PROJECT_NAME} PRIVATE
+        ${Vulkan_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
     )
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
         VULKAN_HPP_NO_EXCEPTIONS
+        VK_USE_PLATFORM_MACOS_MVK
     )
-    set(_vulkan_rpaths)
-    if(VK_SDK_PATH)
-        list(APPEND _vulkan_rpaths "${VK_SDK_PATH}/macOS/lib")
-    elseif(DEFINED ENV{VULKAN_SDK})
-        list(APPEND _vulkan_rpaths "$ENV{VULKAN_SDK}/macOS/lib")
-    endif()
-    list(APPEND _vulkan_rpaths
+  set(_vulkan_rpaths)
+  if(VK_SDK_PATH)
+    list(APPEND _vulkan_rpaths "${VK_SDK_PATH}/macOS/lib")
+  elseif(DEFINED ENV{VULKAN_SDK})
+    list(APPEND _vulkan_rpaths "$ENV{VULKAN_SDK}/macOS/lib")
+  endif()
+  list(APPEND _vulkan_rpaths
         "/opt/homebrew/lib"
         "/opt/homebrew/opt/vulkan-loader/lib"
         "/opt/homebrew/opt/vulkan-sdk/lib"
         "/opt/homebrew/opt/molten-vk/lib"
         "/usr/local/lib"
     )
-    list(REMOVE_DUPLICATES _vulkan_rpaths)
-    if(_vulkan_rpaths)
-        set_target_properties(${PROJECT_NAME} PROPERTIES
+  list(REMOVE_DUPLICATES _vulkan_rpaths)
+  if(_vulkan_rpaths)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
             BUILD_RPATH "${_vulkan_rpaths}"
             INSTALL_RPATH "${_vulkan_rpaths}"
         )
-    endif()
+  endif()
 elseif(IS_WINDOWS)
-    if(VK_SDK_PATH)
-        find_library(Vulkan_LIBRARY vulkan-1 PATHS ${VK_SDK_PATH}/Lib NO_DEFAULT_PATH)
-    endif()
-    if(NOT Vulkan_LIBRARY AND DEFINED ENV{VULKAN_SDK})
-        find_library(Vulkan_LIBRARY vulkan-1 PATHS $ENV{VULKAN_SDK}/Lib NO_DEFAULT_PATH)
-    endif()
-    if(NOT Vulkan_LIBRARY)
-        find_package(Vulkan REQUIRED)
-        set(Vulkan_LIBRARY Vulkan::Vulkan)
-    endif()
-    # Freetype
-    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/freetype)
+  if(VK_SDK_PATH)
+    find_library(Vulkan_LIBRARY vulkan-1 PATHS ${VK_SDK_PATH}/Lib NO_DEFAULT_PATH)
+  endif()
+  if(NOT Vulkan_LIBRARY AND DEFINED ENV{VULKAN_SDK})
+    find_library(Vulkan_LIBRARY vulkan-1 PATHS $ENV{VULKAN_SDK}/Lib NO_DEFAULT_PATH)
+  endif()
+  if(NOT Vulkan_LIBRARY)
+    find_package(Vulkan REQUIRED)
+    set(Vulkan_LIBRARY Vulkan::Vulkan)
+  endif()
+  # Freetype
+  set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+  set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+  set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+  set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+  set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/freetype)
 
-    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/glfw)
+  set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/glfw)
 
-    target_link_libraries(${PROJECT_NAME} ${Vulkan_LIBRARY} glfw freetype fastgltf::fastgltf)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
+  target_link_libraries(${PROJECT_NAME} ${Vulkan_LIBRARY} glfw freetype fastgltf::fastgltf)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32
     )
 else() # Linux
-    find_package(PkgConfig QUIET)
-    find_package(Vulkan REQUIRED)
-    find_package(Freetype REQUIRED)
-    find_package(glfw3 3.3 QUIET)
-    if(NOT glfw3_FOUND)
-        if(PkgConfig_FOUND)
-            pkg_check_modules(GLFW3 REQUIRED glfw3)
-            add_library(glfw INTERFACE)
-            target_include_directories(glfw INTERFACE ${GLFW3_INCLUDE_DIRS})
-            target_link_libraries(glfw INTERFACE ${GLFW3_LIBRARIES})
-        else()
-            message(FATAL_ERROR "glfw3 not found. Please install it, e.g., sudo apt install libglfw3-dev")
-        endif()
+  find_package(PkgConfig QUIET)
+  find_package(Vulkan REQUIRED)
+  find_package(Freetype REQUIRED)
+  find_package(glfw3 3.3 QUIET)
+  if(NOT glfw3_FOUND)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(GLFW3 REQUIRED glfw3)
+      add_library(glfw INTERFACE)
+      target_include_directories(glfw INTERFACE ${GLFW3_INCLUDE_DIRS})
+      target_link_libraries(glfw INTERFACE ${GLFW3_LIBRARIES})
+    else()
+      message(FATAL_ERROR "glfw3 not found. Please install it, e.g., sudo apt install libglfw3-dev")
     endif()
+  endif()
 
-    target_link_libraries(${PROJECT_NAME}
+  target_link_libraries(${PROJECT_NAME}
         Vulkan::Vulkan
         glfw
         ${FREETYPE_LIBRARIES}
         fastgltf::fastgltf
     )
-    target_include_directories(${PROJECT_NAME} PRIVATE
+  target_include_directories(${PROJECT_NAME} PRIVATE
     ${FREETYPE_INCLUDE_DIRS}
     $<IF:$<BOOL:${glfw3_FOUND}>,${glfw3_INCLUDE_DIRS},${GLFW3_INCLUDE_DIRS}>
     )
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
         VULKAN_HPP_NO_EXCEPTIONS
     )
 endif()
@@ -279,121 +293,121 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(ENABLE_OPENMP "Enable OpenMP parallelism" ON)
 if(ENABLE_OPENMP)
-    if(APPLE)
-        find_package(OpenMP QUIET)
-        if(OpenMP_CXX_FOUND)
-            target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
-            target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
-            message(STATUS "OpenMP found via CMake and linked")
-        else()
-            set(_LIBOMP_PREFIX_CANDIDATES
+  if(APPLE)
+    find_package(OpenMP QUIET)
+    if(OpenMP_CXX_FOUND)
+      target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+      target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
+      message(STATUS "OpenMP found via CMake and linked")
+    else()
+      set(_LIBOMP_PREFIX_CANDIDATES
                 "/opt/homebrew/opt/libomp"
                 "/usr/local/opt/libomp"
             )
-            set(_LIBOMP_FOUND FALSE)
-            foreach(_PFX IN LISTS _LIBOMP_PREFIX_CANDIDATES)
-                if(EXISTS "${_PFX}/lib/libomp.dylib")
-                    target_include_directories(${PROJECT_NAME} PRIVATE "${_PFX}/include")
-                    target_compile_options(${PROJECT_NAME} PRIVATE -Xpreprocessor -fopenmp)
-                    target_link_libraries(${PROJECT_NAME} "${_PFX}/lib/libomp.dylib")
-                    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
-                    message(STATUS "Using Homebrew OpenMP at ${_PFX}")
-                    set(_LIBOMP_FOUND TRUE)
-                    break()
-                endif()
-            endforeach()
-            if(NOT _LIBOMP_FOUND)
-                message(WARNING "ENABLE_OPENMP=ON but libomp not found. Install with: brew install libomp. Proceeding without USE_OPENMP.")
-            endif()
+      set(_LIBOMP_FOUND FALSE)
+      foreach(_PFX IN LISTS _LIBOMP_PREFIX_CANDIDATES)
+        if(EXISTS "${_PFX}/lib/libomp.dylib")
+          target_include_directories(${PROJECT_NAME} PRIVATE "${_PFX}/include")
+          target_compile_options(${PROJECT_NAME} PRIVATE -Xpreprocessor -fopenmp)
+          target_link_libraries(${PROJECT_NAME} "${_PFX}/lib/libomp.dylib")
+          target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
+          message(STATUS "Using Homebrew OpenMP at ${_PFX}")
+          set(_LIBOMP_FOUND TRUE)
+          break()
         endif()
-    else()
-        if(MSVC)
-            set(OpenMP_MSVC_DEFAULT "LLVM" CACHE STRING "" FORCE)
-        endif()
-
-        find_package(OpenMP QUIET)
-        if(OpenMP_CXX_FOUND)
-            target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
-            target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
-            if(MSVC)
-                target_compile_options(${PROJECT_NAME} PRIVATE /openmp:llvm)
-                message(STATUS "OpenMP found; enabling /openmp:llvm for MSVC")
-            else()
-                message(STATUS "OpenMP found and linked")
-            endif()
-        else()
-            if(MSVC)
-                target_compile_options(${PROJECT_NAME} PRIVATE /openmp:llvm)
-                target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
-                message(WARNING "ENABLE_OPENMP=ON but OpenMP not found; forcing /openmp:llvm for MSVC. Ensure LLVM OpenMP runtime is installed.")
-            else()
-                message(WARNING "ENABLE_OPENMP=ON but OpenMP not found; proceeding without USE_OPENMP.")
-            endif()
-        endif()
+      endforeach()
+      if(NOT _LIBOMP_FOUND)
+        message(WARNING "ENABLE_OPENMP=ON but libomp not found. Install with: brew install libomp. Proceeding without USE_OPENMP.")
+      endif()
     endif()
+  else()
+    if(MSVC)
+      set(OpenMP_MSVC_DEFAULT "LLVM" CACHE STRING "" FORCE)
+    endif()
+
+    find_package(OpenMP QUIET)
+    if(OpenMP_CXX_FOUND)
+      target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+      target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
+      if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE /openmp:llvm)
+        message(STATUS "OpenMP found; enabling /openmp:llvm for MSVC")
+      else()
+        message(STATUS "OpenMP found and linked")
+      endif()
+    else()
+      if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE /openmp:llvm)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENMP)
+        message(WARNING "ENABLE_OPENMP=ON but OpenMP not found; forcing /openmp:llvm for MSVC. Ensure LLVM OpenMP runtime is installed.")
+      else()
+        message(WARNING "ENABLE_OPENMP=ON but OpenMP not found; proceeding without USE_OPENMP.")
+      endif()
+    endif()
+  endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(${PROJECT_NAME} PRIVATE
+  target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -fvectorize -fslp-vectorize -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -finline-functions>
         $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
     )
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+  set_target_properties(${PROJECT_NAME} PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(${PROJECT_NAME} PRIVATE
+  target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -finline-functions -ftree-vectorize>
         $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
     )
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+  set_target_properties(${PROJECT_NAME} PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(${PROJECT_NAME} PRIVATE
+  target_compile_options(${PROJECT_NAME} PRIVATE
         /FS
         $<$<CONFIG:Release>:/O2 /Oi /Ot /Gy /GL /fp:fast /DNDEBUG>
         $<$<CONFIG:Debug>:/W4 /Zi /Od>
     )
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+  set_target_properties(${PROJECT_NAME} PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
 endif()
 
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /FS)
+  target_compile_options(${PROJECT_NAME} PRIVATE /FS)
 endif()
 
 if(IS_MACOS)
-    set_target_properties(${PROJECT_NAME} PROPERTIES
+  set_target_properties(${PROJECT_NAME} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
         BUILD_RPATH "@executable_path/../bin/lib"
         INSTALL_RPATH "@executable_path/../bin/lib"
     )
-    set(_vulkan_loader_candidates)
-    if(VK_SDK_PATH)
-        list(APPEND _vulkan_loader_candidates "${VK_SDK_PATH}/macOS/lib/libvulkan.1.dylib")
-    endif()
-    list(APPEND _vulkan_loader_candidates
+  set(_vulkan_loader_candidates)
+  if(VK_SDK_PATH)
+    list(APPEND _vulkan_loader_candidates "${VK_SDK_PATH}/macOS/lib/libvulkan.1.dylib")
+  endif()
+  list(APPEND _vulkan_loader_candidates
         "/opt/homebrew/opt/vulkan-loader/lib/libvulkan.1.dylib"
         "/usr/local/opt/vulkan-loader/lib/libvulkan.1.dylib"
     )
-    set(_vulkan_loader_to_copy "")
-    foreach(_cand IN LISTS _vulkan_loader_candidates)
-        if(EXISTS "${_cand}")
-            set(_vulkan_loader_to_copy "${_cand}")
-            break()
-        endif()
-    endforeach()
-    if(_vulkan_loader_to_copy)
-        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  set(_vulkan_loader_to_copy "")
+  foreach(_cand IN LISTS _vulkan_loader_candidates)
+    if(EXISTS "${_cand}")
+      set(_vulkan_loader_to_copy "${_cand}")
+      break()
+    endif()
+  endforeach()
+  if(_vulkan_loader_to_copy)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin/lib
             COMMAND ${CMAKE_COMMAND} -E echo "Copying libvulkan from ${_vulkan_loader_to_copy}"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_vulkan_loader_to_copy}" "${CMAKE_SOURCE_DIR}/bin/lib/libvulkan.1.dylib"
         )
-    else()
-        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  else()
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Warning: libvulkan.1.dylib not found; set VK_SDK_PATH or install vulkan-loader"
         )
-    endif()
+  endif()
 endif()
