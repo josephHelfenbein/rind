@@ -211,7 +211,7 @@ namespace {
         glm::vec3 pos;
         glm::vec3 normal;
         glm::vec2 texCoord;
-        glm::vec3 tangent;
+        glm::vec4 tangent; // xyz = tangent, w = bitangent handedness (+1 or -1)
     };
 
     struct UIVertex {
@@ -462,7 +462,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
 
                     attributes[3].binding = 0;
                     attributes[3].location = 3;
-                    attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+                    attributes[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
                     attributes[3].offset = offsetof(Vertex, tangent);
 
                     attributes[4].binding = 1;

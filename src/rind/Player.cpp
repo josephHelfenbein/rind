@@ -199,7 +199,7 @@ void rind::Player::damage(float amount) {
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
         engine::UIObject* windowTint = new engine::UIObject(
             uiManager,
-            glm::mat4(1.0f), 
+            glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), 
             "deathWindowTint",
             glm::vec4(1.0f, 1.0f, 1.0f, 0.25f),
             "ui_window"

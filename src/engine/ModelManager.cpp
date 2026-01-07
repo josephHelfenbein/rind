@@ -180,7 +180,7 @@ void engine::Model::loadFromFile() {
         animationsMap[animationClip.name] = animationClip;
     }
     
-    constexpr std::size_t floatsPerVertex = 11; // pos(3), normal(3), uv(2), tangent(4)
+    constexpr std::size_t floatsPerVertex = 12; // pos(3), normal(3), uv(2), tangent(4)
     std::vector<float> tempVertices;
     std::vector<uint32_t> tempIndices;
     std::vector<float> skinningData; // 4 joint indices + 4 weights per vertex
@@ -211,6 +211,7 @@ void engine::Model::loadFromFile() {
             tempVertices[base + 8] = 0.0f; // tangent.x
             tempVertices[base + 9] = 0.0f; // tangent.y
             tempVertices[base + 10] = 0.0f; // tangent.z
+            tempVertices[base + 11] = 1.0f; // tangent.w (handedness, default +1)
         }
         tempIndices.reserve(tempIndices.size() + indexAccessor.count);
         skinningData.resize(vertexCount * 8, 0.0f); // 4 joint indices + 4 weights per vertex
@@ -264,11 +265,13 @@ void engine::Model::loadFromFile() {
                     tempVertices[base + 8] = t.x;
                     tempVertices[base + 9] = t.y;
                     tempVertices[base + 10] = t.z;
+                    tempVertices[base + 11] = t.w; // handedness (+1 or -1)
                 });
             hasTangents = true;
         }
         if (!hasTangents) {
             std::vector<glm::vec3> tangents(vertexCount, glm::vec3(0.0f));
+            std::vector<glm::vec3> bitangents(vertexCount, glm::vec3(0.0f));
             for (std::size_t i = initialVertexCount * 3; i < tempIndices.size(); i += 3) {
                 const uint32_t i0 = tempIndices[i + 0] - static_cast<uint32_t>(initialVertexCount);
                 const uint32_t i1 = tempIndices[i + 1] - static_cast<uint32_t>(initialVertexCount);
@@ -291,13 +294,18 @@ void engine::Model::loadFromFile() {
                 const glm::vec2 deltaUV2 = uv2 - uv0;
                 const float det = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
                 glm::vec3 tangent(1.0f, 0.0f, 0.0f);
+                glm::vec3 bitangent(0.0f, 1.0f, 0.0f);
                 if (std::abs(det) > 1e-6f) {
                     const float invDet = 1.0f / det;
                     tangent = invDet * (edge1 * deltaUV2.y - edge2 * deltaUV1.y);
+                    bitangent = invDet * (edge2 * deltaUV1.x - edge1 * deltaUV2.x);
                 }
                 tangents[i0] += tangent;
                 tangents[i1] += tangent;
                 tangents[i2] += tangent;
+                bitangents[i0] += bitangent;
+                bitangents[i1] += bitangent;
+                bitangents[i2] += bitangent;
             }
             for (std::size_t i = 0; i < vertexCount; ++i) {
                 const std::size_t base = startFloat + i * floatsPerVertex;
@@ -311,9 +319,12 @@ void engine::Model::loadFromFile() {
                 if (glm::length(t) < 1e-6f) {
                     t = glm::vec3(1.0f, 0.0f, 0.0f);
                 }
+                glm::vec3 b = bitangents[i];
+                float handedness = (glm::dot(glm::cross(n, t), b) < 0.0f) ? -1.0f : 1.0f;
                 tempVertices[base + 8] = t.x;
                 tempVertices[base + 9] = t.y;
                 tempVertices[base + 10] = t.z;
+                tempVertices[base + 11] = handedness;
             }
         }
         const auto jointsAttr = primitive.findAttribute("JOINTS_0");

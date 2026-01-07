@@ -261,11 +261,9 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         if (bufferIndex >= uniformBuffers.size()) return;
         VkBuffer buffer = uniformBuffers[bufferIndex];
         if (buffer == VK_NULL_HANDLE) return;
-        void* data;
-        VkDeviceMemory memory = entity->getUniformBuffersMemory()[bufferIndex];
-        if (vkMapMemory(renderer->getDevice(), memory, 0, jointMatrices.size() * sizeof(glm::mat4), 0, &data) == VK_SUCCESS) {
-            memcpy(data, jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
-            vkUnmapMemory(renderer->getDevice(), memory);
+        void* mapped = entity->getUniformBuffersMapped()[bufferIndex];
+        if (mapped != nullptr) {
+            memcpy(mapped, jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
         }
     };
     

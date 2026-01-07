@@ -79,6 +79,9 @@ set(FASTGLTF_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(FASTGLTF_ENABLE_DOCS OFF CACHE BOOL "" FORCE)
 set(FASTGLTF_COMPILE_AS_CPP20 ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/fastgltf)
+if(TARGET fastgltf)
+    target_compile_options(fastgltf PRIVATE -Wno-nan-infinity-disabled)
+endif()
 
 set(SOURCES
     src/main.cpp
