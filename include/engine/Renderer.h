@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include <set>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -149,6 +148,8 @@ namespace engine {
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
         float getDeltaTime() const { return deltaTime; }
+        bool isFXAAEnabled() const { return fxaaEnabled; }
+        void setFxaaEnabled(bool enabled) { fxaaEnabled = enabled; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -189,7 +190,7 @@ namespace engine {
         VkDebugUtilsMessengerEXT debugMessenger;
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHR surface;
-        int msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+        bool fxaaEnabled = true;
         bool framebufferResized = false;
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
@@ -220,12 +221,6 @@ namespace engine {
         std::vector<VkSemaphore> imageAvailableSemaphores;
         std::vector<VkSemaphore> renderFinishedSemaphores;
         std::vector<VkCommandBuffer> commandBuffers;
-        VkImage colorImage;
-        VkDeviceMemory colorImageMemory;
-        VkImageView colorImageView;
-        VkImage depthImage;
-        VkDeviceMemory depthImageMemory;
-        VkImageView depthImageView;
 
         class EntityManager* entityManager;
         class InputManager* inputManager;
@@ -250,8 +245,6 @@ namespace engine {
         void createCommandPool();
         void createMainTextureSampler();
         void createPostProcessDescriptorSets();
-        void createColorResources();
-        void createDepthResources();
         void createCommandBuffers();
         void createSyncObjects();
         void createQuadResources();
@@ -299,9 +292,6 @@ namespace engine {
         VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
         VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
         int rateDeviceSuitability(VkPhysicalDevice device);
-        VkSampleCountFlagBits getMaxUsableSampleCount();
-        VkFormat findDepthFormat();
-        VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
         static void processInput(GLFWwindow* window);
         static void framebufferResizeCallback(GLFWwindow* window, int width, int height);

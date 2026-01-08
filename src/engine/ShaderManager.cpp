@@ -711,6 +711,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 }
             }
         };
+        shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         shaders.push_back(shader);
     }
 

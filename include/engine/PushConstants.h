@@ -55,4 +55,10 @@ namespace engine {
         float particleSize;
         float streakScale;
     };
+
+    struct CompositePC {
+        glm::vec2 inverseScreenSize;
+        uint32_t flags; // bit 0 = use fxaa
+        uint32_t pad;
+    };
 }
