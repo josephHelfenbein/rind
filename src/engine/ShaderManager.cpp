@@ -317,6 +317,21 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         particlePass->images = images;
     }
 
+    // SSAO Pass
+    auto ssaoPass = std::make_shared<PassInfo>();
+    ssaoPass->name = "SSAOPass";
+    ssaoPass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SSAOColor",
+            .clearValue = { .color = { {1.0f, 1.0f, 1.0f, 1.0f} } },
+            .format = VK_FORMAT_R16_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        ssaoPass->images = images;
+    }
+
     // UI Pass
     auto uiPass = std::make_shared<PassInfo>();
     uiPass->name = "UIPass";
@@ -554,6 +569,38 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shaders.push_back(shader);
     }
 
+    // SSAO
+    {
+        GraphicsShader shader = {
+            .name = "ssao",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("ssao.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 3,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = ssaoPass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "gbuffer", "Depth" },
+                    { 1, "gbuffer", "Normal" }
+                }
+            }
+        };
+        shader.config.setPushConstant<SSAOPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
     // Particle
     {
         GraphicsShader shader = {
@@ -687,11 +734,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 5,
+                .fragmentBitBindings = 6,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1
+                    1, 1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -708,6 +756,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 1, "ui", "UIColor" },
                     { 2, "text", "TextColor" },
                     { 3, "ssr", "SceneColor"},
+                    { 4, "ssao", "SSAOColor" }
                 }
             }
         };
@@ -732,6 +781,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     pushNode(true, particlePass.get(), { "particle" });
     pushNode(true, lightingPass.get(), { "lighting" });
     pushNode(true, ssrPass.get(), { "ssr" });
+    pushNode(true, ssaoPass.get(), { "ssao" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });

@@ -2,13 +2,13 @@ struct VSOutput {
     [[vk::location(0)]] float2 fragTexCoord : TEXCOORD0;
 };
 
-struct PushConstans {
+struct PushConstants {
     float2 invScreenSize;
     uint flag; // bit 0 = enable fxaa
     uint pad;
 };
 
-[[vk::push_constant]] PushConstans pc;
+[[vk::push_constant]] PushConstants pc;
 
 [[vk::binding(0)]]
 Texture2D<float4> sceneTexture;
@@ -23,6 +23,9 @@ Texture2D<float4> textTexture;
 Texture2D<float4> ssrTexture;
 
 [[vk::binding(4)]]
+Texture2D<float> ssaoTexture;
+
+[[vk::binding(5)]]
 SamplerState sampleSampler;
 
 float3 ACESFilm(float3 x) {
@@ -34,13 +37,20 @@ float3 ACESFilm(float3 x) {
     return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
 }
 
-float3 FXAA(Texture2D<float4> tex, float2 uv) {
+float3 sampleCombined(float2 uv) {
+    float3 scene = sceneTexture.Sample(sampleSampler, uv).rgb;
+    float4 ssr = ssrTexture.Sample(sampleSampler, uv);
+    float ssao = ssaoTexture.Sample(sampleSampler, uv);
+    return scene * ssao + ssr.rgb * ssr.a;
+}
+
+float3 FXAA(float2 uv) {
     float2 texelSize = pc.invScreenSize;
-    float3 rgbNW = tex.Sample(sampleSampler, uv + float2(-texelSize.x, -texelSize.y)).rgb;
-    float3 rgbNE = tex.Sample(sampleSampler, uv + float2(texelSize.x, -texelSize.y)).rgb;
-    float3 rgbSW = tex.Sample(sampleSampler, uv + float2(-texelSize.x, texelSize.y)).rgb;
-    float3 rgbSE = tex.Sample(sampleSampler, uv + float2(texelSize.x, texelSize.y)).rgb;
-    float3 rgbM  = tex.Sample(sampleSampler, uv).rgb;
+    float3 rgbNW = sampleCombined(uv + float2(-texelSize.x, -texelSize.y));
+    float3 rgbNE = sampleCombined(uv + float2(texelSize.x, -texelSize.y));
+    float3 rgbSW = sampleCombined(uv + float2(-texelSize.x, texelSize.y));
+    float3 rgbSE = sampleCombined(uv + float2(texelSize.x, texelSize.y));
+    float3 rgbM  = sampleCombined(uv);
 
     float lumaNW = dot(rgbNW, float3(0.299, 0.587, 0.114));
     float lumaNE = dot(rgbNE, float3(0.299, 0.587, 0.114));
@@ -64,11 +74,11 @@ float3 FXAA(Texture2D<float4> tex, float2 uv) {
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
     dir = saturate(dir * rcpDirMin) * float2(texelSize.x, texelSize.y);
     float3 rgbA = 0.5 * (
-        tex.Sample(sampleSampler, uv + dir * (1.0 / 3.0 - 0.5)).rgb +
-        tex.Sample(sampleSampler, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+        sampleCombined(uv + dir * (1.0 / 3.0 - 0.5)) +
+        sampleCombined(uv + dir * (2.0 / 3.0 - 0.5)));
     float3 rgbB = rgbA * 0.5 + 0.25 * (
-        tex.Sample(sampleSampler, uv + dir * -0.5).rgb +
-        tex.Sample(sampleSampler, uv + dir * 0.5).rgb);
+        sampleCombined(uv + dir * -0.5) +
+        sampleCombined(uv + dir * 0.5));
     if (dot(rgbB, float3(0.299, 0.587, 0.114)) < lumaMin || dot(rgbB, float3(0.299, 0.587, 0.114)) > lumaMax) {
         return rgbA;
     } else {
@@ -81,13 +91,15 @@ float4 main(VSOutput input) : SV_Target {
     float4 uiColor = uiTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 textColor = textTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 ssrColor = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
+    float ssaoColor = ssaoTexture.Sample(sampleSampler, input.fragTexCoord);
 
-    float3 tonemapped = ACESFilm(sceneColor.rgb + ssrColor.rgb * ssrColor.a);
-
+    float3 combinedScene = sceneColor.rgb * ssaoColor + ssrColor.rgb * ssrColor.a;
     if ((pc.flag & 1) != 0) {
-        tonemapped = FXAA(sceneTexture, input.fragTexCoord);
+        combinedScene = FXAA(input.fragTexCoord);
     }
 
+    float3 tonemapped = ACESFilm(combinedScene);
+   
     float4 sceneUI = lerp(float4(tonemapped, sceneColor.a), uiColor, uiColor.a);
     return lerp(sceneUI, textColor, textColor.a);
 }

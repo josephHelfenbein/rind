@@ -191,6 +191,10 @@ namespace engine {
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHR surface;
         bool fxaaEnabled = true;
+        float ssaoRadius = 0.5f;
+        float ssaoBias = 0.025f;
+        float ssaoIntensity = 1.0f;
+        uint32_t ssaoKernelSize = 16u;
         bool framebufferResized = false;
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;

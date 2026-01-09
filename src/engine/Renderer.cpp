@@ -648,6 +648,28 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
                     &pc
                 );
             }
+        } else if (type == std::type_index(typeid(SSAOPC))) {
+            Camera* camera = entityManager->getCamera();
+            if (camera) {
+                glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
+                glm::mat4 proj = camera->getProjectionMatrix();
+                SSAOPC pc = {
+                    .invProj = invProj,
+                    .proj = proj,
+                    .radius = ssaoRadius,
+                    .bias = ssaoBias,
+                    .intensity = ssaoIntensity,
+                    .kernelSize = ssaoKernelSize
+                };
+                vkCmdPushConstants(
+                    commandBuffer,
+                    shader->pipelineLayout,
+                    shader->config.pushConstantRange.stageFlags,
+                    0,
+                    sizeof(SSAOPC),
+                    &pc
+                );
+            }
         } else if (type == std::type_index(typeid(CompositePC))) {
             CompositePC pc = {
                 .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
