@@ -17,11 +17,13 @@ SamplerState sampleSampler;
 struct PushConstants {
     float4x4 invProj;
     float4x4 proj;
-    float radius;
-    float bias;
-    float intensity;
     uint flag; // 0 = disabled, 1 = SSAO, 2 = GTAO
+    uint pad[3];
 };
+
+static const float RADIUS = 0.5;
+static const float BIAS = 0.025;
+static const float INTENSITY = 2.0;
 
 [[vk::push_constant]] PushConstants pc;
 
@@ -45,9 +47,9 @@ float3 reconstructPosition(float2 uv, float depth) {
 
 float3x3 createTBN(float3 normal, float2 uv) {
     float3 randomVec = normalize(float3(
-        frac(sin(dot(uv, float2(12.9898,78.233))) * 43758.5453),
-        frac(sin(dot(uv, float2(93.9898,67.345))) * 24634.6345),
-        frac(sin(dot(uv, float2(45.332,12.345))) * 56445.2345)
+        frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453),
+        frac(sin(dot(uv, float2(93.9898, 67.345))) * 24634.6345),
+        frac(sin(dot(uv, float2(45.332, 12.345))) * 56445.2345)
     ) * 2.0 - 1.0);
     float3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
     float3 bitangent = cross(normal, tangent);
@@ -62,7 +64,7 @@ float computeSSAO(float2 uv, float3 centerPos, float3 centerNormal) {
     const int numSamples = 16;
 
     for (uint i = 0; i < numSamples; ++i) {
-        float3 sampleVec = mul(kernel[i], TBN) * pc.radius;
+        float3 sampleVec = mul(kernel[i], TBN) * RADIUS;
         float3 samplePos = centerPos + sampleVec;
 
         float4 offsetPos = mul(float4(samplePos, 1.0), pc.proj);
@@ -76,12 +78,12 @@ float computeSSAO(float2 uv, float3 centerPos, float3 centerNormal) {
         float sampleDepth = depthTexture.Sample(sampleSampler, sampleUV);
         float3 sampleViewPos = reconstructPosition(sampleUV, sampleDepth);
         float3 dirToSample = sampleViewPos - centerPos;
-        float rangeCheck = smoothstep(0.0, 1.0, pc.radius / abs(length(sampleViewPos.z - centerPos.z)));
-        float occluded = dot(dirToSample, centerNormal) > pc.bias ? 1.0 : 0.0;
+        float rangeCheck = smoothstep(0.0, 1.0, RADIUS / abs(length(sampleViewPos.z - centerPos.z)));
+        float occluded = dot(dirToSample, centerNormal) > BIAS ? 1.0 : 0.0;
         occlusion += occluded * rangeCheck;
         validSamples += 1.0;
     }
-    occlusion = 1.0 - (occlusion / (validSamples + 1e-5)) * pc.intensity;
+    occlusion = 1.0 - (occlusion / (validSamples + 1e-5)) * INTENSITY;
     return occlusion;
 }
 
@@ -96,7 +98,7 @@ float computeGTAO(float2 uv, float3 centerPos, float3 centerNormal) {
     
     const int numDirections = 8;
     const int numSteps = 6;
-    const float stepSize = pc.radius / numSteps;
+    const float stepSize = RADIUS / numSteps;
 
     const float TWOPI = 6.28318530718;
     float randAngle = rand(uv) * TWOPI;
@@ -123,14 +125,14 @@ float computeGTAO(float2 uv, float3 centerPos, float3 centerNormal) {
             float3 sampleViewPos = reconstructPosition(sampleUV, sampleDepth);
             float3 v = sampleViewPos - centerPos;
             float dist = length(v);
-            float rangeCheck = smoothstep(0.0, 1.0, pc.radius / dist);
+            float rangeCheck = smoothstep(0.0, 1.0, RADIUS / dist);
             float horizon = dot(normalize(v), centerNormal);
             maxHorizon = max(maxHorizon, horizon * rangeCheck);
             validSamples += 1.0;
         }
         occlusion += max(maxHorizon, 0.0);
     }
-    float ao = 1.0 - (occlusion / (numDirections + 1e-5)) * pc.intensity;
+    float ao = 1.0 - (occlusion / (numDirections + 1e-5)) * INTENSITY;
     return clamp(ao, 0.0, 1.0);
 }
 

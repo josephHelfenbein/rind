@@ -13,6 +13,7 @@
 #include <engine/io.h>
 #include <engine/PushConstants.h>
 #include <engine/AudioManager.h>
+#include <engine/SettingsManager.h>
 
 #include <utility>
 #include <unordered_set>
@@ -536,6 +537,10 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                     std::cout << "[record] skipping Lighting draw (UI-only frame)" << std::endl;
                 }
                 // no draw, attachments are cleared by loadOp.
+            } else if (node.shaders.find(shaderManager->getGraphicsShader("ssr")) != node.shaders.end() && !settingsManager->getSettings()->ssrEnabled) {
+                if (DEBUG_RENDER_LOGS) {
+                    std::cout << "[record] skipping SSR pass (disabled)" << std::endl;
+                }
             } else {
                 if (DEBUG_RENDER_LOGS) {
                     std::cout << "[record] rendering generic 2D pass" << std::endl;
@@ -609,6 +614,7 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
     for (GraphicsShader* shader : node.shaders) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
         std::type_index type = shader->config.pushConstantType;
+        SettingsManager::Settings* settings = settingsManager->getSettings();
         if (type == std::type_index(typeid(LightingPC))) {
             Camera* camera = entityManager->getCamera();
             if (camera) {
@@ -656,10 +662,7 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
                 AOPC pc = {
                     .invProj = invProj,
                     .proj = proj,
-                    .radius = aoRadius,
-                    .bias = aoBias,
-                    .intensity = aoIntensity,
-                    .flags = aoMode
+                    .flags = settings->aoMode
                 };
                 vkCmdPushConstants(
                     commandBuffer,
@@ -673,7 +676,7 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
         } else if (type == std::type_index(typeid(CompositePC))) {
             CompositePC pc = {
                 .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
-                .flags = isFXAAEnabled() ? 1u : 0u
+                .flags = settings->fxaaEnabled ? 1u : 0u
             };
             vkCmdPushConstants(
                 commandBuffer,

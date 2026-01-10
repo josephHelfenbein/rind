@@ -86,3 +86,12 @@ void engine::InputManager::registerCallback(const std::string& name, std::functi
 void engine::InputManager::unregisterCallback(const std::string& name) {
     unregisterQueue.push_back(name);
 }
+
+void engine::InputManager::resetKeyStates() {
+    for (int& state : keyStates) {
+        state = GLFW_RELEASE;
+    }
+    for (int& state : mouseButtonStates) {
+        state = GLFW_RELEASE;
+    }
+}

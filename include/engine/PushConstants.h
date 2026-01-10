@@ -39,10 +39,8 @@ namespace engine {
     struct AOPC {
         glm::mat4 invProj;
         glm::mat4 proj;
-        float radius;
-        float bias;
-        float intensity;
         uint32_t flags; // 0 = disabled, 1 = ssao, 2 = gtao
+        uint32_t pad[3];
     };
 
     struct PointLight {

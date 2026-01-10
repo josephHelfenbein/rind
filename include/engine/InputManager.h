@@ -36,6 +36,7 @@ namespace engine {
         void dispatch(const std::vector<InputEvent>& events);
         void registerCallback(const std::string& name, std::function<void(const std::vector<InputEvent>&)> callback);
         void unregisterCallback(const std::string& name);
+        void resetKeyStates();
 
         void setCursorLocked(bool locked) { isCursorLocked = locked; }
         void setUIFocused(bool focused) { isUIFocused = focused; }

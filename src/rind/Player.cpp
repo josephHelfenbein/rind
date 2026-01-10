@@ -119,6 +119,7 @@ void rind::Player::update(float deltaTime) {
 void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) {
     if (inputsDisconnected) {
         inputManager->unregisterCallback("playerInput");
+        inputManager->resetKeyStates();
         return;
     }
     for (const auto& event : events) {

@@ -35,6 +35,7 @@ namespace engine {
         void registerModelManager(class ModelManager* modelManager) { this->modelManager = modelManager; }
         void registerParticleManager(class ParticleManager* particleManager) { this->particleManager = particleManager; }
         void registerAudioManager(class AudioManager* audioManager) { this->audioManager = audioManager; }
+        void registerSettingsManager(class SettingsManager* settingsManager) { this->settingsManager = settingsManager; }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -44,6 +45,7 @@ namespace engine {
         class ModelManager* getModelManager() { return modelManager; }
         class ParticleManager* getParticleManager() { return particleManager; }
         class AudioManager* getAudioManager() { return audioManager; }
+        class SettingsManager* getSettingsManager() { return settingsManager; }
 
         void toggleLockCursor(bool lock);
 
@@ -148,8 +150,6 @@ namespace engine {
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
         float getDeltaTime() const { return deltaTime; }
-        bool isFXAAEnabled() const { return fxaaEnabled; }
-        void setFxaaEnabled(bool enabled) { fxaaEnabled = enabled; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -190,11 +190,9 @@ namespace engine {
         VkDebugUtilsMessengerEXT debugMessenger;
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHR surface;
-        bool fxaaEnabled = true;
         float aoRadius = 0.5f;
         float aoBias = 0.025f;
         float aoIntensity = 2.0f;
-        uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao; 
         bool framebufferResized = false;
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
@@ -235,6 +233,7 @@ namespace engine {
         class ModelManager* modelManager;
         class ParticleManager* particleManager;
         class AudioManager* audioManager;
+        class SettingsManager* settingsManager;
 
         UIObject* hoveredObject = nullptr;
 

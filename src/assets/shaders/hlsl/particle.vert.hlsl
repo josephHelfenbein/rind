@@ -89,7 +89,7 @@ VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
     float2 perpDir = float2(-stretchDir.y, stretchDir.x);
     float stretchLen = trailLen * pc.streakScale;
     
-    float sizeVariation = hash(instanceID) * 1.6 + 0.2; // range [0.2, 1.8]
+    float sizeVariation = hash(instanceID) * 1.9 + 0.1; // range [0.1, 2.0]
     float particleSize = pc.particleSize * sizeVariation;
     
     float2 localOffset = offsets[vertexID];

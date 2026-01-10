@@ -317,6 +317,7 @@ rind::GameInstance::GameInstance() {
     modelManager = std::make_unique<engine::ModelManager>(renderer.get(), "src/assets/models/");
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get(), "src/assets/audio/");
+    settingsManager = std::make_unique<engine::SettingsManager>(renderer.get());
 }
 
 void rind::GameInstance::run() {

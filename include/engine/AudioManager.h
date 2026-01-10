@@ -1,6 +1,7 @@
 #pragma once
 
 #include <engine/Renderer.h>
+#include <engine/SettingsManager.h>
 #include <string>
 #include <map>
 #include <vector>
@@ -43,6 +44,8 @@ namespace engine {
         std::map<std::string, std::unique_ptr<SoundData>> m_sounds;
         std::vector<std::unique_ptr<SoundData>> m_oneShots;
         bool m_initialized = false;
+
+        SettingsManager::Settings* settings = nullptr;
 
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};

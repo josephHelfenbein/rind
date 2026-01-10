@@ -11,6 +11,7 @@
 #include <engine/ModelManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/AudioManager.h>
+#include <engine/SettingsManager.h>
 
 namespace rind {
     class GameInstance {
@@ -29,5 +30,6 @@ namespace rind {
         std::unique_ptr<engine::ModelManager> modelManager;
         std::unique_ptr<engine::ParticleManager> particleManager;
         std::unique_ptr<engine::AudioManager> audioManager;
+        std::unique_ptr<engine::SettingsManager> settingsManager;
     };
 };

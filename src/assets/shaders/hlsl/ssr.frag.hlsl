@@ -142,6 +142,6 @@ float4 main(VSOutput input) : SV_Target {
         float finalAlpha = reflectionColor.a * edgeFactor * fresnelFactor * distanceFade;
         return float4(reflectionColor.rgb, finalAlpha);
     } else {
-        return float4(0.0, 0.0, 0.0, 1.0);
+        return float4(0.0, 0.0, 0.0, 0.0);
     }
 }

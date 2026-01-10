@@ -45,6 +45,13 @@ void engine::AudioManager::update() {
         }
         return false;
     });
+    if (!settings) {
+        settings = renderer->getSettingsManager()->getSettings();
+        return;
+    }
+    if (settings->masterVolume != ma_engine_get_volume(&m_engine)) {
+        setGlobalVolume(settings->masterVolume);
+    }
 }
 
 void engine::AudioManager::cleanup() {
