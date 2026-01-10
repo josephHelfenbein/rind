@@ -36,13 +36,13 @@ namespace engine {
         glm::mat4 invProj;
     };
 
-    struct SSAOPC {
+    struct AOPC {
         glm::mat4 invProj;
         glm::mat4 proj;
         float radius;
         float bias;
         float intensity;
-        uint32_t kernelSize;
+        uint32_t flags; // 0 = disabled, 1 = ssao, 2 = gtao
     };
 
     struct PointLight {

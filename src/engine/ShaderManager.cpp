@@ -317,19 +317,19 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         particlePass->images = images;
     }
 
-    // SSAO Pass
-    auto ssaoPass = std::make_shared<PassInfo>();
-    ssaoPass->name = "SSAOPass";
-    ssaoPass->usesSwapchain = false;
+    // AO Pass
+    auto aoPass = std::make_shared<PassInfo>();
+    aoPass->name = "AOPass";
+    aoPass->usesSwapchain = false;
     {
         std::vector<PassImage> images;
         images.push_back({
-            .name = "SSAOColor",
+            .name = "AOColor",
             .clearValue = { .color = { {1.0f, 1.0f, 1.0f, 1.0f} } },
             .format = VK_FORMAT_R16_UNORM,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
-        ssaoPass->images = images;
+        aoPass->images = images;
     }
 
     // UI Pass
@@ -569,12 +569,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shaders.push_back(shader);
     }
 
-    // SSAO
+    // AO
     {
         GraphicsShader shader = {
-            .name = "ssao",
+            .name = "ao",
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("ssao.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .fragment = { shaderPath("ao.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 3,
@@ -589,7 +589,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
                 .enableDepth = false,
-                .passInfo = ssaoPass,
+                .passInfo = aoPass,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 0, "gbuffer", "Depth" },
@@ -597,7 +597,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 }
             }
         };
-        shader.config.setPushConstant<SSAOPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.setPushConstant<AOPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         shaders.push_back(shader);
     }
 
@@ -756,7 +756,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 1, "ui", "UIColor" },
                     { 2, "text", "TextColor" },
                     { 3, "ssr", "SceneColor"},
-                    { 4, "ssao", "SSAOColor" }
+                    { 4, "ao", "AOColor" }
                 }
             }
         };
@@ -781,7 +781,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     pushNode(true, particlePass.get(), { "particle" });
     pushNode(true, lightingPass.get(), { "lighting" });
     pushNode(true, ssrPass.get(), { "ssr" });
-    pushNode(true, ssaoPass.get(), { "ssao" });
+    pushNode(true, aoPass.get(), { "ao" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });

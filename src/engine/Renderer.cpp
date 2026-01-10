@@ -648,25 +648,25 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
                     &pc
                 );
             }
-        } else if (type == std::type_index(typeid(SSAOPC))) {
+        } else if (type == std::type_index(typeid(AOPC))) {
             Camera* camera = entityManager->getCamera();
             if (camera) {
                 glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
                 glm::mat4 proj = camera->getProjectionMatrix();
-                SSAOPC pc = {
+                AOPC pc = {
                     .invProj = invProj,
                     .proj = proj,
-                    .radius = ssaoRadius,
-                    .bias = ssaoBias,
-                    .intensity = ssaoIntensity,
-                    .kernelSize = ssaoKernelSize
+                    .radius = aoRadius,
+                    .bias = aoBias,
+                    .intensity = aoIntensity,
+                    .flags = aoMode
                 };
                 vkCmdPushConstants(
                     commandBuffer,
                     shader->pipelineLayout,
                     shader->config.pushConstantRange.stageFlags,
                     0,
-                    sizeof(SSAOPC),
+                    sizeof(AOPC),
                     &pc
                 );
             }
