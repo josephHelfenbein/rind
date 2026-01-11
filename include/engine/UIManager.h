@@ -38,7 +38,7 @@ namespace engine {
     class TextObject {
     public:
         TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string text, std::string font, Corner anchorCorner = Corner::Center);
-        ~TextObject() = default;
+        ~TextObject();
 
         const std::string& getText() const { return text; }
         void setText(const std::string& text) { this->text = text; }
@@ -79,6 +79,7 @@ namespace engine {
         void setTransform(const glm::mat4& transform) { this->transform = transform; }
 
         const std::string& getTexture() const { return texture; }
+        void setTexture(const std::string& texture) { this->texture = texture; descriptorSets.clear(); }
 
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         void setDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets) { this->descriptorSets = descriptorSets; }
@@ -97,6 +98,8 @@ namespace engine {
         Corner getAnchorCorner() const { return anchorCorner; }
         std::function<void()>* getOnHover() const { return onHover; }
         std::function<void()>* getOnStopHover() const { return onStopHover; }
+
+        UIManager* getUIManager() const { return uiManager; }
 
     private:
         UIManager* uiManager;
@@ -129,6 +132,33 @@ namespace engine {
 
     private:
         std::function<void()> onClick;
+    };
+
+    class CheckboxObject : public UIObject {
+    public:
+        CheckboxObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, bool initialState, bool& toggleBool, Corner anchorCorner = Corner::Center, std::vector<CheckboxObject*> boundBools = {})
+            : UIObject(uiManager, transform, name, tint, "", anchorCorner), checkState(initialState), checked(toggleBool), boundBools(boundBools) {
+                if (initialState) {
+                    setTexture(checkedTexture);
+                } else {
+                    setTexture(uncheckedTexture);
+                }
+            }
+
+        bool isChecked() const { return checked; }
+
+        void setBoundBools(const std::vector<CheckboxObject*>& boundBools) {
+            this->boundBools = boundBools;
+        }
+
+        void toggle();
+
+    private:
+        bool& checked;
+        bool checkState = false;
+        std::vector<CheckboxObject*> boundBools;
+        std::string checkedTexture = "ui_checkbox_checked";
+        std::string uncheckedTexture = "ui_checkbox_unchecked";
     };
 
     struct Character {
@@ -169,6 +199,8 @@ namespace engine {
         void loadTextures();
         void loadFonts();
         UIObject* processMouseMovement(GLFWwindow* window, double xpos, double ypos);
+
+        Renderer* getRenderer() const { return renderer; }
 
         LayoutRect resolveDesignRect(std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect);
         LayoutRect toPixelRect(const LayoutRect& designRect, const glm::vec2& canvasOrigin, float layoutScale);

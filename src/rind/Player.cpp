@@ -3,6 +3,7 @@
 #include <engine/ParticleManager.h>
 #include <engine/UIManager.h>
 #include <engine/SceneManager.h>
+#include <engine/SettingsManager.h>
 
 rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
@@ -125,6 +126,9 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
     for (const auto& event : events) {
         if (event.type == engine::InputEvent::Type::KeyPress) {
             switch (event.keyEvent.key) {
+                case GLFW_KEY_ESCAPE:
+                    getEntityManager()->getRenderer()->getSettingsManager()->showSettingsUI();
+                    break;
                 case GLFW_KEY_W:
                     move(glm::vec3(1.0f, 0.0f, 0.0f));
                     break;
@@ -198,6 +202,7 @@ void rind::Player::damage(float amount) {
         isDead = true;
         stopMove(getPressed(), false);
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
+        getEntityManager()->getRenderer()->getSettingsManager()->hideSettingsUI();
         engine::UIObject* windowTint = new engine::UIObject(
             uiManager,
             glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), 

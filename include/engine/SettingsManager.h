@@ -5,6 +5,11 @@
 #include <sstream>
 #include <filesystem>
 #include <cstdlib>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <engine/Renderer.h>
+#include <engine/UIManager.h>
+#include <engine/InputManager.h>
 
 namespace engine {
     class SettingsManager {
@@ -16,7 +21,7 @@ namespace engine {
             bool ssrEnabled = true;
         };
 
-        SettingsManager(engine::Renderer* renderer) {
+        SettingsManager(engine::Renderer* renderer) : renderer(renderer) {
             renderer->registerSettingsManager(this);
             loadSettings();
         };
@@ -45,6 +50,8 @@ namespace engine {
             currentSettings->aoMode = static_cast<uint32_t>(parseInt(content, "aoMode", 2));
             currentSettings->fxaaEnabled = parseBool(content, "fxaaEnabled", true);
             currentSettings->ssrEnabled = parseBool(content, "ssrEnabled", true);
+
+            tempSettings = new Settings(*currentSettings);
         }
 
         void saveSettings() {
@@ -71,8 +78,183 @@ namespace engine {
 
         Settings* getSettings() { return currentSettings; }
 
+        void showSettingsUI() {
+            if (settingsUIObject) return;
+            UIManager* uiManager = renderer->getUIManager();
+            delete tempSettings;
+            tempSettings = new Settings(*currentSettings);
+
+            settingsUIObject = new UIObject(
+                uiManager,
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.4f, 1.0f)),
+                "settingsUI",
+                glm::vec4(1.0f, 1.0f, 1.0f, 0.5f),
+                "ui_window",
+                Corner::Center
+            );
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(0.0f, -150.0f, 0.0f)),
+                "settingsTitle",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Settings",
+                "Lato",
+                Corner::Top
+            ));
+            settingsUIObject->addChild(new ButtonObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(-100.0f, -250.0f, 0.0f)),
+                "closeSettingsButton",
+                glm::vec4(0.8f, 0.2f, 0.2f, 1.0f),
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+                "ui_window",
+                "Close",
+                "Lato",
+                [this]() {
+                    this->hideSettingsUI();
+                },
+                Corner::TopRight
+            ));
+            // SSR
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(250.0f, -1350.0f, 0.0f)),
+                "ssrLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Enable Screen Space Reflections:",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-250.0f, -1000.0f, 0.0f)),
+                "ssrCheckbox",
+                glm::vec4(1.0f),
+                tempSettings->ssrEnabled,
+                tempSettings->ssrEnabled,
+                Corner::TopRight
+            ));
+            // FXAA
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(250.0f, -1850.0f, 0.0f)),
+                "fxaaLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Enable FXAA:",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-250.0f, -1400.0f, 0.0f)),
+                "fxaaCheckbox",
+                glm::vec4(1.0f),
+                tempSettings->fxaaEnabled,
+                tempSettings->fxaaEnabled,
+                Corner::TopRight
+            ));
+            // Ambient Occlusion
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(250.0f, -2350.0f, 0.0f)),
+                "aoLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Ambient Occlusion",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-150.0f, -2200.0f, 0.0f)),
+                "aoOptionsLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Disabled   SSAO   GTAO",
+                "Lato",
+                Corner::TopRight
+            ));
+            aoDisabled = (tempSettings->aoMode == 0);
+            CheckboxObject* aoDisabledCheckbox = new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1250.0f, -1900.0f, 0.0f)),
+                "aoDisabledCheckbox",
+                glm::vec4(1.0f),
+                aoDisabled,
+                aoDisabled,
+                Corner::TopRight
+            );
+            aoSSAO = (tempSettings->aoMode == 1);
+            CheckboxObject* aoSSAOCheckbox = new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-750.0f, -1900.0f, 0.0f)),
+                "aoSSAOCheckbox",
+                glm::vec4(1.0f),
+                aoSSAO,
+                aoSSAO,
+                Corner::TopRight
+            );
+            aoGTAO = (tempSettings->aoMode == 2);
+            CheckboxObject* aoGTAOCheckbox = new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-250.0f, -1900.0f, 0.0f)),
+                "aoGTAOCheckbox",
+                glm::vec4(1.0f),
+                aoGTAO,
+                aoGTAO,
+                Corner::TopRight
+            );
+            settingsUIObject->addChild(aoDisabledCheckbox);
+            settingsUIObject->addChild(aoSSAOCheckbox);
+            settingsUIObject->addChild(aoGTAOCheckbox);
+            aoDisabledCheckbox->setBoundBools({ aoSSAOCheckbox, aoGTAOCheckbox });
+            aoSSAOCheckbox->setBoundBools({ aoDisabledCheckbox, aoGTAOCheckbox });
+            aoGTAOCheckbox->setBoundBools({ aoDisabledCheckbox, aoSSAOCheckbox });
+            // Apply Button
+            settingsUIObject->addChild(new ButtonObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f, 0.0375f, 1.0f)), glm::vec3(0.0f, 200.0f, 0.0f)),
+                "applySettingsButton",
+                glm::vec4(0.2f, 0.8f, 0.2f, 1.0f),
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "ui_window",
+                "Apply",
+                "Lato",
+                [this]() {
+                    if (aoDisabled) {
+                        this->tempSettings->aoMode = 0;
+                    } else if (aoSSAO) {
+                        this->tempSettings->aoMode = 1;
+                    } else if (aoGTAO) {
+                        this->tempSettings->aoMode = 2;
+                    }
+                    *(this->currentSettings) = *(this->tempSettings);
+                    this->saveSettings();
+                },
+                Corner::Bottom
+            ));
+            renderer->refreshDescriptorSets();
+            renderer->getInputManager()->setUIFocused(true);
+            renderer->toggleLockCursor(false);
+        }
+
+        void hideSettingsUI() {
+            if (!settingsUIObject) return;
+            renderer->setHoveredObject(nullptr);
+            renderer->getUIManager()->removeObject(settingsUIObject->getName());
+            settingsUIObject = nullptr;
+            renderer->getInputManager()->setUIFocused(false);
+            renderer->toggleLockCursor(true);
+            renderer->refreshDescriptorSets();
+        }
+
     private:
         Settings* currentSettings;
+        Settings* tempSettings;
+        Renderer* renderer;
+        UIObject* settingsUIObject = nullptr;
+
+        bool aoDisabled;
+        bool aoSSAO;
+        bool aoGTAO;
 
         static std::filesystem::path getConfigFilePath() {
             std::filesystem::path configDir;
@@ -123,7 +305,12 @@ namespace engine {
 
             size_t end = json.find_first_of(",}\n", start);
             std::string value = json.substr(start, end - start);
-            
+
+            size_t numEnd = value.find_first_not_of("0123456789+-.eE");
+            if (numEnd != std::string::npos) {
+                value = value.substr(0, numEnd);
+            }
+
             try {
                 return std::stof(value);
             } catch (...) {

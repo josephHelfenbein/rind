@@ -236,6 +236,7 @@ namespace engine {
         class SettingsManager* settingsManager;
 
         UIObject* hoveredObject = nullptr;
+        bool clicking = true;
 
         void createInstance();
         void setupDebugMessenger();

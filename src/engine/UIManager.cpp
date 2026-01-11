@@ -2,6 +2,7 @@
 #include <utility>
 #include <filesystem>
 #include <limits>
+#include <engine/Renderer.h>
 
 engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
     : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover) {
@@ -14,6 +15,15 @@ engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::s
     }
 
 engine::UIObject::~UIObject() {
+    if (!descriptorSets.empty()) {
+        VkDevice device = uiManager->getRenderer()->getDevice();
+        for (auto& descriptorSet : descriptorSets) {
+            vkFreeDescriptorSets(device, uiManager->getRenderer()->getShaderManager()->getGraphicsShader("ui")->descriptorPool, 1, &descriptorSet);
+        }
+        descriptorSets.clear();
+    }
+    delete onHover;
+    delete onStopHover;
     for (auto& child : children) {
         if (std::holds_alternative<TextObject*>(child)) {
             delete std::get<TextObject*>(child);
@@ -22,6 +32,11 @@ engine::UIObject::~UIObject() {
         }
     }
     children.clear();
+    uiManager->getObjects().erase(uiManager->getObjects().find(name));
+}
+
+engine::TextObject::~TextObject() {
+    uiManager->getObjects().erase(uiManager->getObjects().find(name));
 }
 
 void engine::UIObject::addChild(UIObject* child) {
@@ -54,6 +69,32 @@ void engine::UIObject::removeChild(TextObject* child) {
     });
     children.erase(it, children.end());
     child->setParent(nullptr);
+}
+
+ void engine::CheckboxObject::toggle() {
+    checked = !checked;
+    checkState = !checkState;
+    setTexture(checkState ? checkedTexture : uncheckedTexture);
+    getUIManager()->getRenderer()->refreshDescriptorSets();
+
+    if (checkState) {
+        for (auto& boundCheckbox : boundBools) {
+            if (boundCheckbox->isChecked()) {
+                boundCheckbox->toggle();
+            }
+        }
+    } else {
+        bool anyChecked = false;
+        for (auto& boundCheckbox : boundBools) {
+            if (boundCheckbox->isChecked()) {
+                anyChecked = true;
+                break;
+            }
+        }
+        if (!anyChecked && !boundBools.empty()) {
+            boundBools[0]->toggle();
+        }
+    }
 }
 
 engine::UIManager::UIManager(Renderer* renderer, std::string fontDirectory)
@@ -121,10 +162,9 @@ void engine::UIManager::removeObject(const std::string& name) {
     if (it != objects.end()) {
         if (std::holds_alternative<TextObject*>(it->second)) {
             delete std::get<TextObject*>(it->second);
-        } else{
+        } else {
             delete std::get<UIObject*>(it->second);
         }
-        objects.erase(it);
     }
 }
 
@@ -175,7 +215,6 @@ void engine::UIManager::clear() {
         } else {
             delete std::get<UIObject*>(it->second);
         }
-        objects.erase(it);
     }
     objects.clear();
 }
@@ -382,25 +421,25 @@ engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, 
     }
     switch (anchor) {
         case Corner::TopLeft:
-            position += glm::vec2(0.0f, 0.0f);
-            break;
-        case Corner::TopRight:
-            position += glm::vec2(parentRect.size.x - size.x, 0.0f);
-            break;
-        case Corner::BottomLeft:
             position += glm::vec2(0.0f, parentRect.size.y - size.y);
             break;
-        case Corner::BottomRight:
+        case Corner::TopRight:
             position += glm::vec2(parentRect.size.x - size.x, parentRect.size.y - size.y);
+            break;
+        case Corner::BottomLeft:
+            position += glm::vec2(0.0f, 0.0f);
+            break;
+        case Corner::BottomRight:
+            position += glm::vec2(parentRect.size.x - size.x, 0.0f);
             break;
         case Corner::Center:
             position += glm::vec2((parentRect.size.x - size.x) / 2.0f, (parentRect.size.y - size.y) / 2.0f);
             break;
         case Corner::Top:
-            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, 0.0f);
+            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, parentRect.size.y - size.y);
             break;
         case Corner::Bottom:
-            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, parentRect.size.y - size.y);
+            position += glm::vec2((parentRect.size.x - size.x) / 2.0f, 0.0f);
             break;
         case Corner::Left:
             position += glm::vec2(0.0f, (parentRect.size.y - size.y) / 2.0f);
@@ -510,13 +549,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
             penX += ch.advance * scaleX;
         }
         float x = pixelRect.position.x - (minX == std::numeric_limits<float>::max() ? 0.0f : minX);
-        LayoutRect parentPixelRect = object->getParent() != nullptr 
-            ? toPixelRect(parentRect, canvasOrigin, layoutScale) 
-            : pixelRect;
-        const float layoutHeightPx = parentPixelRect.size.y;
-        const float glyphHeightPx = (fontInfo.ascent - fontInfo.descent) * scaleY;
-        const float topMarginPx = 0.5f * std::max(layoutHeightPx - glyphHeightPx, 0.0f);
-        float y = parentPixelRect.position.y - topMarginPx + fontInfo.ascent * scaleY;
+        float y = pixelRect.position.y + pixelRect.size.y - fontInfo.ascent * scaleY;
 
         const std::string& text = object->getText();
         for (const char& c : text) {

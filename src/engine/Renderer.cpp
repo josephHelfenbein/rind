@@ -2332,12 +2332,15 @@ int engine::Renderer::rateDeviceSuitability(VkPhysicalDevice device) {
 
 void engine::Renderer::processInput(GLFWwindow* window) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
-    if (renderer->getHoveredObject() && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) {
+        renderer->clicking = false;
+    } else if (renderer->getHoveredObject() && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && !renderer->clicking) {
         if (ButtonObject* button = dynamic_cast<ButtonObject*>(renderer->getHoveredObject())) {
             button->click();
+        } else if (CheckboxObject* toggle = dynamic_cast<CheckboxObject*>(renderer->getHoveredObject())) {
+            toggle->toggle();
         }
-    } else if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        renderer->toggleLockCursor(false);
+        renderer->clicking = true;
     } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
     && !renderer->inputManager->getCursorLocked() && !renderer->inputManager->getUIFocused()) {
         renderer->toggleLockCursor(true);

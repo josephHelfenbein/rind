@@ -5,6 +5,7 @@
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
+#include <glm/glm.hpp>
 
 namespace engine {
     static std::vector<char> readFile(const std::string& filename) {

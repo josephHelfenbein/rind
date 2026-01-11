@@ -49,7 +49,7 @@ void engine::AudioManager::update() {
         settings = renderer->getSettingsManager()->getSettings();
         return;
     }
-    if (settings->masterVolume != ma_engine_get_volume(&m_engine)) {
+    if (std::abs(settings->masterVolume - ma_engine_get_volume(&m_engine)) > 0.01f) {
         setGlobalVolume(settings->masterVolume);
     }
 }
@@ -153,6 +153,7 @@ void engine::AudioManager::stopSound(const std::string& name) {
 
 void engine::AudioManager::setGlobalVolume(float volume) {
     if(m_initialized) {
-        ma_engine_set_volume(&m_engine, volume);
+        float clamped = std::clamp(volume, 0.0f, 1.0f);
+        ma_engine_set_volume(&m_engine, clamped);
     }
 }
