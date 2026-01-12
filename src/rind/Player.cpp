@@ -117,17 +117,90 @@ void rind::Player::update(float deltaTime) {
     engine::CharacterEntity::update(deltaTime);
 }
 
+void rind::Player::showPauseMenu() {
+    engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
+    pauseUIObject = new engine::UIObject(
+        uiManager,
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.4f, 1.0f)),
+        "pauseUI",
+        glm::vec4(1.0f, 1.0f, 1.0f, 0.5f),
+        "ui_window",
+        engine::Corner::Center
+    );
+    pauseUIObject->addChild(new engine::TextObject(
+        uiManager,
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(0.0f, -150.0f, 0.0f)),
+        "pauseTitle",
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "Paused",
+        "Lato",
+        engine::Corner::Top
+    ));
+    pauseUIObject->addChild(new engine::ButtonObject(
+        uiManager,
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(0.0f, -2000.0f, 0.0f)),
+        "resumeButton",
+        glm::vec4(0.2f, 0.6f, 0.2f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "ui_window",
+        "Resume",
+        "Lato",
+        [this]() {
+            this->hidePauseMenu();
+        },
+        engine::Corner::Top
+    ));
+    pauseUIObject->addChild(new engine::ButtonObject(
+        uiManager,
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(0.0f, -3000.0f, 0.0f)),
+        "graphicsSettingsButton",
+        glm::vec4(0.2f, 0.6f, 0.2f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "ui_window",
+        "Graphics Settings",
+        "Lato",
+        [this]() {
+            engine::Renderer* renderer = this->getEntityManager()->getRenderer();
+            renderer->getSettingsManager()->showSettingsUI();
+        },
+        engine::Corner::Top
+    ));
+    engine::Renderer* renderer = getEntityManager()->getRenderer();
+    renderer->setPaused(true);
+    renderer->getInputManager()->setUIFocused(true);
+    renderer->toggleLockCursor(false);
+    renderer->refreshDescriptorSets();
+}
+
+void rind::Player::hidePauseMenu() {
+    if (pauseUIObject) {
+        getEntityManager()->getRenderer()->getSettingsManager()->hideSettingsUI();
+        engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
+        uiManager->removeObject(pauseUIObject->getName());
+        pauseUIObject = nullptr;
+    }
+    engine::Renderer* renderer = getEntityManager()->getRenderer();
+    renderer->setPaused(false);
+    renderer->getInputManager()->setUIFocused(false);
+    renderer->toggleLockCursor(true);
+    renderer->refreshDescriptorSets();
+}
+
 void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) {
     if (inputsDisconnected) {
         inputManager->unregisterCallback("playerInput");
         inputManager->resetKeyStates();
         return;
     }
+    engine::Renderer* renderer = getEntityManager()->getRenderer();
     for (const auto& event : events) {
         if (event.type == engine::InputEvent::Type::KeyPress) {
+            if (renderer->isPaused() && event.keyEvent.key != GLFW_KEY_ESCAPE) {
+                continue;
+            }
             switch (event.keyEvent.key) {
                 case GLFW_KEY_ESCAPE:
-                    getEntityManager()->getRenderer()->getSettingsManager()->showSettingsUI();
+                    renderer->isPaused() ? hidePauseMenu() : showPauseMenu();
                     break;
                 case GLFW_KEY_W:
                     move(glm::vec3(1.0f, 0.0f, 0.0f));
@@ -202,7 +275,9 @@ void rind::Player::damage(float amount) {
         isDead = true;
         stopMove(getPressed(), false);
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
-        getEntityManager()->getRenderer()->getSettingsManager()->hideSettingsUI();
+        if (getEntityManager()->getRenderer()->isPaused()) {
+            hidePauseMenu();
+        }
         engine::UIObject* windowTint = new engine::UIObject(
             uiManager,
             glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), 

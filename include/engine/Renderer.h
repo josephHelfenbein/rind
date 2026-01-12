@@ -48,6 +48,8 @@ namespace engine {
         class SettingsManager* getSettingsManager() { return settingsManager; }
 
         void toggleLockCursor(bool lock);
+        bool isPaused() const { return paused; }
+        void setPaused(bool paused) { this->paused = paused; }
 
         std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
         std::pair<VkImage, VkDeviceMemory> createImage(
@@ -201,6 +203,8 @@ namespace engine {
         float deltaTime = 0.0f;
         float lastFrameTime = 0.0f;
         float uiScale = 1.0f;
+
+        bool paused = false;
 
         VkQueue graphicsQueue;
         VkQueue presentQueue;

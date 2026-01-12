@@ -265,8 +265,11 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     const bool has3DContent = hasRenderable3D(roots);
     bool gbufferRendered = false;
 
-    entityManager->updateAll(deltaTime);
-    audioManager->update();
+    if (!paused) {
+        entityManager->updateAll(deltaTime);
+        audioManager->update();
+        particleManager->updateAll(deltaTime);
+    }
     if (entityManager->getCamera()) {
         Camera* cam = entityManager->getCamera();
         glm::vec3 pos = cam->getWorldPosition();
@@ -274,7 +277,6 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
         audioManager->updateListener(pos, fwd, up);
     }
-    particleManager->updateAll(deltaTime);
     entityManager->renderShadows(commandBuffer, currentFrame);
     entityManager->updateLightsUBO(currentFrame);
 

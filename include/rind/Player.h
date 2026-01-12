@@ -12,6 +12,9 @@ namespace rind {
 
         void update(float deltaTime) override;
 
+        void showPauseMenu();
+        void hidePauseMenu();
+
         void registerInput(const std::vector<engine::InputEvent>& events);
         void shoot();
         void damage(float amount) override;
@@ -20,6 +23,8 @@ namespace rind {
         engine::Camera* camera = nullptr;
         engine::InputManager* inputManager = nullptr;
         float mouseSensitivity = 0.003f;
+
+        engine::UIObject* pauseUIObject = nullptr;
 
         bool isDead = false;
 

@@ -37,14 +37,8 @@ namespace engine {
                 saveSettings();
                 return;
             }
-            std::ifstream file(configPath);
-            if (!file.is_open()) {
-                return;
-            }
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            std::string content = buffer.str();
-            file.close();
+            std::vector<char> buffer = readFile(configPath.string());
+            std::string content(buffer.begin(), buffer.end());
 
             currentSettings->masterVolume = parseFloat(content, "masterVolume", 1.0f);
             currentSettings->aoMode = static_cast<uint32_t>(parseInt(content, "aoMode", 2));
@@ -88,7 +82,7 @@ namespace engine {
                 uiManager,
                 glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.4f, 1.0f)),
                 "settingsUI",
-                glm::vec4(1.0f, 1.0f, 1.0f, 0.5f),
+                glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
                 "ui_window",
                 Corner::Center
             );
@@ -232,8 +226,6 @@ namespace engine {
                 Corner::Bottom
             ));
             renderer->refreshDescriptorSets();
-            renderer->getInputManager()->setUIFocused(true);
-            renderer->toggleLockCursor(false);
         }
 
         void hideSettingsUI() {
@@ -241,8 +233,6 @@ namespace engine {
             renderer->setHoveredObject(nullptr);
             renderer->getUIManager()->removeObject(settingsUIObject->getName());
             settingsUIObject = nullptr;
-            renderer->getInputManager()->setUIFocused(false);
-            renderer->toggleLockCursor(true);
             renderer->refreshDescriptorSets();
         }
 
