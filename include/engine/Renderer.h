@@ -240,7 +240,7 @@ namespace engine {
         class SettingsManager* settingsManager;
 
         UIObject* hoveredObject = nullptr;
-        bool clicking = true;
+        bool clicking = false;
 
         void createInstance();
         void setupDebugMessenger();

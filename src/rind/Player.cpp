@@ -117,19 +117,19 @@ void rind::Player::update(float deltaTime) {
     engine::CharacterEntity::update(deltaTime);
 }
 
-void rind::Player::showPauseMenu() {
+void rind::Player::showPauseMenu(bool uiOnly) {
     engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
     pauseUIObject = new engine::UIObject(
         uiManager,
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.4f, 1.0f)),
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.25f, 0.3f, 1.0f)),
         "pauseUI",
-        glm::vec4(1.0f, 1.0f, 1.0f, 0.5f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
         "ui_window",
         engine::Corner::Center
     );
     pauseUIObject->addChild(new engine::TextObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(0.0f, -150.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.15f, 0.15f, 1.0f)), glm::vec3(0.0f, -100.0f, 0.0f)),
         "pauseTitle",
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "Paused",
@@ -138,23 +138,24 @@ void rind::Player::showPauseMenu() {
     ));
     pauseUIObject->addChild(new engine::ButtonObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(0.0f, -2000.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -1500.0f, 0.0f)),
         "resumeButton",
-        glm::vec4(0.2f, 0.6f, 0.2f, 1.0f),
+        glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
         "Resume",
         "Lato",
         [this]() {
             this->hidePauseMenu();
+            this->getEntityManager()->getRenderer()->getSettingsManager()->hideSettingsUI();
         },
         engine::Corner::Top
     ));
     pauseUIObject->addChild(new engine::ButtonObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(0.0f, -3000.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -2700.0f, 0.0f)),
         "graphicsSettingsButton",
-        glm::vec4(0.2f, 0.6f, 0.2f, 1.0f),
+        glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
         "Graphics Settings",
@@ -162,27 +163,67 @@ void rind::Player::showPauseMenu() {
         [this]() {
             engine::Renderer* renderer = this->getEntityManager()->getRenderer();
             renderer->getSettingsManager()->showSettingsUI();
+            renderer->getSettingsManager()->setUIOnClose(
+                [this]() {
+                    this->showPauseMenu(true);
+                }
+            );
+            this->hidePauseMenu(true);
+        },
+        engine::Corner::Top
+    ));
+    pauseUIObject->addChild(new engine::ButtonObject(
+        uiManager,
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -3900.0f, 0.0f)),
+        "quitButton",
+        glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "ui_window",
+        "Main Menu",
+        "Lato",
+        [this]() {
+            this->inputManager->unregisterCallback("playerInput");
+            this->inputManager->resetKeyStates();
+            this->hidePauseMenu();
+            this->getEntityManager()->getRenderer()->getSceneManager()->setActiveScene(0);
+        },
+        engine::Corner::Top
+    ));
+    pauseUIObject->addChild(new engine::ButtonObject(
+        uiManager,
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -5100.0f, 0.0f)),
+        "exitButton",
+        glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "ui_window",
+        "Quit Game",
+        "Lato",
+        [this]() {
+            glfwSetWindowShouldClose(this->getEntityManager()->getRenderer()->getWindow(), GLFW_TRUE);
         },
         engine::Corner::Top
     ));
     engine::Renderer* renderer = getEntityManager()->getRenderer();
-    renderer->setPaused(true);
-    renderer->getInputManager()->setUIFocused(true);
-    renderer->toggleLockCursor(false);
+    if (!uiOnly) {
+        renderer->setPaused(true);
+        renderer->getInputManager()->setUIFocused(true);
+        renderer->toggleLockCursor(false);
+    }
     renderer->refreshDescriptorSets();
 }
 
-void rind::Player::hidePauseMenu() {
+void rind::Player::hidePauseMenu(bool uiOnly) {
     if (pauseUIObject) {
-        getEntityManager()->getRenderer()->getSettingsManager()->hideSettingsUI();
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
         uiManager->removeObject(pauseUIObject->getName());
         pauseUIObject = nullptr;
     }
     engine::Renderer* renderer = getEntityManager()->getRenderer();
-    renderer->setPaused(false);
-    renderer->getInputManager()->setUIFocused(false);
-    renderer->toggleLockCursor(true);
+    if (!uiOnly) {
+        renderer->setPaused(false);
+        renderer->getInputManager()->setUIFocused(false);
+        renderer->toggleLockCursor(true);
+    }
     renderer->refreshDescriptorSets();
 }
 
@@ -196,10 +237,12 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
     for (const auto& event : events) {
         if (event.type == engine::InputEvent::Type::KeyPress) {
             if (renderer->isPaused() && event.keyEvent.key != GLFW_KEY_ESCAPE) {
+                inputManager->resetKeyStates();
                 continue;
             }
             switch (event.keyEvent.key) {
                 case GLFW_KEY_ESCAPE:
+                    renderer->getSettingsManager()->hideSettingsUI();
                     renderer->isPaused() ? hidePauseMenu() : showPauseMenu();
                     break;
                 case GLFW_KEY_W:
@@ -249,7 +292,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 float yOffset = static_cast<float>(event.mouseMoveEvent.yPos) * mouseSensitivity;
                 rotate(glm::vec3(0.0f, -xOffset, -yOffset));
             }
-        } else if (event.type == engine::InputEvent::Type::MouseButtonPress) {
+        } else if (event.type == engine::InputEvent::Type::MouseButtonPress && !renderer->isPaused()) {
             if (event.mouseButtonEvent.button == GLFW_MOUSE_BUTTON_LEFT) {
                 if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)) {
                     shoot();

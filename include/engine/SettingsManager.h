@@ -2,7 +2,6 @@
 
 #include <string>
 #include <fstream>
-#include <sstream>
 #include <filesystem>
 #include <cstdlib>
 #include <glm/glm.hpp>
@@ -106,6 +105,9 @@ namespace engine {
                 "Lato",
                 [this]() {
                     this->hideSettingsUI();
+                    if (this->onCloseCallback) {
+                        this->onCloseCallback();
+                    }
                 },
                 Corner::TopRight
             ));
@@ -236,11 +238,17 @@ namespace engine {
             renderer->refreshDescriptorSets();
         }
 
+        void setUIOnClose(std::function<void()> callback) {
+            onCloseCallback = callback;
+        }
+
     private:
         Settings* currentSettings;
         Settings* tempSettings;
         Renderer* renderer;
         UIObject* settingsUIObject = nullptr;
+
+        std::function<void()> onCloseCallback;
 
         bool aoDisabled;
         bool aoSSAO;

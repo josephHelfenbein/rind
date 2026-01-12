@@ -3,18 +3,12 @@
 #include <engine/Renderer.h>
 #include <string>
 #include <map>
-#include <filesystem>
-#include <format>
-#include <iostream>
-#include <fstream>
 #include <vector>
 #include <memory>
 #include <typeindex>
 #include <optional>
 #include <set>
-#include <filesystem>
 #include <functional>
-#include <utility>
 
 namespace engine {
 

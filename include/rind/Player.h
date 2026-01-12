@@ -12,8 +12,8 @@ namespace rind {
 
         void update(float deltaTime) override;
 
-        void showPauseMenu();
-        void hidePauseMenu();
+        void showPauseMenu(bool uiOnly = false);
+        void hidePauseMenu(bool uiOnly = false);
 
         void registerInput(const std::vector<engine::InputEvent>& events);
         void shoot();
