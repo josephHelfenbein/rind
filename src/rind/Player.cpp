@@ -158,7 +158,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Graphics Settings",
+        "Settings",
         "Lato",
         [this]() {
             engine::Renderer* renderer = this->getEntityManager()->getRenderer();

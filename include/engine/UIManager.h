@@ -161,6 +161,78 @@ namespace engine {
         std::string uncheckedTexture = "ui_checkbox_unchecked";
     };
 
+    class SliderObject : public UIObject {
+    public:
+        SliderObject(UIManager* uiManager, glm::mat4 transform, std::string name, float minValue, float maxValue, float& boundValue, Corner anchorCorner = Corner::Center, std::string textSuffix = "", bool isInteger = false, float textMultiplier = 1.0f)
+            : UIObject(uiManager, transform, name, glm::vec4(1.0f), "ui_slider_background", anchorCorner), minValue(minValue), maxValue(maxValue), boundValue(boundValue), isInteger(isInteger), textSuffix(textSuffix), textMultiplier(textMultiplier) {
+                knobObject = new UIObject(
+                    uiManager,
+                    glm::scale(glm::mat4(1.0f), glm::vec3(0.04f, 0.04f, 1.0f)),
+                    name + "_knob",
+                    glm::vec4(1.0f),
+                    "ui_slider_knob",
+                    Corner::Center
+                );
+                this->addChild(knobObject);
+                valueTextObject = new TextObject(
+                    uiManager,
+                    glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(1.5f, 1.5f, 1.0f)), glm::vec3(-30.0f, 0.0f, 0.0f)),
+                    name + "_valueText",
+                    glm::vec4(1.0f),
+                    "",
+                    "Lato",
+                    Corner::Left
+                );
+                this->addChild(valueTextObject);
+                if (isInteger) {
+                    valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier)) + textSuffix);
+                } else {
+                    valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
+                }
+                computeSliderDesignWidth();
+                updateKnobPosition();
+            }
+
+        void setValue(float value) {
+            boundValue = glm::clamp(value, minValue, maxValue);
+            updateKnobPosition();
+            if (isInteger) {
+                valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier)) + textSuffix);
+            } else {
+                valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
+            }
+        }
+
+        float getValue() const {
+            return boundValue;
+        }
+
+        float getSliderValueFromMouse(GLFWwindow* window);
+        void computeSliderDesignWidth();
+    private:
+        float minValue;
+        float maxValue;
+        float& boundValue;
+        UIObject* knobObject = nullptr;
+        TextObject* valueTextObject = nullptr;
+        bool isInteger = false;
+        std::string textSuffix;
+        float textMultiplier = 1.0f;
+        float sliderDesignWidth = 1.0f;
+        float sliderDesignPosX = 0.0f;
+        
+        void updateKnobPosition() {
+            float ratio = (boundValue - minValue) / (maxValue - minValue);
+            float knobScaleX = knobObject->getTransform()[0][0];
+            float knobX = ratio * sliderDesignWidth / knobScaleX - (sliderDesignWidth / (2.0f * knobScaleX));
+            glm::mat4 knobTransform = glm::translate(
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.04f, 0.04f, 1.0f)),
+                glm::vec3(knobX, 0.0f, 0.0f)
+            );
+            knobObject->setTransform(knobTransform);
+        }
+    };
+
     struct Character {
         glm::ivec2 size;
         glm::ivec2 bearing;

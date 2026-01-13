@@ -11,7 +11,6 @@ engine::Light::~Light() {
     if (renderer && hasShadowMap) {
         destroyShadowResources(renderer->getDevice());
     }
-    engine::Entity::~Entity();
 }
 
 engine::PointLight engine::Light::getPointLightData() {

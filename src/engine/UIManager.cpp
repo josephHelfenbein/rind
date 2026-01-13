@@ -15,6 +15,9 @@ engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::s
     }
 
 engine::UIObject::~UIObject() {
+    if (uiManager->getRenderer()->getHoveredObject() == this) {
+        uiManager->getRenderer()->setHoveredObject(nullptr);
+    }
     if (!descriptorSets.empty()) {
         VkDevice device = uiManager->getRenderer()->getDevice();
         for (auto& descriptorSet : descriptorSets) {
@@ -95,6 +98,53 @@ void engine::UIObject::removeChild(TextObject* child) {
             boundBools[0]->toggle();
         }
     }
+}
+
+void engine::SliderObject::computeSliderDesignWidth() {
+    Renderer* renderer = getUIManager()->getRenderer();
+    glm::vec2 swapExtentF = glm::vec2(static_cast<float>(renderer->getSwapChainExtent().width), static_cast<float>(renderer->getSwapChainExtent().height));
+    float xscale = 1.0f, yscale = 1.0f;
+    glfwGetWindowContentScale(renderer->getWindow(), &xscale, &yscale);
+    float contentScale = std::max(xscale, yscale);
+    float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
+    LayoutRect rootAnchorRect = {
+        .position = glm::vec2(0.0f, 0.0f),
+        .size = swapExtentF / layoutScale
+    };
+    std::vector<UIObject*> parentChain;
+    UIObject* current = this;
+    while (current != nullptr) {
+        parentChain.push_back(current);
+        current = current->getParent();
+    }
+    std::reverse(parentChain.begin(), parentChain.end());
+    LayoutRect anchorRect = rootAnchorRect;
+    for (size_t i = 0; i < parentChain.size(); ++i) {
+        bool isRoot = (parentChain[i]->getParent() == nullptr);
+        const LayoutRect& parentRect = isRoot ? rootAnchorRect : anchorRect;
+        anchorRect = getUIManager()->resolveDesignRect(parentChain[i], parentRect);
+    }
+    sliderDesignWidth = anchorRect.size.x;
+    sliderDesignPosX = anchorRect.position.x;
+}
+
+float engine::SliderObject::getSliderValueFromMouse(GLFWwindow* window) {
+    computeSliderDesignWidth();
+    double mouseX, mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+    Renderer* renderer = getUIManager()->getRenderer();
+    glm::vec2 swapExtentF = glm::vec2(static_cast<float>(renderer->getSwapChainExtent().width), static_cast<float>(renderer->getSwapChainExtent().height));
+    float xscale = 1.0f, yscale = 1.0f;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    float contentScale = std::max(xscale, yscale);
+    float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
+    glm::vec2 mousePosF(static_cast<float>(mouseX) * std::max(xscale, 1.0f), static_cast<float>(mouseY) * std::max(yscale, 1.0f));
+    mousePosF.y = swapExtentF.y - mousePosF.y;
+    const float invLayout = layoutScale > 0.0f ? 1.0f / layoutScale : 0.0f;
+    glm::vec2 mouseDesign = mousePosF * invLayout;
+    float relativeX = mouseDesign.x - sliderDesignPosX;
+    float ratio = glm::clamp(relativeX / sliderDesignWidth, 0.0f, 1.0f);
+    return minValue + ratio * (maxValue - minValue);
 }
 
 engine::UIManager::UIManager(Renderer* renderer, std::string fontDirectory)
@@ -193,6 +243,9 @@ engine::TextObject* engine::UIManager::getTextObject(const std::string& name) {
 void engine::UIManager::clear() {
     if (renderer) {
         renderer->setHoveredObject(nullptr);
+        if (renderer->getFPSCounter()) {
+            renderer->setFPSCounter(nullptr);
+        }
     }
     std::vector<std::string> rootKeys;
     rootKeys.reserve(objects.size());
@@ -465,7 +518,6 @@ engine::LayoutRect engine::UIManager::toPixelRect(const LayoutRect& designRect, 
 void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t frameIndex) {
     std::set<GraphicsShader*>& shaders = node.shaders;
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
-    constexpr glm::vec2 designResolution(800.0f, 600.0f);
     float contentScale = 1.0f;
 #ifdef __APPLE__
     float xscale = 1.0f, yscale = 1.0f;
@@ -473,8 +525,6 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
     contentScale = std::max(xscale, yscale);
 #endif
     float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
-    glm::vec2 canvasSize = designResolution * layoutScale;
-    glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
     glm::mat4 pixelToNdc(1.0f);
     pixelToNdc[0][0] = 2.0f / std::max(swapExtentF.x, 0.0001f);
     pixelToNdc[1][1] = -2.0f / std::max(swapExtentF.y, 0.0001f);
@@ -585,62 +635,67 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
         };
     };
 
-    std::function<void(std::variant<UIObject*, TextObject*>, const LayoutRect&)> traverse = [&](std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) {
+    LayoutRect rootAnchorRect = {
+        .position = glm::vec2(0.0f, 0.0f),
+        .size = swapExtentF / layoutScale
+    };
+
+    std::function<void(std::variant<UIObject*, TextObject*>, const LayoutRect&, bool)> traverse = [&](std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect, bool isRoot) {
+        const LayoutRect& anchorRect = isRoot ? rootAnchorRect : parentRect;
+        
         if (std::holds_alternative<UIObject*>(node)) {
             UIObject* obj = std::get<UIObject*>(node);
-            LayoutRect designRect = resolveDesignRect(obj, parentRect);
-            LayoutRect pixelRect = toPixelRect(designRect, canvasOrigin, layoutScale);
+            LayoutRect designRect = resolveDesignRect(obj, anchorRect);
+            LayoutRect pixelRect = toPixelRect(designRect, glm::vec2(0.0f), layoutScale);
             drawUIObject(obj, pixelRect);
             for (const auto& child : obj->getChildren()) {
-                traverse(child, designRect);
+                traverse(child, designRect, false);
             }
         } else {
             TextObject* obj = std::get<TextObject*>(node);
-            LayoutRect designRect = resolveDesignRect(obj, parentRect);
-            LayoutRect pixelRect = toPixelRect(designRect, canvasOrigin, layoutScale);
-            drawTextObject(obj, designRect, pixelRect, parentRect);
+            LayoutRect designRect = resolveDesignRect(obj, anchorRect);
+            LayoutRect pixelRect = toPixelRect(designRect, glm::vec2(0.0f), layoutScale);
+            drawTextObject(obj, designRect, pixelRect, anchorRect);
         }
     };
 
-    LayoutRect rootRect = {
-        .position = glm::vec2(0.0f, 0.0f),
-        .size = designResolution
-    };
     for (auto& [name, obj] : objects) {
-        bool traversing = std::holds_alternative<TextObject*>(obj) ? (std::get<TextObject*>(obj)->getParent() == nullptr) : (std::get<UIObject*>(obj)->getParent() == nullptr);
-        if (traversing) {
-            traverse(obj, rootRect);
+        bool isRoot = std::holds_alternative<TextObject*>(obj) ? (std::get<TextObject*>(obj)->getParent() == nullptr) : (std::get<UIObject*>(obj)->getParent() == nullptr);
+        if (isRoot) {
+            traverse(obj, rootAnchorRect, true);
         }
     }
 }
 
 engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, double xpos, double ypos) {
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
-    constexpr glm::vec2 designResolution(800.0f, 600.0f);
     float xscale = 1.0f, yscale = 1.0f;
     glfwGetWindowContentScale(window, &xscale, &yscale);
     float contentScale = std::max(xscale, yscale);
     float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
-    glm::vec2 canvasSize = designResolution * layoutScale;
-    glm::vec2 canvasOrigin = 0.5f * (swapExtentF - canvasSize);
     glm::vec2 mousePosF(static_cast<float>(xpos) * std::max(xscale, 1.0f), static_cast<float>(ypos) * std::max(yscale, 1.0f));
     mousePosF.y = swapExtentF.y - mousePosF.y;
+    LayoutRect rootAnchorRect = {
+        .position = glm::vec2(0.0f, 0.0f),
+        .size = swapExtentF / layoutScale
+    };
 
     bool foundHover = false;
     UIObject* hoveredObject = nullptr;
     UIObject* lastHovered = renderer->getHoveredObject();
-    std::function<void(UIObject*, const LayoutRect&)> traverse = [&](UIObject* node, const LayoutRect& parentRect) {
+    std::function<void(UIObject*, const LayoutRect&, bool)> traverse = [&](UIObject* node, const LayoutRect& parentRect, bool isRoot) {
         if(!node || !node->isEnabled()) return;
-        LayoutRect designRect = resolveDesignRect(node, parentRect);
+        const LayoutRect& anchorRect = isRoot ? rootAnchorRect : parentRect;
+        LayoutRect designRect = resolveDesignRect(node, anchorRect);
         const float invLayout = layoutScale > 0.0f ? 1.0f / layoutScale : 0.0f;
-        glm::vec2 mouseDesign = (mousePosF - canvasOrigin) * invLayout;
+        glm::vec2 mouseDesign = mousePosF * invLayout;
         bool isOverNode = mouseDesign.x >= designRect.position.x
             && mouseDesign.x <= designRect.position.x + designRect.size.x
             && mouseDesign.y >= designRect.position.y
             && mouseDesign.y <= designRect.position.y + designRect.size.y;
         for (const auto& child : node->getChildren()) {
             if (std::holds_alternative<UIObject*>(child)) {
-                traverse(std::get<UIObject*>(child), designRect);
+                traverse(std::get<UIObject*>(child), designRect, false);
                 if (foundHover) return;
             }
         }
@@ -649,13 +704,9 @@ engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, do
             foundHover = true;
         }
     };
-    LayoutRect rootRect = {
-        .position = glm::vec2(0.0f, 0.0f),
-        .size = designResolution
-    };
     for (auto& [name, obj] : objects) {
         if (std::holds_alternative<UIObject*>(obj) && std::get<UIObject*>(obj)->getParent() == nullptr) {
-            traverse(std::get<UIObject*>(obj), rootRect);
+            traverse(std::get<UIObject*>(obj), rootAnchorRect, true);
         }
     }
     if (hoveredObject && hoveredObject != lastHovered) {

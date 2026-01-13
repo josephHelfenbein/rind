@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <chrono>
 
 namespace engine {
     struct GraphicsShader;
@@ -152,6 +153,10 @@ namespace engine {
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
         float getDeltaTime() const { return deltaTime; }
+        class TextObject* getFPSCounter() const { return fpsCounter; }
+        void setFPSCounter(class TextObject* fpsCounter) { this->fpsCounter = fpsCounter; }
+
+        void recreateSwapChain();
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -192,9 +197,6 @@ namespace engine {
         VkDebugUtilsMessengerEXT debugMessenger;
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHR surface;
-        float aoRadius = 0.5f;
-        float aoBias = 0.025f;
-        float aoIntensity = 2.0f;
         bool framebufferResized = false;
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
@@ -217,6 +219,9 @@ namespace engine {
         std::vector<std::shared_ptr<PassInfo>> managedRenderPasses;
         VkCommandPool commandPool;
         VkSampler mainTextureSampler;
+        class TextObject* fpsCounter = nullptr;
+        std::chrono::steady_clock::time_point lastFPSUpdateTime = std::chrono::steady_clock::now();
+        uint32_t fpsLimit = 0;
 
         VkBuffer uiVertexBuffer;
         VkDeviceMemory uiVertexBufferMemory;
@@ -264,8 +269,6 @@ namespace engine {
         void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
         void draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node);
-
-        void recreateSwapChain();
 
         std::vector<const char*> getRequiredExtensions();
         bool checkValidationLayerSupport();

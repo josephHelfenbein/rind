@@ -18,6 +18,8 @@ namespace engine {
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
             bool fxaaEnabled = true;
             bool ssrEnabled = true;
+            bool showFPS = false;
+            float fpsLimit = 0.0f;
         };
 
         SettingsManager(engine::Renderer* renderer) : renderer(renderer) {
@@ -43,6 +45,8 @@ namespace engine {
             currentSettings->aoMode = static_cast<uint32_t>(parseInt(content, "aoMode", 2));
             currentSettings->fxaaEnabled = parseBool(content, "fxaaEnabled", true);
             currentSettings->ssrEnabled = parseBool(content, "ssrEnabled", true);
+            currentSettings->showFPS = parseBool(content, "showFPS", false);
+            currentSettings->fpsLimit = parseFloat(content, "fpsLimit", 0.0f);
 
             tempSettings = new Settings(*currentSettings);
         }
@@ -64,6 +68,8 @@ namespace engine {
             file << "    \"aoMode\": " << currentSettings->aoMode << ",\n";
             file << "    \"fxaaEnabled\": " << (currentSettings->fxaaEnabled ? "true" : "false") << ",\n";
             file << "    \"ssrEnabled\": " << (currentSettings->ssrEnabled ? "true" : "false") << "\n";
+            file << "    \"showFPS\": " << (currentSettings->showFPS ? "true" : "false") << "\n";
+            file << "    \"fpsLimit\": " << currentSettings->fpsLimit << "\n";
             file << "}\n";
 
             file.close();
@@ -204,12 +210,75 @@ namespace engine {
             aoDisabledCheckbox->setBoundBools({ aoSSAOCheckbox, aoGTAOCheckbox });
             aoSSAOCheckbox->setBoundBools({ aoDisabledCheckbox, aoGTAOCheckbox });
             aoGTAOCheckbox->setBoundBools({ aoDisabledCheckbox, aoSSAOCheckbox });
+            // Show FPS
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3000.0f, 0.0f)),
+                "showFPSLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Show FPS:",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-340.0f, -2300.0f, 0.0f)),
+                "showFPSCheckbox",
+                glm::vec4(1.0f),
+                tempSettings->showFPS,
+                tempSettings->showFPS,
+                Corner::TopRight
+            ));
+            // Master Volume
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3600.0f, 0.0f)),
+                "masterVolumeLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Master Volume:",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new SliderObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -1900.0f, 0.0f)),
+                "masterVolumeSlider",
+                0.0f,
+                1.0f,
+                tempSettings->masterVolume,
+                Corner::TopRight,
+                "%",
+                true,
+                100.0f
+            ));
+            // FPS Limit
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -4200.0f, 0.0f)),
+                "fpsLimitLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "FPS Limit (0 = VSync):",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new SliderObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2200.0f, 0.0f)),
+                "fpsLimitSlider",
+                0.0f,
+                240.0f,
+                tempSettings->fpsLimit,
+                Corner::TopRight,
+                " FPS",
+                true,
+                1.0f
+            ));
             // Apply Button
             settingsUIObject->addChild(new ButtonObject(
                 uiManager,
                 glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f, 0.0375f, 1.0f)), glm::vec3(0.0f, 600.0f, 0.0f)),
                 "applySettingsButton",
-                glm::vec4(0.2f, 0.8f, 0.2f, 1.0f),
+                glm::vec4(0.2f, 0.5f, 0.2f, 1.0f),
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "ui_window",
                 "Apply",
@@ -222,7 +291,14 @@ namespace engine {
                     } else if (aoGTAO) {
                         this->tempSettings->aoMode = 2;
                     }
+                    this->tempSettings->fpsLimit = float(static_cast<int>(this->tempSettings->fpsLimit + 0.5f));
+                    float previousFPSLimit = this->currentSettings->fpsLimit;
                     *(this->currentSettings) = *(this->tempSettings);
+                    if (previousFPSLimit < 1e-6f && this->tempSettings->fpsLimit > 1e-6f) {
+                        this->renderer->recreateSwapChain();
+                    } else if (previousFPSLimit > 1e-6f && this->tempSettings->fpsLimit < 1e-6f) {
+                        this->renderer->recreateSwapChain();
+                    }
                     this->saveSettings();
                 },
                 Corner::Bottom

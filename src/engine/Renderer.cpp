@@ -20,6 +20,7 @@
 #include <iostream>
 #include <array>
 #include <typeindex>
+#include <bits/stdc++.h>
 
 engine::Renderer::Renderer(std::string windowTitle) : windowTitle(windowTitle) {}
 
@@ -178,10 +179,19 @@ void engine::Renderer::mainLoop() {
 }
 
 void engine::Renderer::drawFrame() {
+    if (settingsManager->getSettings()->fpsLimit > 1e-6f) {
+        double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);
+        double targetTime = lastFrameTime + frameDuration;
+        double currentTime = glfwGetTime();
+        double remainingTime = targetTime - currentTime;
+        while (glfwGetTime() < targetTime) {
+            std::this_thread::yield();
+        }
+    }
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[drawFrame] frame " << currentFrame << " start" << std::endl;
     }
-    deltaTime = static_cast<float>(glfwGetTime() - lastFrameTime);
+    deltaTime = static_cast<float>(glfwGetTime()) - lastFrameTime;
     lastFrameTime = glfwGetTime();
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
@@ -531,6 +541,29 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         ) {
             if (DEBUG_RENDER_LOGS) {
                 std::cout << "[record] rendering UI/Text pass" << std::endl;
+            }
+            if (settingsManager->getSettings()->showFPS) {
+                if (!fpsCounter) {
+                    fpsCounter = new TextObject(
+                        uiManager,
+                        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.4f, 1.0f)), glm::vec3(15.0f, -15.0f, 0.0f)),
+                        "fpsCounter",
+                        glm::vec4(1.0f),
+                        "0 FPS",
+                        "Lato",
+                        Corner::TopLeft
+                    );
+                }
+                if (std::chrono::steady_clock::now() - lastFPSUpdateTime > std::chrono::milliseconds(500)) {
+                    std::string fps = std::to_string(static_cast<uint32_t>(1.0f / deltaTime)) + " FPS";
+                    fpsCounter->setText(fps);
+                    lastFPSUpdateTime = std::chrono::steady_clock::now();
+                }
+            } else {
+                if (fpsCounter) {
+                    uiManager->removeObject(fpsCounter->getName());
+                    fpsCounter = nullptr;
+                }
             }
             uiManager->renderUI(commandBuffer, node, currentFrame);
         } else if (node.is2D) {
@@ -2294,8 +2327,16 @@ VkSurfaceFormatKHR engine::Renderer::chooseSwapSurfaceFormat(const std::vector<V
 }
 
 VkPresentModeKHR engine::Renderer::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+    if (settingsManager->getSettings()->fpsLimit <= 1e-6f) {
+        return VK_PRESENT_MODE_FIFO_KHR;
+    }
     for (const auto& availablePresentMode : availablePresentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return availablePresentMode;
+        }
+    }
+    for (const auto& availablePresentMode : availablePresentModes) {
+        if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
             return availablePresentMode;
         }
     }
@@ -2336,11 +2377,25 @@ void engine::Renderer::processInput(GLFWwindow* window) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) {
         renderer->clicking = false;
-    } else if (renderer->getHoveredObject() && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && !renderer->clicking) {
-        if (ButtonObject* button = dynamic_cast<ButtonObject*>(renderer->getHoveredObject())) {
-            button->click();
-        } else if (CheckboxObject* toggle = dynamic_cast<CheckboxObject*>(renderer->getHoveredObject())) {
-            toggle->toggle();
+    } else if (renderer->getHoveredObject() && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        if (!renderer->clicking) {
+            if (ButtonObject* button = dynamic_cast<ButtonObject*>(renderer->getHoveredObject())) {
+                button->click();
+                renderer->clicking = true;
+                if (renderer && renderer->inputManager) {
+                    renderer->inputManager->processInput(window);
+                }
+                return;
+            } else if (CheckboxObject* toggle = dynamic_cast<CheckboxObject*>(renderer->getHoveredObject())) {
+                toggle->toggle();
+            }
+        }
+        SliderObject* slider = dynamic_cast<SliderObject*>(renderer->getHoveredObject());
+        if (!slider && renderer->getHoveredObject()) {
+            slider = dynamic_cast<SliderObject*>(renderer->getHoveredObject()->getParent());
+        }
+        if (slider) {
+            slider->setValue(slider->getSliderValueFromMouse(window));
         }
         renderer->clicking = true;
     } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
