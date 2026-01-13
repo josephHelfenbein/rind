@@ -81,13 +81,13 @@ namespace engine {
                 uiManager,
                 glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.4f, 1.0f)),
                 "settingsUI",
-                glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
+                glm::vec4(0.3f, 0.3f, 0.3f, 1.0f),
                 "ui_window",
                 Corner::Center
             );
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(0.0f, -150.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.12f, 0.12f, 1.0f)), glm::vec3(0.0f, -200.0f, 0.0f)),
                 "settingsTitle",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Settings",
@@ -96,7 +96,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new ButtonObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(-100.0f, -250.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.03f, 1.0f)), glm::vec3(-300.0f, -750.0f, 0.0f)),
                 "closeSettingsButton",
                 glm::vec4(0.8f, 0.2f, 0.2f, 1.0f),
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
@@ -114,7 +114,7 @@ namespace engine {
             // SSR
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(250.0f, -1350.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -1300.0f, 0.0f)),
                 "ssrLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Enable Screen Space Reflections:",
@@ -123,7 +123,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-250.0f, -1000.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1000.0f, 0.0f)),
                 "ssrCheckbox",
                 glm::vec4(1.0f),
                 tempSettings->ssrEnabled,
@@ -133,7 +133,7 @@ namespace engine {
             // FXAA
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(250.0f, -1850.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -1800.0f, 0.0f)),
                 "fxaaLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Enable FXAA:",
@@ -142,7 +142,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-250.0f, -1400.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1350.0f, 0.0f)),
                 "fxaaCheckbox",
                 glm::vec4(1.0f),
                 tempSettings->fxaaEnabled,
@@ -152,7 +152,7 @@ namespace engine {
             // Ambient Occlusion
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(250.0f, -2350.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -2350.0f, 0.0f)),
                 "aoLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Ambient Occlusion",
@@ -161,7 +161,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-150.0f, -2200.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-250.0f, -2200.0f, 0.0f)),
                 "aoOptionsLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Disabled   SSAO   GTAO",
@@ -171,7 +171,7 @@ namespace engine {
             aoDisabled = (tempSettings->aoMode == 0);
             CheckboxObject* aoDisabledCheckbox = new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1250.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1350.0f, -1900.0f, 0.0f)),
                 "aoDisabledCheckbox",
                 glm::vec4(1.0f),
                 aoDisabled,
@@ -181,7 +181,7 @@ namespace engine {
             aoSSAO = (tempSettings->aoMode == 1);
             CheckboxObject* aoSSAOCheckbox = new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-750.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-850.0f, -1900.0f, 0.0f)),
                 "aoSSAOCheckbox",
                 glm::vec4(1.0f),
                 aoSSAO,
@@ -191,7 +191,7 @@ namespace engine {
             aoGTAO = (tempSettings->aoMode == 2);
             CheckboxObject* aoGTAOCheckbox = new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-250.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1900.0f, 0.0f)),
                 "aoGTAOCheckbox",
                 glm::vec4(1.0f),
                 aoGTAO,
@@ -207,7 +207,7 @@ namespace engine {
             // Apply Button
             settingsUIObject->addChild(new ButtonObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f, 0.0375f, 1.0f)), glm::vec3(0.0f, 200.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f, 0.0375f, 1.0f)), glm::vec3(0.0f, 600.0f, 0.0f)),
                 "applySettingsButton",
                 glm::vec4(0.2f, 0.8f, 0.2f, 1.0f),
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),

@@ -121,15 +121,15 @@ void rind::Player::showPauseMenu(bool uiOnly) {
     engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
     pauseUIObject = new engine::UIObject(
         uiManager,
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.25f, 0.3f, 1.0f)),
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.28f, 1.0f)),
         "pauseUI",
-        glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
+        glm::vec4(0.4f, 0.4f, 0.4f, 0.9f),
         "ui_window",
         engine::Corner::Center
     );
     pauseUIObject->addChild(new engine::TextObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.15f, 0.15f, 1.0f)), glm::vec3(0.0f, -100.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.17f, 1.0f)), glm::vec3(0.0f, -120.0f, 0.0f)),
         "pauseTitle",
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "Paused",
