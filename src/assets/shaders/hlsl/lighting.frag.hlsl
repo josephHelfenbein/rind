@@ -45,6 +45,7 @@ struct PushConstants {
     float4x4 invView;
     float4x4 invProj;
     float3 camPos;
+    uint shadowSamples;
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -102,12 +103,15 @@ float specularAntiAliasing(float3 N, float roughness) {
 
 static const uint INVALID_SHADOW_INDEX = 0xFFFFFFFF;
 
-static const float3 sampleOffsetDirections[20] = {
+static const float3 sampleOffsetDirections[32] = {
     float3( 1,  1,  1), float3(-1,  1,  1), float3( 1, -1,  1), float3(-1, -1,  1),
     float3( 1,  1, -1), float3(-1,  1, -1), float3( 1, -1, -1), float3(-1, -1, -1),
     float3( 1,  0,  0), float3(-1,  0,  0), float3( 0,  1,  0), float3( 0, -1,  0),
     float3( 0,  0,  1), float3( 0,  0, -1), float3( 1,  1,  0), float3(-1,  1,  0),
-    float3( 1, -1,  0), float3(-1, -1,  0), float3( 1,  0,  1), float3(-1,  0, -1)
+    float3( 1, -1,  0), float3(-1, -1,  0), float3( 1,  0,  1), float3(-1,  0, -1),
+    float3( 0,  1,  1), float3( 0, -1, -1), float3( 1,  0, -1), float3(-1,  0,  1),
+    float3( 0,  1, -1), float3( 0, -1,  1), float3( 0.5, 0.0, 1.0), float3(-0.5, 0.0, -1.0),
+    float3( 0.0, 0.5, 1.0), float3( 0.0, -0.5, -1.0), float3( 1.0, 0.5, 0.0), float3(-1.0, -0.5, 0.0)
 };
 
 float linearizeDepth(float perspectiveDepth, float nearPlane, float farPlane) {
@@ -139,10 +143,9 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float bias = baseBias + slopeBias + distanceBias;
     float shadow = 0.0;
     float totalWeight = 0.0;
-    uint samples = 20;
     float diskRadius = (1.0 + (length(pc.camPos - fragPos)) / farPlane) / 25.0;
     float penumbraSize = 0.015 * (currentDistance / farPlane);
-    for (uint i = 0; i < samples; ++i) {
+    for (uint i = 0; i < pc.shadowSamples; ++i) {
         float3 offsetDir = sampleOffsetDirections[i];
         offsetDir = normalize(offsetDir);
         offsetDir = offsetDir - dot(offsetDir, sampleDir) * sampleDir;

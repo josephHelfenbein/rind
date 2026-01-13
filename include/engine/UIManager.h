@@ -185,7 +185,7 @@ namespace engine {
                 );
                 this->addChild(valueTextObject);
                 if (isInteger) {
-                    valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier)) + textSuffix);
+                    valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier + 0.5f)) + textSuffix);
                 } else {
                     valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
                 }
@@ -197,7 +197,7 @@ namespace engine {
             boundValue = glm::clamp(value, minValue, maxValue);
             updateKnobPosition();
             if (isInteger) {
-                valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier)) + textSuffix);
+                valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier + 0.5f)) + textSuffix);
             } else {
                 valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
             }

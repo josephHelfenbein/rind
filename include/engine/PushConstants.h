@@ -14,6 +14,7 @@ namespace engine {
         glm::mat4 invView;
         glm::mat4 invProj;
         glm::vec3 camPos;
+        uint32_t shadowSamples;
     };
 
     struct UIPC {

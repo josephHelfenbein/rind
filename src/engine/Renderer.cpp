@@ -179,6 +179,11 @@ void engine::Renderer::mainLoop() {
 }
 
 void engine::Renderer::drawFrame() {
+    if (shadowMapRecreationPending) {
+        entityManager->createAllShadowMaps();
+        refreshDescriptorSets();
+        shadowMapRecreationPending = false;
+    }
     if (settingsManager->getSettings()->fpsLimit > 1e-6f) {
         double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);
         double targetTime = lastFrameTime + frameDuration;
@@ -655,10 +660,12 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
             if (camera) {
                 glm::mat4 invView = glm::inverse(camera->getViewMatrix());
                 glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
+                uint32_t shadowSamples = pow(2, 2 + static_cast<int>(settings->shadowMapSize));
                 LightingPC pc = {
                     .invView = invView,
                     .invProj = invProj,
-                    .camPos = camera->getWorldPosition()
+                    .camPos = camera->getWorldPosition(),
+                    .shadowSamples = shadowSamples
                 };
                 vkCmdPushConstants(
                     commandBuffer,

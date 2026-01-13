@@ -155,6 +155,7 @@ namespace engine {
         float getDeltaTime() const { return deltaTime; }
         class TextObject* getFPSCounter() const { return fpsCounter; }
         void setFPSCounter(class TextObject* fpsCounter) { this->fpsCounter = fpsCounter; }
+        void requestShadowMapRecreation() { shadowMapRecreationPending = true; }
 
         void recreateSwapChain();
 
@@ -207,6 +208,8 @@ namespace engine {
         float uiScale = 1.0f;
 
         bool paused = false;
+
+        bool shadowMapRecreationPending = false;
 
         VkQueue graphicsQueue;
         VkQueue presentQueue;

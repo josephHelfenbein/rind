@@ -3,6 +3,7 @@
 #ifndef GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #endif
+#include <engine/SettingsManager.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -35,8 +36,13 @@ engine::PointLight engine::Light::getPointLightData() {
     return pl;
 }
 
-void engine::Light::createShadowMaps(engine::Renderer* renderer) {
-    if (hasShadowMap) return;
+void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecreate) {
+    if (hasShadowMap) {
+        if (!forceRecreate) return;
+        destroyShadowResources(renderer->getDevice());
+    }
+    float settingsValue = renderer->getSettingsManager()->getSettings()->shadowMapSize;
+    shadowMapSize = static_cast<uint32_t>(pow(2, 9 + static_cast<int>(settingsValue)));
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
     std::tie(shadowDepthImage, shadowDepthMemory) = renderer->createImage(
@@ -444,32 +450,45 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
 }
 
 void engine::Light::destroyShadowResources(VkDevice device) {
-    if (shadowDepthImageView) vkDestroyImageView(device, shadowDepthImageView, nullptr);
-    for(int i=0; i<6; i++) {
-        if (shadowDepthFaceViews[i]) vkDestroyImageView(device, shadowDepthFaceViews[i], nullptr);
+    if (shadowDepthImageView) {
+        vkDestroyImageView(device, shadowDepthImageView, nullptr);
+        shadowDepthImageView = VK_NULL_HANDLE;
     }
-    if (shadowDepthImage) vkDestroyImage(device, shadowDepthImage, nullptr);
-    if (shadowDepthMemory) vkFreeMemory(device, shadowDepthMemory, nullptr);
-    if (bakedShadowImageView) vkDestroyImageView(device, bakedShadowImageView, nullptr);
     for(int i=0; i<6; i++) {
-        if (bakedShadowFaceViews[i]) vkDestroyImageView(device, bakedShadowFaceViews[i], nullptr);
+        if (shadowDepthFaceViews[i]) {
+            vkDestroyImageView(device, shadowDepthFaceViews[i], nullptr);
+            shadowDepthFaceViews[i] = VK_NULL_HANDLE;
+        }
     }
-    if (bakedShadowImage) vkDestroyImage(device, bakedShadowImage, nullptr);
-    if (bakedShadowMemory) vkFreeMemory(device, bakedShadowMemory, nullptr);
+    if (shadowDepthImage) {
+        vkDestroyImage(device, shadowDepthImage, nullptr);
+        shadowDepthImage = VK_NULL_HANDLE;
+    }
+    if (shadowDepthMemory) {
+        vkFreeMemory(device, shadowDepthMemory, nullptr);
+        shadowDepthMemory = VK_NULL_HANDLE;
+    }
+    if (bakedShadowImageView) {
+        vkDestroyImageView(device, bakedShadowImageView, nullptr);
+        bakedShadowImageView = VK_NULL_HANDLE;
+    }
+    for(int i=0; i<6; i++) {
+        if (bakedShadowFaceViews[i]) {
+            vkDestroyImageView(device, bakedShadowFaceViews[i], nullptr);
+            bakedShadowFaceViews[i] = VK_NULL_HANDLE;
+        }
+    }
+    if (bakedShadowImage) {
+        vkDestroyImage(device, bakedShadowImage, nullptr);
+        bakedShadowImage = VK_NULL_HANDLE;
+    }
+    if (bakedShadowMemory) {
+        vkFreeMemory(device, bakedShadowMemory, nullptr);
+        bakedShadowMemory = VK_NULL_HANDLE;
+    }
     
     hasShadowMap = false;
     shadowImageReady = false;
     shadowBaked = false;
     bakedImageReady = false;
-}
-
-void engine::Light::setShadowMapSize(uint32_t size) {
-    if (size == shadowMapSize) return;
-    shadowMapSize = size;
-    
-    Renderer* renderer = getEntityManager()->getRenderer();
-    if (hasShadowMap) {
-        destroyShadowResources(renderer->getDevice());
-    }
-    createShadowMaps(renderer);
 }

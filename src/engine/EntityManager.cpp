@@ -2,6 +2,7 @@
 #include <engine/Camera.h>
 #include <engine/Light.h>
 #include <engine/Collider.h>
+#include <engine/SettingsManager.h>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
@@ -597,9 +598,10 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
 }
 
 void engine::EntityManager::createAllShadowMaps() {
+    vkDeviceWaitIdle(renderer->getDevice());
     auto& lights = getLights();
     for (auto& light : lights) {
-        light->createShadowMaps(renderer);
+        light->createShadowMaps(renderer, true);
     }
 }
 

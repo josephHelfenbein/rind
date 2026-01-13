@@ -9,17 +9,19 @@
 #include <engine/Renderer.h>
 #include <engine/UIManager.h>
 #include <engine/InputManager.h>
+#include <engine/EntityManager.h>
 
 namespace engine {
     class SettingsManager {
     public:
         struct Settings {
-            float masterVolume = 1.0f;
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
+            float fpsLimit = 0.0f;
+            float shadowMapSize = 2.0f; // 0=512 4 samples, 1=1024 8 samples, 2=2048 16 samples, 3=4096 32 samples
+            float masterVolume = 1.0f;
             bool fxaaEnabled = true;
             bool ssrEnabled = true;
             bool showFPS = false;
-            float fpsLimit = 0.0f;
         };
 
         SettingsManager(engine::Renderer* renderer) : renderer(renderer) {
@@ -41,13 +43,17 @@ namespace engine {
             std::vector<char> buffer = readFile(configPath.string());
             std::string content(buffer.begin(), buffer.end());
 
-            currentSettings->masterVolume = parseFloat(content, "masterVolume", 1.0f);
-            currentSettings->aoMode = static_cast<uint32_t>(parseInt(content, "aoMode", 2));
+            currentSettings->masterVolume = std::clamp(parseFloat(content, "masterVolume", 1.0f), 0.0f, 1.0f);
+            currentSettings->aoMode = std::clamp(static_cast<uint32_t>(parseInt(content, "aoMode", 2)), 0u, 2u);
             currentSettings->fxaaEnabled = parseBool(content, "fxaaEnabled", true);
             currentSettings->ssrEnabled = parseBool(content, "ssrEnabled", true);
             currentSettings->showFPS = parseBool(content, "showFPS", false);
             currentSettings->fpsLimit = parseFloat(content, "fpsLimit", 0.0f);
-
+            currentSettings->shadowMapSize = static_cast<float>(static_cast<int>(std::clamp(
+                parseFloat(content, "shadowMapSize", 2.0f),
+                0.0f,
+                3.0f
+            ) + 0.5f));
             tempSettings = new Settings(*currentSettings);
         }
 
@@ -67,9 +73,10 @@ namespace engine {
             file << "    \"masterVolume\": " << currentSettings->masterVolume << ",\n";
             file << "    \"aoMode\": " << currentSettings->aoMode << ",\n";
             file << "    \"fxaaEnabled\": " << (currentSettings->fxaaEnabled ? "true" : "false") << ",\n";
-            file << "    \"ssrEnabled\": " << (currentSettings->ssrEnabled ? "true" : "false") << "\n";
-            file << "    \"showFPS\": " << (currentSettings->showFPS ? "true" : "false") << "\n";
-            file << "    \"fpsLimit\": " << currentSettings->fpsLimit << "\n";
+            file << "    \"ssrEnabled\": " << (currentSettings->ssrEnabled ? "true" : "false") << ",\n";
+            file << "    \"showFPS\": " << (currentSettings->showFPS ? "true" : "false") << ",\n";
+            file << "    \"fpsLimit\": " << currentSettings->fpsLimit << ",\n";
+            file << "    \"shadowMapSize\": " << currentSettings->shadowMapSize << "\n";
             file << "}\n";
 
             file.close();
@@ -85,7 +92,7 @@ namespace engine {
 
             settingsUIObject = new UIObject(
                 uiManager,
-                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.4f, 1.0f)),
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.5f, 1.0f)),
                 "settingsUI",
                 glm::vec4(0.3f, 0.3f, 0.3f, 1.0f),
                 "ui_window",
@@ -273,6 +280,28 @@ namespace engine {
                 true,
                 1.0f
             ));
+            // Shadow Quality
+            settingsUIObject->addChild(new TextObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -4800.0f, 0.0f)),
+                "shadowQualityLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Shadow Quality:",
+                "Lato",
+                Corner::TopLeft
+            ));
+            settingsUIObject->addChild(new SliderObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2500.0f, 0.0f)),
+                "shadowQualitySlider",
+                0.0f,
+                3.0f,
+                tempSettings->shadowMapSize,
+                Corner::TopRight,
+                "",
+                true,
+                1.0f
+            ));
             // Apply Button
             settingsUIObject->addChild(new ButtonObject(
                 uiManager,
@@ -292,12 +321,17 @@ namespace engine {
                         this->tempSettings->aoMode = 2;
                     }
                     this->tempSettings->fpsLimit = float(static_cast<int>(this->tempSettings->fpsLimit + 0.5f));
+                    this->tempSettings->shadowMapSize = float(static_cast<int>(std::clamp(this->tempSettings->shadowMapSize, 0.0f, 3.0f) + 0.5f));
                     float previousFPSLimit = this->currentSettings->fpsLimit;
+                    float previousShadowMapSize = this->currentSettings->shadowMapSize;
                     *(this->currentSettings) = *(this->tempSettings);
                     if (previousFPSLimit < 1e-6f && this->tempSettings->fpsLimit > 1e-6f) {
                         this->renderer->recreateSwapChain();
                     } else if (previousFPSLimit > 1e-6f && this->tempSettings->fpsLimit < 1e-6f) {
                         this->renderer->recreateSwapChain();
+                    }
+                    if (previousShadowMapSize != this->tempSettings->shadowMapSize) {
+                        this->renderer->requestShadowMapRecreation();
                     }
                     this->saveSettings();
                 },

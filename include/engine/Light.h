@@ -24,12 +24,11 @@ namespace engine {
         void setRadius(float radius) { this->radius = radius; }
 
         uint32_t getShadowMapSize() const { return shadowMapSize; }
-        void setShadowMapSize(uint32_t size);
 
         PointLight getPointLightData();
         VkImageView getShadowImageView() const { return shadowDepthImageView; }
 
-        void createShadowMaps(engine::Renderer* renderer);
+        void createShadowMaps(engine::Renderer* renderer, bool forceRecreate = false);
         void bakeShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
         void renderShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame);
         bool isBaked() const { return shadowBaked; }
