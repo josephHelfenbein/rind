@@ -20,7 +20,8 @@
 #include <iostream>
 #include <array>
 #include <typeindex>
-#include <bits/stdc++.h>
+#include <thread>
+#include <chrono>
 
 engine::Renderer::Renderer(std::string windowTitle) : windowTitle(windowTitle) {}
 
@@ -660,7 +661,7 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
             if (camera) {
                 glm::mat4 invView = glm::inverse(camera->getViewMatrix());
                 glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
-                uint32_t shadowSamples = pow(2, 2 + static_cast<int>(settings->shadowMapSize));
+                uint32_t shadowSamples = pow(2, 2 + static_cast<int>(settings->shadowQuality));
                 LightingPC pc = {
                     .invView = invView,
                     .invProj = invProj,
@@ -701,9 +702,11 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
             if (camera) {
                 glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
                 glm::mat4 proj = camera->getProjectionMatrix();
+                glm::mat4 view = camera->getViewMatrix();
                 AOPC pc = {
                     .invProj = invProj,
                     .proj = proj,
+                    .view = view,
                     .flags = settings->aoMode
                 };
                 vkCmdPushConstants(

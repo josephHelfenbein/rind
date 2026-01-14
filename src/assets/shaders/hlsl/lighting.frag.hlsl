@@ -163,6 +163,15 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     return 1.0 - shadow;
 }
 
+float3 ACESFilm(float3 x) {
+    float a = 2.51;
+    float b = 0.03;
+    float c = 2.43;
+    float d = 0.59;
+    float e = 0.14;
+    return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
+}
+
 float4 main(VSOutput input) : SV_Target {
     float3 albedoSample = gBufferAlbedo.Sample(sampleSampler, input.fragTexCoord).rgb;
     float alpha = gBufferAlbedo.Sample(sampleSampler, input.fragTexCoord).a;
@@ -174,7 +183,7 @@ float4 main(VSOutput input) : SV_Target {
     float baseRoughness = materialSample.g;
     float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
     if (depth >= 0.9999) {
-        return float4(albedoSample, 1.0); // Background
+        return float4(ACESFilm(albedoSample), 1.0); // Background
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
     float3 toCamera = pc.camPos - fragPos;
@@ -249,5 +258,5 @@ float4 main(VSOutput input) : SV_Target {
     float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
     Lo += particleColor.rgb * particleColor.a;
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, alpha));
-    return float4(Lo, alphaOut);
+    return float4(ACESFilm(Lo), alphaOut);
 }

@@ -41,8 +41,8 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
         if (!forceRecreate) return;
         destroyShadowResources(renderer->getDevice());
     }
-    float settingsValue = renderer->getSettingsManager()->getSettings()->shadowMapSize;
-    shadowMapSize = static_cast<uint32_t>(pow(2, 9 + static_cast<int>(settingsValue)));
+    float settingsValue = renderer->getSettingsManager()->getSettings()->shadowQuality;
+    shadowMapSize = static_cast<uint32_t>(pow(2, 9 + std::min(static_cast<int>(settingsValue), 2)));
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
     std::tie(shadowDepthImage, shadowDepthMemory) = renderer->createImage(

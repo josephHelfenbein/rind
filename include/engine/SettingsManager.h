@@ -17,7 +17,7 @@ namespace engine {
         struct Settings {
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
             float fpsLimit = 0.0f;
-            float shadowMapSize = 2.0f; // 0=512 4 samples, 1=1024 8 samples, 2=2048 16 samples, 3=4096 32 samples
+            float shadowQuality = 2.0f; // 0=512 4 samples, 1=1024 8 samples, 2=2048 16 samples, 3=2048 32 samples
             float masterVolume = 1.0f;
             bool fxaaEnabled = true;
             bool ssrEnabled = true;
@@ -49,8 +49,8 @@ namespace engine {
             currentSettings->ssrEnabled = parseBool(content, "ssrEnabled", true);
             currentSettings->showFPS = parseBool(content, "showFPS", false);
             currentSettings->fpsLimit = parseFloat(content, "fpsLimit", 0.0f);
-            currentSettings->shadowMapSize = static_cast<float>(static_cast<int>(std::clamp(
-                parseFloat(content, "shadowMapSize", 2.0f),
+            currentSettings->shadowQuality = static_cast<float>(static_cast<int>(std::clamp(
+                parseFloat(content, "shadowQuality", 2.0f),
                 0.0f,
                 3.0f
             ) + 0.5f));
@@ -76,7 +76,7 @@ namespace engine {
             file << "    \"ssrEnabled\": " << (currentSettings->ssrEnabled ? "true" : "false") << ",\n";
             file << "    \"showFPS\": " << (currentSettings->showFPS ? "true" : "false") << ",\n";
             file << "    \"fpsLimit\": " << currentSettings->fpsLimit << ",\n";
-            file << "    \"shadowMapSize\": " << currentSettings->shadowMapSize << "\n";
+            file << "    \"shadowQuality\": " << currentSettings->shadowQuality << "\n";
             file << "}\n";
 
             file.close();
@@ -296,7 +296,7 @@ namespace engine {
                 "shadowQualitySlider",
                 0.0f,
                 3.0f,
-                tempSettings->shadowMapSize,
+                tempSettings->shadowQuality,
                 Corner::TopRight,
                 "",
                 true,
@@ -321,16 +321,16 @@ namespace engine {
                         this->tempSettings->aoMode = 2;
                     }
                     this->tempSettings->fpsLimit = float(static_cast<int>(this->tempSettings->fpsLimit + 0.5f));
-                    this->tempSettings->shadowMapSize = float(static_cast<int>(std::clamp(this->tempSettings->shadowMapSize, 0.0f, 3.0f) + 0.5f));
+                    this->tempSettings->shadowQuality = float(static_cast<int>(std::clamp(this->tempSettings->shadowQuality, 0.0f, 3.0f) + 0.5f));
                     float previousFPSLimit = this->currentSettings->fpsLimit;
-                    float previousShadowMapSize = this->currentSettings->shadowMapSize;
+                    float previousShadowQuality = this->currentSettings->shadowQuality;
                     *(this->currentSettings) = *(this->tempSettings);
                     if (previousFPSLimit < 1e-6f && this->tempSettings->fpsLimit > 1e-6f) {
                         this->renderer->recreateSwapChain();
                     } else if (previousFPSLimit > 1e-6f && this->tempSettings->fpsLimit < 1e-6f) {
                         this->renderer->recreateSwapChain();
                     }
-                    if (previousShadowMapSize != this->tempSettings->shadowMapSize) {
+                    if (previousShadowQuality != this->tempSettings->shadowQuality) {
                         this->renderer->requestShadowMapRecreation();
                     }
                     this->saveSettings();
