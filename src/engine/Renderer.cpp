@@ -190,6 +190,9 @@ void engine::Renderer::drawFrame() {
         double targetTime = lastFrameTime + frameDuration;
         double currentTime = glfwGetTime();
         double remainingTime = targetTime - currentTime;
+        if (remainingTime > 0.002) {
+            std::this_thread::sleep_for(std::chrono::duration<double>(remainingTime - 0.002));
+        }
         while (glfwGetTime() < targetTime) {
             std::this_thread::yield();
         }
@@ -197,11 +200,11 @@ void engine::Renderer::drawFrame() {
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[drawFrame] frame " << currentFrame << " start" << std::endl;
     }
-    deltaTime = static_cast<float>(glfwGetTime()) - lastFrameTime;
-    lastFrameTime = glfwGetTime();
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    deltaTime = static_cast<float>(glfwGetTime()) - lastFrameTime;
+    lastFrameTime = static_cast<float>(glfwGetTime());
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[drawFrame] acquired imageIndex=" << imageIndex << " result=" << result << std::endl;
     }
@@ -253,6 +256,7 @@ void engine::Renderer::drawFrame() {
         throw std::runtime_error("Failed to present swap chain image!");
     }
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    fpsFrameCount++;
     entityManager->processPendingDeletions();
 }
 
@@ -560,10 +564,14 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                         Corner::TopLeft
                     );
                 }
-                if (std::chrono::steady_clock::now() - lastFPSUpdateTime > std::chrono::milliseconds(500)) {
-                    std::string fps = std::to_string(static_cast<uint32_t>(1.0f / deltaTime)) + " FPS";
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration<float>(now - lastFPSUpdateTime).count();
+                if (elapsed >= 0.5f) {
+                    uint32_t averageFPS = static_cast<uint32_t>(static_cast<float>(fpsFrameCount) / elapsed);
+                    std::string fps = std::to_string(averageFPS) + " FPS";
                     fpsCounter->setText(fps);
-                    lastFPSUpdateTime = std::chrono::steady_clock::now();
+                    lastFPSUpdateTime = now;
+                    fpsFrameCount = 0;
                 }
             } else {
                 if (fpsCounter) {
@@ -2392,6 +2400,9 @@ void engine::Renderer::processInput(GLFWwindow* window) {
             if (ButtonObject* button = dynamic_cast<ButtonObject*>(renderer->getHoveredObject())) {
                 button->click();
                 renderer->clicking = true;
+                if (renderer->uiManager) {
+                    renderer->uiManager->processPendingRemovals();
+                }
                 if (renderer && renderer->inputManager) {
                     renderer->inputManager->processInput(window);
                 }

@@ -263,6 +263,8 @@ namespace engine {
         void addObject(UIObject* object);
         void addObject(TextObject* object);
         void removeObject(const std::string& name);
+        void removeObjectDeferred(const std::string& name);
+        void processPendingRemovals();
         UIObject* getObject(const std::string& name);
         TextObject* getTextObject(const std::string& name);
         std::map<std::string, std::variant<UIObject*, TextObject*>>& getObjects() { return objects; }
@@ -282,5 +284,6 @@ namespace engine {
         std::map<std::string, std::variant<UIObject*, TextObject*>> objects;
         std::map<std::string, Font> fonts;
         std::string fontDirectory = "";
+        std::vector<std::string> pendingRemovals;
     };
 };

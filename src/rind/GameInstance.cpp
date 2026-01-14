@@ -25,7 +25,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
     );
     engine::ButtonObject* startButton = new engine::ButtonObject(
         uiManager,
-        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -100.0f, 0.0f)), glm::vec3(0.15, 0.05, 1.0)),
+        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -100.0f, 0.0f)), glm::vec3(0.12, 0.04, 1.0)),
         "StartButton",
         glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
@@ -35,6 +35,42 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         [sceneManager]() {
             sceneManager->setActiveScene(1);
         }
+    );
+    engine::ButtonObject* quitButton = new engine::ButtonObject(
+        uiManager,
+        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -200.0f, 0.0f)), glm::vec3(0.12, 0.04, 1.0)),
+        "QuitButton",
+        glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "ui_window",
+        "Quit",
+        "Lato",
+        []() {
+            std::exit(0);
+        }
+    );
+    std::function<void()> settingsCallback = [renderer, titleText, startButton, quitButton]() {
+        renderer->getSettingsManager()->showSettingsUI();
+        renderer->getUIManager()->removeObject(titleText->getName());
+        renderer->getUIManager()->removeObject(startButton->getName());
+        renderer->getUIManager()->removeObjectDeferred("SettingsButton");
+        renderer->getUIManager()->removeObject(quitButton->getName());
+        renderer->getSettingsManager()->setUIOnClose(
+            [renderer](){
+                renderer->getSceneManager()->setActiveScene(0);
+            }
+        );
+    };
+    engine::ButtonObject* settingsButton = new engine::ButtonObject(
+        uiManager,
+        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -150.0f, 0.0f)), glm::vec3(0.12, 0.04, 1.0)),
+        "SettingsButton",
+        glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        "ui_window",
+        "Settings",
+        "Lato",
+        settingsCallback
     );
     renderer->getInputManager()->setUIFocused(true);
     renderer->toggleLockCursor(false);

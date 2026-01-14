@@ -218,6 +218,17 @@ void engine::UIManager::removeObject(const std::string& name) {
     }
 }
 
+void engine::UIManager::removeObjectDeferred(const std::string& name) {
+    pendingRemovals.push_back(name);
+}
+
+void engine::UIManager::processPendingRemovals() {
+    for (const auto& name : pendingRemovals) {
+        removeObject(name);
+    }
+    pendingRemovals.clear();
+}
+
 engine::UIObject* engine::UIManager::getObject(const std::string& name) {
     auto it = objects.find(name);
     if (it != objects.end()) {

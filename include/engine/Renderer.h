@@ -224,6 +224,7 @@ namespace engine {
         VkSampler mainTextureSampler;
         class TextObject* fpsCounter = nullptr;
         std::chrono::steady_clock::time_point lastFPSUpdateTime = std::chrono::steady_clock::now();
+        uint32_t fpsFrameCount = 0;
         uint32_t fpsLimit = 0;
 
         VkBuffer uiVertexBuffer;
