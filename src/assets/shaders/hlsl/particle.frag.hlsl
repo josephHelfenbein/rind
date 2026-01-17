@@ -29,10 +29,10 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
         float edgeFade = 1.0 - abs(input.uv.x * 2.0 - 1.0);
         edgeFade = pow(edgeFade, 0.5);
         float ageFade = 1.0 - input.age;
-        float coreness = pow(edgeFade, 4.0);
+        float coreness = pow(edgeFade, lerp(4.0, 8.0, input.age));
         fragColor.rgb = lerp(fragColor.rgb, float3(1.0, 1.0, 1.0), coreness);
         fragColor.rgb *= 2.0;
-        fragColor.a = edgeFade * ageFade;
+        fragColor.a = edgeFade * edgeFade * 0.5 + ageFade * 0.5;
         return fragColor;
     }
     

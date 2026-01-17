@@ -5,6 +5,9 @@
 #include <engine/SceneManager.h>
 #include <engine/SettingsManager.h>
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+
 rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
         engine::Entity* head = new engine::Entity(
@@ -90,6 +93,15 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         playerShadow->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot"));
         playerModel->addChild(playerShadow);
         playerShadow->playAnimation("Run", true, 1.0f);
+        gunEndPosition = new engine::Entity(
+            entityManager,
+            "playerGunEndPosition",
+            "",
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.4f, -0.15f, -1.0f)),
+            {},
+            false
+        );
+        camera->addChild(gunEndPosition);
         inputManager->registerCallback("playerInput", [this](const std::vector<engine::InputEvent>& events) {
             this->registerInput(events);
         });
@@ -98,8 +110,9 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
 void rind::Player::update(float deltaTime) {
     const glm::vec3& vel = getVelocity();
     float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
-    float rotateSpeed = getRotateSpeed();
+    float rotateSpeed = std::abs(getRotateVelocity().y);
     float speed = horizontalSpeed + std::abs(rotateSpeed);
+    glm::vec3 rotateVelocity = getRotateVelocity();
     if (speed > 0.1f) {
         if (getChildByName("playerModel")->getAnimationState().currentAnimation != "Run") {
             getChildByName("playerModel")->playAnimation("Run", true, speed / 5.0f);
@@ -115,6 +128,30 @@ void rind::Player::update(float deltaTime) {
         }
     }
     engine::CharacterEntity::update(deltaTime);
+    if (trailFramesRemaining > 0) {
+        engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
+        float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
+        glm::vec3 velocityOffset = getVelocity() * deltaTime;
+        glm::vec3 gunEndWorldPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
+        glm::vec3 playerWorldPos = getWorldPosition();
+        glm::vec3 gunOffsetFromPlayer = gunEndWorldPos - playerWorldPos;
+        glm::quat yawDelta = glm::angleAxis(rotateVelocity.y * deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 gunAfterYaw = playerWorldPos + velocityOffset + (yawDelta * gunOffsetFromPlayer);
+        glm::vec3 playerRight = glm::normalize(glm::vec3(getWorldTransform()[0]));
+        glm::quat pitchDelta = glm::angleAxis(rotateVelocity.x * deltaTime, yawDelta * playerRight);
+        glm::vec3 headWorldPos = getHead()->getWorldPosition();
+        glm::vec3 predictedHeadPos = playerWorldPos + velocityOffset + (yawDelta * (headWorldPos - playerWorldPos));
+        glm::vec3 gunOffsetFromHead = gunAfterYaw - predictedHeadPos;
+        glm::vec3 currentGunEndPos = predictedHeadPos + (pitchDelta * gunOffsetFromHead);
+        particleManager->spawnTrail(
+            currentGunEndPos,
+            trailEndPos - currentGunEndPos,
+            trailColor,
+            deltaTime * 2.0f,
+            (static_cast<float>(maxTrailFrames) - static_cast<float>(trailFramesRemaining)) / static_cast<float>(maxTrailFrames) * deltaTime
+        );
+        trailFramesRemaining--;
+    }
 }
 
 void rind::Player::showPauseMenu(bool uiOnly) {
@@ -360,9 +397,7 @@ void rind::Player::damage(float amount) {
 
 void rind::Player::shoot() {
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
-    constexpr float framePrediction = 0.016f;
-    glm::vec3 velocityOffset = getVelocity() * framePrediction;
-    glm::vec3 gunPos = glm::vec3(camera->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f)) + velocityOffset;
+    glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
@@ -377,12 +412,13 @@ void rind::Player::shoot() {
         camera->getWorldPosition(),
         rayDir,
         1000.0f,
+        this->getCollider(),
         true
     );
     glm::vec3 endPos = gunPos + rayDir * 1000.0f;
     engine::AudioManager* audioManager = getEntityManager()->getRenderer()->getAudioManager();
-    for (engine::Collider::Collision& collision : hits) {
-        if (collision.other->getParent() == this) continue; // ignore self hits
+    if (!hits.empty()) {
+        engine::Collider::Collision collision = hits[0];
         endPos = collision.worldHitPoint;
         glm::vec3 normal = glm::normalize(collision.mtv.normal);
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
@@ -424,13 +460,8 @@ void rind::Player::shoot() {
         } else {
             audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);
         }
-        break;
     }
     audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
-    particleManager->spawnTrail(
-        gunPos,
-        endPos - gunPos,
-        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
-        0.1f
-    );
+    trailFramesRemaining = maxTrailFrames;
+    trailEndPos = endPos;
 }

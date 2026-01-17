@@ -14,7 +14,7 @@ void engine::CharacterEntity::update(float deltaTime) {
     if (getWorldPosition().y < -30) {
         damage(health);
     }
-    if (rotateSpeed != 0.0f) rotateSpeed = 0.0f;
+    if (rotateVelocity != glm::vec3(0.0f)) rotateVelocity = glm::vec3(0.0f);
 }
 
 void engine::CharacterEntity::updateMovement(float deltaTime) {
@@ -247,7 +247,7 @@ void engine::CharacterEntity::rotate(const glm::vec3& delta) {
 
         if (allowRotation) {
             setTransform(newTransform);
-            rotateSpeed = delta.y * 60.0f;
+            rotateVelocity.y = delta.y / getEntityManager()->getRenderer()->getDeltaTime();
         }
     }
     if (delta.z != 0.0f) {
@@ -260,6 +260,7 @@ void engine::CharacterEntity::rotate(const glm::vec3& delta) {
             glm::mat4 newTransform = glm::yawPitchRoll(eulerAngles.y, eulerAngles.x, eulerAngles.z);
             newTransform[3] = currentTransform[3];
             head->setTransform(newTransform);
+            rotateVelocity.x = delta.z / getEntityManager()->getRenderer()->getDeltaTime();
         }
     }
 }

@@ -12,7 +12,7 @@ engine::Collider::~Collider() {
     }
 }
 
-std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, bool sortByDistance) {
+std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit) {
     std::vector<Collision> results;
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
     AABB rayAABB = {
@@ -23,6 +23,9 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
     const std::vector<Collider*>& candidates = entityManager->getColliders();
     
     for (Collider* collider : candidates) {
+        if (collider == ignoreCollider) {
+            continue;
+        }
         AABB aabb = collider->getWorldAABB();
         if (!aabbIntersects(rayAABB, aabb)) {
             continue;
@@ -152,12 +155,18 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
             }
         }
     }
-    if (sortByDistance) {
-        std::sort(results.begin(), results.end(), [&rayOrigin](const Collision& a, const Collision& b) {
-            float distA = glm::length(a.worldHitPoint - rayOrigin);
-            float distB = glm::length(b.worldHitPoint - rayOrigin);
-            return distA < distB;
-        });
+    if (returnFirstHit && !results.empty()) {
+        Collision closest = results[0];
+        float closestDist = glm::length(closest.worldHitPoint - rayOrigin);
+        for (const Collision& collision : results) {
+            float dist = glm::length(collision.worldHitPoint - rayOrigin);
+            if (dist < closestDist) {
+                closest = collision;
+                closestDist = dist;
+            }
+        }
+        results.clear();
+        results.push_back(closest);
     }
     return results;
 }

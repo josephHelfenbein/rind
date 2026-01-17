@@ -54,5 +54,12 @@ namespace rind {
         glm::vec3 wanderTarget = glm::vec3(0.0f);
         bool wandering = false;
         bool waiting = false;
+
+        engine::Entity* gunEndPosition = nullptr;
+
+        uint32_t trailFramesRemaining = 0u;
+        uint32_t maxTrailFrames = 5u;
+        glm::vec3 trailEndPos = glm::vec3(0.0f);
+        glm::vec4 trailColor = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
     };
 };

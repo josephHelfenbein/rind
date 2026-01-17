@@ -21,6 +21,7 @@ namespace rind {
 
     private:
         engine::Camera* camera = nullptr;
+        engine::Entity* gunEndPosition = nullptr;
         engine::InputManager* inputManager = nullptr;
         float mouseSensitivity = 0.003f;
 
@@ -36,5 +37,10 @@ namespace rind {
         bool canDash = false;
         long long dashCooldown = 2000; // ms
         std::chrono::steady_clock::time_point lastDashTime = std::chrono::steady_clock::now();
+
+        uint32_t trailFramesRemaining = 0u;
+        uint32_t maxTrailFrames = 5u;
+        glm::vec3 trailEndPos = glm::vec3(0.0f);
+        glm::vec4 trailColor = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
     };
 };

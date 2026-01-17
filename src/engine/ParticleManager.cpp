@@ -291,10 +291,11 @@ void engine::ParticleManager::burstParticles(const glm::mat4& transform, const g
     }
 }
 
-void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime) {
+void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime, float fakeAge) {
     Particle* p = new Particle(this, renderer->getEntityManager(), glm::translate(glm::mat4(1.0f), start), color, glm::vec3(0.0f), lifetime, 1.0f);
     p->setPrevPosition(dir);
     p->setPrevPrevPosition(start);
+    p->setAge(fakeAge);
 }
 
 void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {

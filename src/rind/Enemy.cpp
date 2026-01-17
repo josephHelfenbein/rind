@@ -25,6 +25,15 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
         face->setModel(entityManager->getRenderer()->getModelManager()->getModel("cube"));
         addChild(face);
         setHead(face);
+        gunEndPosition = new engine::Entity(
+            entityManager,
+            "playerGunEndPosition",
+            "",
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f)),
+            {},
+            false
+        );
+        face->addChild(gunEndPosition);
         audioManager = getEntityManager()->getRenderer()->getAudioManager();
         particleManager = getEntityManager()->getRenderer()->getParticleManager();
     }
@@ -164,15 +173,26 @@ void rind::Enemy::update(float deltaTime) {
         }
     } else {
         wanderTo(deltaTime);
-    }
+    }    
     engine::CharacterEntity::update(deltaTime);
+    if (trailFramesRemaining > 0) {
+        float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
+        glm::vec3 velocityOffset = getVelocity() * deltaTime;
+        glm::vec3 currentGunEndPos = glm::vec3(gunEndPosition->getWorldTransform()[3]) + velocityOffset;
+        particleManager->spawnTrail(
+            currentGunEndPos,
+            trailEndPos - currentGunEndPos,
+            trailColor,
+            deltaTime * 2.0f,
+            (static_cast<float>(maxTrailFrames) - static_cast<float>(trailFramesRemaining)) / static_cast<float>(maxTrailFrames) * deltaTime
+        );
+        trailFramesRemaining--;
+    }
 }
 
 void rind::Enemy::shoot() {
     glm::vec3 rayDir = -glm::normalize(glm::vec3(getHead()->getWorldTransform()[2]));
-    constexpr float framePrediction = 0.016f;
-    glm::vec3 velocityOffset = getVelocity() * framePrediction;
-    glm::vec3 gunPos = glm::vec3(getHead()->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f)) + velocityOffset;
+    glm::vec3 gunPos = glm::vec3(getHead()->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f));
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
@@ -186,11 +206,12 @@ void rind::Enemy::shoot() {
         gunPos,
         rayDir,
         1000.0f,
+        this->getCollider(),
         true
     );
     glm::vec3 endPos = gunPos + rayDir * 1000.0f;
-    for (engine::Collider::Collision& collision : hits) {
-        if (collision.other->getParent() == this) continue; // ignore self hits
+    if (!hits.empty()) {
+        engine::Collider::Collision collision = hits[0];
         endPos = collision.worldHitPoint;
         glm::vec3 normal = glm::normalize(collision.mtv.normal);
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
@@ -227,15 +248,10 @@ void rind::Enemy::shoot() {
         } else {
             audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);
         }
-        break;
     }
     audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
-    particleManager->spawnTrail(
-        gunPos,
-        endPos - gunPos,
-        glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
-        0.2f
-    );
+    trailFramesRemaining = maxTrailFrames;
+    trailEndPos = endPos;
 }
 
 void rind::Enemy::rotateToPlayer() {

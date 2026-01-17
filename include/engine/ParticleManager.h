@@ -40,6 +40,7 @@ namespace engine {
 
         void setPrevPosition(const glm::vec3& pos) { prevPosition = pos; }
         void setPrevPrevPosition(const glm::vec3& pos) { prevPrevPosition = pos; }
+        void setAge(float a) { age = a; }
 
         void markForDeletion() { markedForDeletion = true; }
         bool isMarkedForDeletion() const { return markedForDeletion; }
@@ -66,7 +67,7 @@ namespace engine {
         void clear();
 
         void burstParticles(const glm::mat4& transform, const glm::vec4& color, const glm::vec3& velocity, int count, float lifetime, float spread);
-        void spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime);
+        void spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec4& color, float lifetime, float fakeAge = 0.0f);
 
         void registerParticle(Particle* particle) {
             particles.push_back(particle);
