@@ -19,7 +19,7 @@ struct PushConstants {
 float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float2 screenUV = fragCoord.xy / pc.screenSize;
     float sceneDepth = gbufferDepth.Sample(gbufferSampler, screenUV);
-    if (fragCoord.z > sceneDepth) {
+    if (sceneDepth < 1.0 && fragCoord.z > sceneDepth) {
         discard;
     }
     

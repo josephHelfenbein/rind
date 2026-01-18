@@ -110,8 +110,8 @@ static const float3 sampleOffsetDirections[32] = {
     float3( 0,  0,  1), float3( 0,  0, -1), float3( 1,  1,  0), float3(-1,  1,  0),
     float3( 1, -1,  0), float3(-1, -1,  0), float3( 1,  0,  1), float3(-1,  0, -1),
     float3( 0,  1,  1), float3( 0, -1, -1), float3( 1,  0, -1), float3(-1,  0,  1),
-    float3( 0,  1, -1), float3( 0, -1,  1), float3( 0.5, 0.0, 1.0), float3(-0.5, 0.0, -1.0),
-    float3( 0.0, 0.5, 1.0), float3( 0.0, -0.5, -1.0), float3( 1.0, 0.5, 0.0), float3(-1.0, -0.5, 0.0)
+    float3( 0,  1, -1), float3( 0, -1,  1), float3(0.5, 0,  1), float3(-0.5,0, -1),
+    float3( 0, 0.5, 1), float3( 0,-0.5,-1), float3( 1,0.5,  0), float3(-1,-0.5, 0)
 };
 
 float linearizeDepth(float perspectiveDepth, float nearPlane, float farPlane) {
@@ -183,7 +183,9 @@ float4 main(VSOutput input) : SV_Target {
     float baseRoughness = materialSample.g;
     float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
     if (depth >= 0.9999) {
-        return float4(ACESFilm(albedoSample), 1.0); // Background
+        float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
+        float3 result = albedoSample + particleColor.rgb * particleColor.a;
+        return float4(ACESFilm(result), particleColor.a);
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
     float3 toCamera = pc.camPos - fragPos;

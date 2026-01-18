@@ -37,16 +37,16 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             "materials_lasergun_roughness",
             "materials_lasergun_normal"
         };
-        engine::Entity* gunModel = new engine::Entity(
+        gunModel = new engine::Entity(
             entityManager,
             "lasergun",
             "gbuffer",
             glm::scale(
                 glm::rotate(
-                    glm::translate(glm::mat4(1.0f), glm::vec3(0.55856, -0.273792, -0.642208)),
+                    glm::translate(glm::mat4(1.0f), gunModelTranslation),
                     glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)
                 ),
-                glm::vec3(0.16f)
+                glm::vec3(gunModelScale)
             ),
             gunMaterial,
             true
@@ -54,6 +54,20 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         gunModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("lasergun"));
         gunModel->setCastShadow(false);
         head->addChild(gunModel);
+        glm::vec3 cameraOffset = glm::vec3(0.4f, -0.15f, -1.0f);
+        glm::vec3 offsetFromGunOrigin = cameraOffset - gunModelTranslation;
+        glm::mat3 invRotation = glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
+        glm::vec3 rotatedOffset = invRotation * offsetFromGunOrigin;
+        glm::vec3 gunEndLocalOffset = rotatedOffset / gunModelScale;
+        gunEndPosition = new engine::Entity(
+            entityManager,
+            "playerGunEndPosition",
+            "",
+            glm::translate(glm::mat4(1.0f), gunEndLocalOffset),
+            {},
+            false
+        );
+        gunModel->addChild(gunEndPosition);
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.6f, 0.0f)),
@@ -93,18 +107,10 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         playerShadow->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot"));
         playerModel->addChild(playerShadow);
         playerShadow->playAnimation("Run", true, 1.0f);
-        gunEndPosition = new engine::Entity(
-            entityManager,
-            "playerGunEndPosition",
-            "",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.4f, -0.15f, -1.0f)),
-            {},
-            false
-        );
-        camera->addChild(gunEndPosition);
         inputManager->registerCallback("playerInput", [this](const std::vector<engine::InputEvent>& events) {
             this->registerInput(events);
         });
+        inputManager->resetKeyStates();
     }
 
 void rind::Player::update(float deltaTime) {
@@ -128,6 +134,35 @@ void rind::Player::update(float deltaTime) {
         }
     }
     engine::CharacterEntity::update(deltaTime);
+    if (currentGunRotOffset != glm::vec3(0.0f)) {
+        currentGunRotOffset -= currentGunRotOffset * deltaTime * 8.0f;
+    }
+    if (rotateVelocity != glm::vec3(0.0f)) {
+        currentGunRotOffset -= glm::vec3(rotateVelocity.x, rotateVelocity.y, 0.0f) * deltaTime * 0.1f;
+    }
+    currentGunRotOffset = glm::clamp(currentGunRotOffset, glm::vec3(-0.4f, -0.4f, -0.4f), glm::vec3(0.4f, 0.4f, 0.4f));
+    if (currentGunLocOffset != glm::vec3(0.0f)) {
+        currentGunLocOffset -= currentGunLocOffset * deltaTime * 8.0f;
+    }
+    glm::vec3 localVelocity = glm::inverse(glm::mat3(getWorldTransform())) * getVelocity();
+    if (localVelocity != glm::vec3(0.0f)) {
+        currentGunLocOffset -= localVelocity * deltaTime * 0.05f;
+    }
+    currentGunLocOffset = glm::clamp(currentGunLocOffset, glm::vec3(-0.25f, -0.25f, -0.25f), glm::vec3(0.25f, 0.25f, 0.25f));
+    glm::mat4 offsetMat = glm::mat4(1.0f) *
+        glm::rotate(glm::mat4(1.0f), currentGunRotOffset.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::rotate(glm::mat4(1.0f), currentGunRotOffset.x, glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::rotate(glm::mat4(1.0f), currentGunRotOffset.z, glm::vec3(0.0f, 0.0f, 1.0f));
+    offsetMat = glm::translate(offsetMat, currentGunLocOffset);
+    gunModel->setTransform(
+        glm::scale(
+            glm::rotate(
+                glm::translate(offsetMat, gunModelTranslation),
+                glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)
+            ),
+            glm::vec3(gunModelScale)
+        )
+    );
     if (trailFramesRemaining > 0) {
         engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
@@ -139,10 +174,10 @@ void rind::Player::update(float deltaTime) {
         glm::vec3 gunAfterYaw = playerWorldPos + velocityOffset + (yawDelta * gunOffsetFromPlayer);
         glm::vec3 playerRight = glm::normalize(glm::vec3(getWorldTransform()[0]));
         glm::quat pitchDelta = glm::angleAxis(rotateVelocity.x * deltaTime, yawDelta * playerRight);
-        glm::vec3 headWorldPos = getHead()->getWorldPosition();
-        glm::vec3 predictedHeadPos = playerWorldPos + velocityOffset + (yawDelta * (headWorldPos - playerWorldPos));
-        glm::vec3 gunOffsetFromHead = gunAfterYaw - predictedHeadPos;
-        glm::vec3 currentGunEndPos = predictedHeadPos + (pitchDelta * gunOffsetFromHead);
+        glm::vec3 gunModelWorldPos = glm::vec3(gunModel->getWorldTransform()[3]);
+        glm::vec3 predictedGunModelPos = playerWorldPos + velocityOffset + (yawDelta * (gunModelWorldPos - playerWorldPos));
+        glm::vec3 gunOffsetFromGunModel = gunAfterYaw - predictedGunModelPos;
+        glm::vec3 currentGunEndPos = predictedGunModelPos + (pitchDelta * gunOffsetFromGunModel);
         particleManager->spawnTrail(
             currentGunEndPos,
             trailEndPos - currentGunEndPos,
