@@ -1,5 +1,6 @@
 #include <engine/SceneManager.h>
 #include <engine/ParticleManager.h>
+#include <engine/AudioManager.h>
 
 engine::SceneManager::SceneManager(Renderer* renderer, std::vector<std::unique_ptr<Scene>> scenes)
     : renderer(renderer), scenes(std::move(scenes)) {
@@ -17,6 +18,7 @@ void engine::SceneManager::setActiveScene(int index) {
     renderer->getEntityManager()->clear();
     renderer->getUIManager()->clear();
     renderer->getParticleManager()->clear();
+    renderer->getAudioManager()->stopAllSounds();
     scenes[index]->run(renderer);
     renderer->refreshDescriptorSets();
 }

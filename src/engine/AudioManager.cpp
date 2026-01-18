@@ -125,29 +125,52 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
 }
 
 void engine::AudioManager::playSound(const std::string& name, float volume, bool varyPitch) {
-    if (m_sounds.find(name) != m_sounds.end()) {
-        ma_sound_set_volume(&m_sounds[name]->sound, volume);
-        if (varyPitch) {
-            float pitchVariation = dist(rng) * 0.1f;
-            float baseFrequency = 1.0f;
-            ma_sound_set_pitch(&m_sounds[name]->sound, baseFrequency + pitchVariation);
-        } else {
-            ma_sound_set_pitch(&m_sounds[name]->sound, 1.0f);
-        }
-        if (ma_sound_is_playing(&m_sounds[name]->sound)) {
-            ma_sound_stop(&m_sounds[name]->sound);
-            ma_sound_seek_to_pcm_frame(&m_sounds[name]->sound, 0);
-        } else if (ma_sound_at_end(&m_sounds[name]->sound)) {
-            ma_sound_seek_to_pcm_frame(&m_sounds[name]->sound, 0);
-        }
-        ma_sound_start(&m_sounds[name]->sound);
+    if (!m_initialized) return;
+    auto it = m_soundPaths.find(name);
+    if (it == m_soundPaths.end()) {
+        std::cerr << "Sound not found: " << name << std::endl;
+        return;
     }
+    auto data = std::make_unique<SoundData>();
+    ma_result result = ma_sound_init_from_file(&m_engine, it->second.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC, NULL, NULL, &data->sound);
+    
+    if (result != MA_SUCCESS) {
+        std::cerr << "Failed to init sound: " << name << std::endl;
+        return;
+    }
+
+    data->isLoaded = true;
+    ma_sound_set_spatialization_enabled(&data->sound, MA_FALSE);
+    ma_sound_set_volume(&data->sound, volume);
+
+    if (varyPitch) {
+        float pitchVariation = dist(rng) * 0.1f;
+        ma_sound_set_pitch(&data->sound, 1.0f + pitchVariation);
+    }
+
+    ma_sound_start(&data->sound);
+    m_oneShots.push_back(std::move(data));
 }
 
 void engine::AudioManager::stopSound(const std::string& name) {
     if (m_sounds.find(name) != m_sounds.end()) {
         ma_sound_stop(&m_sounds[name]->sound);
         ma_sound_seek_to_pcm_frame(&m_sounds[name]->sound, 0);
+    }
+}
+
+void engine::AudioManager::stopAllSounds() {
+    for (auto& [name, data] : m_sounds) {
+        if (data && data->isLoaded) {
+            ma_sound_stop(&data->sound);
+            ma_sound_seek_to_pcm_frame(&data->sound, 0);
+        }
+    }
+    for (auto& data : m_oneShots) {
+        if (data && data->isLoaded) {
+            ma_sound_stop(&data->sound);
+            ma_sound_seek_to_pcm_frame(&data->sound, 0);
+        }
     }
 }
 

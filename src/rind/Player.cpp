@@ -111,6 +111,8 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             this->registerInput(events);
         });
         inputManager->resetKeyStates();
+        particleManager = entityManager->getRenderer()->getParticleManager();
+        audioManager = entityManager->getRenderer()->getAudioManager();
     }
 
 void rind::Player::update(float deltaTime) {
@@ -164,7 +166,6 @@ void rind::Player::update(float deltaTime) {
         )
     );
     if (trailFramesRemaining > 0) {
-        engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
         glm::vec3 velocityOffset = getVelocity() * deltaTime;
         glm::vec3 gunEndWorldPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
@@ -379,6 +380,15 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastDashTime).count();
         if (duration >= dashCooldown && canDash) {
             dash(currentPress, 100.0f);
+            particleManager->burstParticles(
+                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                trailColor,
+                -glm::normalize(getVelocity()) * 20.0f,
+                50,
+                2.0f,
+                2.0f
+            );
+            audioManager->playSound3D("player_dash", getWorldPosition(), 0.5f, true);
             lastDashTime = now;
         }
     }
@@ -389,6 +399,7 @@ void rind::Player::damage(float amount) {
     if (getHealth() <= 0.0f && !isDead) {
         isDead = true;
         stopMove(getPressed(), false);
+        audioManager->playSound("player_death", 0.5f, true);
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
         if (getEntityManager()->getRenderer()->isPaused()) {
             hidePauseMenu();
@@ -397,7 +408,7 @@ void rind::Player::damage(float amount) {
             uiManager,
             glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), 
             "deathWindowTint",
-            glm::vec4(1.0f, 1.0f, 1.0f, 0.25f),
+            glm::vec4(0.5f, 0.0f, 0.0f, 0.8f),
             "ui_window"
         );
         engine::TextObject* diedText = new engine::TextObject(
@@ -423,6 +434,25 @@ void rind::Player::damage(float amount) {
             }
         );
         windowTint->addChild(quitButton);
+        particleManager->burstParticles(
+            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            trailColor,
+            glm::vec3(0.0f, 1.0f, 0.0f) * 5.0f,
+            200,
+            5.0f,
+            0.5f
+        );
+        particleManager->burstParticles(
+            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            trailColor,
+            glm::vec3(0.0f, 1.0f, 0.0f) * 10.0f,
+            200,
+            8.0f,
+            1.0f
+        );
+        getCollider()->setTransform(
+            glm::scale(getCollider()->getTransform(), glm::vec3(0.35f))
+        );
         getEntityManager()->getRenderer()->refreshDescriptorSets();
         getEntityManager()->getRenderer()->getInputManager()->setUIFocused(true);
         getEntityManager()->getRenderer()->toggleLockCursor(false);
@@ -433,7 +463,6 @@ void rind::Player::damage(float amount) {
 void rind::Player::shoot() {
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
-    engine::ParticleManager* particleManager = getEntityManager()->getRenderer()->getParticleManager();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
@@ -451,7 +480,6 @@ void rind::Player::shoot() {
         true
     );
     glm::vec3 endPos = gunPos + rayDir * 1000.0f;
-    engine::AudioManager* audioManager = getEntityManager()->getRenderer()->getAudioManager();
     if (!hits.empty()) {
         engine::Collider::Collision collision = hits[0];
         endPos = collision.worldHitPoint;
@@ -459,7 +487,7 @@ void rind::Player::shoot() {
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            trailColor,
             reflectedDir * 40.0f,
             50,
             4.0f,
@@ -467,7 +495,7 @@ void rind::Player::shoot() {
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            trailColor,
             reflectedDir * 25.0f,
             30,
             4.0f,
@@ -475,7 +503,7 @@ void rind::Player::shoot() {
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            trailColor,
             reflectedDir * 10.0f,
             50,
             2.0f,

@@ -138,7 +138,7 @@ void rind::Enemy::update(float deltaTime) {
                 float maxRotation = deltaTime * PI;
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
                 glm::vec3 headWorldPos = getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
-                glm::vec3 toPlayerFromHead = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - headWorldPos;
+                glm::vec3 toPlayerFromHead = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f) - headWorldPos;
                 float horizontalDist = glm::length(glm::vec2(toPlayerFromHead.x, toPlayerFromHead.z));
                 float targetPitch = atan2(toPlayerFromHead.y, horizontalDist);
                 glm::quat headRotation = glm::quat_cast(getHead()->getTransform());
@@ -195,7 +195,7 @@ void rind::Enemy::shoot() {
     glm::vec3 gunPos = glm::vec3(getHead()->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f));
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
-        glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+        trailColor,
         rayDir * 15.0f,
         10,
         3.0f,
@@ -217,7 +217,7 @@ void rind::Enemy::shoot() {
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+            trailColor,
             reflectedDir * 40.0f,
             50,
             4.0f,
@@ -225,7 +225,7 @@ void rind::Enemy::shoot() {
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+            trailColor,
             reflectedDir * 25.0f,
             30,
             4.0f,
@@ -233,7 +233,7 @@ void rind::Enemy::shoot() {
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
-            glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+            trailColor,
             reflectedDir * 10.0f,
             50,
             2.0f,

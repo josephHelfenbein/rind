@@ -29,7 +29,10 @@ namespace rind {
 
         glm::vec3 currentGunRotOffset = glm::vec3(0.0f);
         glm::vec3 currentGunLocOffset = glm::vec3(0.0f);
+        
         engine::InputManager* inputManager = nullptr;
+        engine::ParticleManager* particleManager = nullptr;
+        engine::AudioManager* audioManager = nullptr;
         float mouseSensitivity = 0.003f;
 
         engine::UIObject* pauseUIObject = nullptr;
@@ -42,7 +45,7 @@ namespace rind {
         std::chrono::steady_clock::time_point lastShotTime = std::chrono::steady_clock::now();
         
         bool canDash = false;
-        long long dashCooldown = 2000; // ms
+        long long dashCooldown = 1000; // ms
         std::chrono::steady_clock::time_point lastDashTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(dashCooldown);
 
         uint32_t trailFramesRemaining = 0u;

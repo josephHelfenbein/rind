@@ -33,6 +33,7 @@ namespace engine {
         void playSound3D(const std::string& name, const glm::vec3& position, float volume = 1.0f, bool varyPitch = false);
         
         void stopSound(const std::string& name);
+        void stopAllSounds();
 
         void setGlobalVolume(float volume);
 
