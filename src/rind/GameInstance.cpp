@@ -13,14 +13,15 @@
 static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
     // Title screen UI setup
     engine::UIManager* uiManager = renderer->getUIManager();
+    engine::EntityManager* entityManager = renderer->getEntityManager();
+    engine::ModelManager* modelManager = renderer->getModelManager();
     engine::SceneManager* sceneManager = renderer->getSceneManager();
-    engine::TextObject* titleText = new engine::TextObject(
+    engine::UIObject* logoObject = new engine::UIObject(
         uiManager,
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 1.0f)),
-        "TitleText",
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, -0.5f, 1.0f)), glm::vec3(0.0f, -200.0f, 0.0f)),
+        "LogoObject",
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "Rind",
-        "Lato",
+        "ui_logo-light",
         engine::Corner::Center
     );
     engine::ButtonObject* startButton = new engine::ButtonObject(
@@ -30,7 +31,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Start Game",
+        "START",
         "Lato",
         [sceneManager]() {
             sceneManager->setActiveScene(1);
@@ -38,20 +39,20 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
     );
     engine::ButtonObject* quitButton = new engine::ButtonObject(
         uiManager,
-        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -200.0f, 0.0f)), glm::vec3(0.12, 0.04, 1.0)),
+        glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -200.0f, 0.0f)), glm::vec3(0.12, 0.04, 1.0)),
         "QuitButton",
         glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Quit",
+        "QUIT",
         "Lato",
         []() {
             std::exit(0);
         }
     );
-    std::function<void()> settingsCallback = [renderer, titleText, startButton, quitButton]() {
+    std::function<void()> settingsCallback = [renderer, logoObject, startButton, quitButton]() {
         renderer->getSettingsManager()->showSettingsUI();
-        renderer->getUIManager()->removeObject(titleText->getName());
+        renderer->getUIManager()->removeObject(logoObject->getName());
         renderer->getUIManager()->removeObject(startButton->getName());
         renderer->getUIManager()->removeObjectDeferred("SettingsButton");
         renderer->getUIManager()->removeObject(quitButton->getName());
@@ -68,9 +69,93 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         glm::vec4(0.5f, 0.5f, 0.6f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Settings",
+        "SETTINGS",
         "Lato",
         settingsCallback
+    );
+    engine::Camera* camera = new engine::Camera(
+        entityManager,
+        "titleCamera",
+        glm::inverse(glm::lookAt(
+            glm::vec3(0.0f, 0.5f, 3.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        )),
+        45.0f,
+        0.1f,
+        150.0f
+    );
+    std::vector<std::string> groundMaterial = {
+        "materials_ground_albedo",
+        "materials_ground_metallic",
+        "materials_ground_roughness",
+        "materials_ground_normal"
+    };
+    engine::Model* platformModel = modelManager->getModel("groundplatform");
+    engine::Entity* boxplatform = new engine::Entity(
+        renderer->getEntityManager(),
+        "boxPlatform",
+        "gbuffer",
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(1.5f, 1.0f,1.5f)), glm::vec3(0.0f, -2.0f, 0.0f)),
+        groundMaterial
+    );
+    boxplatform->setModel(platformModel);
+    engine::Model* playerModel = modelManager->getModel("robot");
+    std::vector<std::string> gunMaterial = {
+        "materials_lasergun_albedo",
+        "materials_lasergun_metallic",
+        "materials_lasergun_roughness",
+        "materials_lasergun_normal"
+    };
+    std::vector<std::string> wallsMaterial = {
+        "materials_walls_albedo",
+        "materials_walls_metallic",
+        "materials_walls_roughness",
+        "materials_walls_normal"
+    };
+    engine::Model* walls = modelManager->getModel("walls");
+    engine::Entity* wallEntity = new engine::Entity(
+        entityManager,
+        "walls",
+        "gbuffer",
+        glm::mat4(1.0f),
+        wallsMaterial
+    );
+    wallEntity->setModel(walls);
+    engine::Entity* playerEntity = new engine::Entity(
+        entityManager,
+        "titlePlayer",
+        "gbuffer",
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.22f)),
+        gunMaterial
+    );
+    playerEntity->setModel(playerModel);
+    engine::Light* sceneLight = new engine::Light(
+        entityManager,
+        "titleLight",
+        glm::translate(glm::mat4(1.0f), glm::vec3(-3.0f, 1.5f, -4.0f)),
+        glm::vec3(1.0f, 0.5f, 0.5f),
+        0.25f,
+        30.0f,
+        false
+    );
+    engine::Light* sceneLight2 = new engine::Light(
+        entityManager,
+        "titleLight2",
+        glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 1.0f, 1.0f)),
+        glm::vec3(0.5f, 0.5f, 1.0f),
+        0.75f,
+        15.0f,
+        false
+    );
+    engine::Light* sceneLight3 = new engine::Light(
+        entityManager,
+        "titleLight3",
+        glm::translate(glm::mat4(1.0f), glm::vec3(-30.0f, 2.0f, 0.0f)),
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        2.0f,
+        200.0f,
+        false
     );
     renderer->getInputManager()->setUIFocused(true);
     renderer->toggleLockCursor(false);

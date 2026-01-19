@@ -95,9 +95,22 @@ namespace engine {
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
         glm::vec4 getTint() const { return tint; }
+        void setTint(const glm::vec4& tint) { this->tint = tint; }
         Corner getAnchorCorner() const { return anchorCorner; }
         std::function<void()>* getOnHover() const { return onHover; }
         std::function<void()>* getOnStopHover() const { return onStopHover; }
+        void setOnHover(std::function<void()>* onHover) {
+            if (this->onHover) {
+                delete this->onHover;
+            }
+            this->onHover = onHover;
+        }
+        void setOnStopHover(std::function<void()>* onStopHover) {
+            if (this->onStopHover) {
+                delete this->onStopHover;
+            }
+            this->onStopHover = onStopHover;
+        }
 
         UIManager* getUIManager() const { return uiManager; }
 
@@ -118,32 +131,18 @@ namespace engine {
 
     class ButtonObject : public UIObject {
     public:
-        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center)
-            : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
-                TextObject* textObj = new TextObject(uiManager, glm::mat4(1.0f), name + "_text", textColor, text, font, Corner::Center);
-                this->addChild(textObj);
-            }
+        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center);
 
-        void click() {
-            if (onClick) {
-                onClick();
-            }
-        }
+        void click();
 
     private:
         std::function<void()> onClick;
+        engine::AudioManager* audioManager = nullptr;
     };
 
     class CheckboxObject : public UIObject {
     public:
-        CheckboxObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, bool initialState, bool& toggleBool, Corner anchorCorner = Corner::Center, std::vector<CheckboxObject*> boundBools = {})
-            : UIObject(uiManager, transform, name, tint, "", anchorCorner), checkState(initialState), checked(toggleBool), boundBools(boundBools) {
-                if (initialState) {
-                    setTexture(checkedTexture);
-                } else {
-                    setTexture(uncheckedTexture);
-                }
-            }
+        CheckboxObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, bool initialState, bool& toggleBool, Corner anchorCorner = Corner::Center, std::vector<CheckboxObject*> boundBools = {}); 
 
         bool isChecked() const { return checked; }
 
@@ -176,12 +175,12 @@ namespace engine {
                 this->addChild(knobObject);
                 valueTextObject = new TextObject(
                     uiManager,
-                    glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(1.5f, 1.5f, 1.0f)), glm::vec3(-30.0f, 0.0f, 0.0f)),
+                    glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(1.5f, 1.5f, 1.0f)), glm::vec3(-165.0f, 0.0f, 0.0f)),
                     name + "_valueText",
                     glm::vec4(1.0f),
                     "",
                     "Lato",
-                    Corner::Left
+                    Corner::Right
                 );
                 this->addChild(valueTextObject);
                 if (isInteger) {

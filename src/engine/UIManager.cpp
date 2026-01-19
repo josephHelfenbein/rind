@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <limits>
 #include <engine/Renderer.h>
+#include <engine/AudioManager.h>
 
 engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover)
     : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover) {
@@ -73,6 +74,49 @@ void engine::UIObject::removeChild(TextObject* child) {
     children.erase(it, children.end());
     child->setParent(nullptr);
 }
+
+engine::ButtonObject::ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner)
+    : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
+        TextObject* textObj = new TextObject(uiManager, glm::mat4(1.0f), name + "_text", textColor, text, font, Corner::Center);
+        this->addChild(textObj);
+        setOnHover(new std::function<void()>([this]() {
+            glm::vec4 currentTint = this->getTint();
+            this->setTint(currentTint + glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+        }));
+        setOnStopHover(new std::function<void()>([this]() {
+            glm::vec4 currentTint = this->getTint();
+            this->setTint(currentTint - glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+        }));
+        audioManager = uiManager->getRenderer()->getAudioManager();
+    }
+
+void engine::ButtonObject::click() {
+    if (onClick) {
+        audioManager->playSound("ui_press", 0.5f, false, true);
+        onClick();
+    }
+}
+
+engine::CheckboxObject::CheckboxObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, bool initialState, bool& toggleBool, Corner anchorCorner, std::vector<CheckboxObject*> boundBools)
+    : UIObject(uiManager, transform, name, tint, "", anchorCorner), checkState(initialState), checked(toggleBool), boundBools(boundBools) {
+        if (initialState) {
+            setTexture(checkedTexture);
+        } else {
+            setTexture(uncheckedTexture);
+        }
+        setOnHover(new std::function<void()>([this]() {
+            glm::vec4 currentTint = this->getTint();
+            this->setTint(currentTint + glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+        }));
+        setOnStopHover(new std::function<void()>([this]() {
+            glm::vec4 currentTint = this->getTint();
+            this->setTint(currentTint - glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+        }));
+    }
 
  void engine::CheckboxObject::toggle() {
     checked = !checked;
@@ -591,12 +635,13 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
         const auto& fontInfo = fonts[object->getFont()];
         float scaleX = object->getScale().x * layoutScale;
         float scaleY = object->getScale().y * layoutScale;
+        const float textScaleFactor = 0.9f;
         if (object->getParent() != nullptr) {
             const float baseGlyphHeight = static_cast<float>(fontInfo.ascent - fontInfo.descent);
             const float targetHeight = parentRect.size.y * 0.6f;
             const float fitScale = targetHeight / std::max(baseGlyphHeight, 1.0f);
-            scaleX *= fitScale;
-            scaleY *= fitScale;
+            scaleX *= fitScale * textScaleFactor;
+            scaleY *= fitScale * textScaleFactor;
         }
         float penX = 0.0f;
         float minX = std::numeric_limits<float>::max();
@@ -609,8 +654,12 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
             maxX = std::max(maxX, xpos + w);
             penX += ch.advance * scaleX;
         }
-        float x = pixelRect.position.x - (minX == std::numeric_limits<float>::max() ? 0.0f : minX);
-        float y = pixelRect.position.y + pixelRect.size.y - fontInfo.ascent * scaleY;
+        float actualTextWidth = (minX <= maxX) ? (maxX - minX) : 0.0f;
+        float actualTextHeight = (fontInfo.ascent - fontInfo.descent) * scaleY;
+        float xOffset = (pixelRect.size.x - actualTextWidth) * 0.5f;
+        float yOffset = (pixelRect.size.y - actualTextHeight) * 0.5f;
+        float x = pixelRect.position.x + xOffset - (minX == std::numeric_limits<float>::max() ? 0.0f : minX);
+        float y = pixelRect.position.y + yOffset + actualTextHeight - fontInfo.ascent * scaleY;
 
         const std::string& text = object->getText();
         for (const char& c : text) {
@@ -622,11 +671,12 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
             glm::mat4 pixelModel(1.0f);
             pixelModel = glm::translate(pixelModel, glm::vec3(xpos + w / 2.0f, ypos + h / 2.0f, 0.0f));
             pixelModel = glm::scale(pixelModel, glm::vec3(w, h, 1.0f));
-            
-            UIPC pushConstants{};
-            pushConstants.tint = object->getTint();
-            pushConstants.model = pixelToNdc * pixelModel;
-            
+
+            UIPC pushConstants = {
+                .tint = object->getTint(),
+                .model = pixelToNdc * pixelModel
+            };
+
             if (!ch.descriptorSets.empty()) {
                 const uint32_t dsIndex = std::min<uint32_t>(frameIndex, static_cast<uint32_t>(ch.descriptorSets.size() - 1));
                 vkCmdBindDescriptorSets(
@@ -722,8 +772,9 @@ engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, do
     }
     if (hoveredObject && hoveredObject != lastHovered) {
         hoveredObject->getOnHover() ? (*hoveredObject->getOnHover())() : void();
-    } else if (!hoveredObject && lastHovered) {
-        lastHovered->getOnStopHover() ? (*lastHovered->getOnStopHover())() : void();
+    }
+    if (hoveredObject != lastHovered) {
+        lastHovered ? (lastHovered->getOnStopHover() ? (*lastHovered->getOnStopHover())() : void()) : void();
     }
     return hoveredObject;
 }

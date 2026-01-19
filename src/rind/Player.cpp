@@ -146,7 +146,7 @@ void rind::Player::update(float deltaTime) {
     if (currentGunLocOffset != glm::vec3(0.0f)) {
         currentGunLocOffset -= currentGunLocOffset * deltaTime * 8.0f;
     }
-    glm::vec3 localVelocity = glm::inverse(glm::mat3(getWorldTransform())) * getVelocity();
+    glm::vec3 localVelocity = glm::inverse(glm::mat3(camera->getWorldTransform())) * getVelocity();
     if (localVelocity != glm::vec3(0.0f)) {
         currentGunLocOffset -= localVelocity * deltaTime * 0.05f;
     }
@@ -183,7 +183,7 @@ void rind::Player::update(float deltaTime) {
             currentGunEndPos,
             trailEndPos - currentGunEndPos,
             trailColor,
-            deltaTime * 2.0f,
+            deltaTime * 1.5f,
             (static_cast<float>(maxTrailFrames) - static_cast<float>(trailFramesRemaining)) / static_cast<float>(maxTrailFrames) * deltaTime
         );
         trailFramesRemaining--;
@@ -216,7 +216,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Resume",
+        "RESUME",
         "Lato",
         [this]() {
             this->hidePauseMenu();
@@ -231,7 +231,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Settings",
+        "SETTINGS",
         "Lato",
         [this]() {
             engine::Renderer* renderer = this->getEntityManager()->getRenderer();
@@ -252,7 +252,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Main Menu",
+        "MENU",
         "Lato",
         [this]() {
             this->inputManager->unregisterCallback("playerInput");
@@ -269,7 +269,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
         "ui_window",
-        "Quit Game",
+        "QUIT",
         "Lato",
         [this]() {
             glfwSetWindowShouldClose(this->getEntityManager()->getRenderer()->getWindow(), GLFW_TRUE);
@@ -427,7 +427,7 @@ void rind::Player::damage(float amount) {
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             "ui_window",
-            "Menu",
+            "MENU",
             "Lato",
             [sceneManager]() {
                 sceneManager->setActiveScene(0);

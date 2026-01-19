@@ -18,7 +18,7 @@ void engine::CharacterEntity::update(float deltaTime) {
 }
 
 void engine::CharacterEntity::updateMovement(float deltaTime) {
-    const float MAX_DELTA_TIME = 0.1f; // clamp deltaTime to avoid large jumps, 100 ms
+    const float MAX_DELTA_TIME = 0.05f; // clamp deltaTime to avoid large jumps
     deltaTime = glm::min(deltaTime, MAX_DELTA_TIME);
     glm::vec3 desiredVel(0.0f);
     bool shouldDash = glm::length(dashing) > 1e-6f;
@@ -66,12 +66,12 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     int steps;
     if (totalMoveLength < 0.01f) {
         steps = 1; // small movement
-    } else if (totalMoveLength < 0.1f) {
+    } else if (totalMoveLength < 0.05f) {
         steps = 2; // slow movement
-    } else if (totalMoveLength < 0.3f) {
-        steps = 3; // normal movement
+    } else if (totalMoveLength < 0.15f) {
+        steps = 4; // normal movement
     } else {
-        steps = glm::min(static_cast<int>(glm::ceil(totalMoveLength / 0.1f)), 6); // fast movement
+        steps = glm::min(static_cast<int>(glm::ceil(totalMoveLength / 0.05f)), 12); // fast movement
     }
     
     const float subDt = deltaTime / static_cast<float>(steps);
@@ -107,15 +107,16 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
                 setTransform(applyWorldTranslation(getTransform(), offset));
                 float penetration = collision.mtv.penetrationDepth;
                 if (penetration > 1e-6f) {
-                    glm::vec3 n = mtv / penetration;
-                    float vn = glm::dot(velocity, n);
+                    glm::vec3 n = glm::normalize(mtv);
+                    float vn = glm::dot(frameVelocity, n);
                     if (vn < 0.0f) {
-                        velocity -= n * vn;
+                        frameVelocity -= n * vn;
+                        velocity -= n * glm::dot(velocity, n);
                     }
-                    setTransform(applyWorldTranslation(getTransform(), n * 0.001f)); // nudge out slightly
-                    if (n.y > groundedNormalThreshold && velocity.y <= 0.0f) {
+                    if (n.y > groundedNormalThreshold && frameVelocity.y <= 0.0f) {
                         touchedGround = true;
                         groundNormalAccum += n;
+                        frameVelocity.y = 0.0f;
                         velocity.y = 0.0f;
                     }
                 }
@@ -143,12 +144,12 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
                 setTransform(applyWorldTranslation(getTransform(), offset));
                 float penetration = collision.mtv.penetrationDepth;
                 if (penetration > 1e-6f) {
-                    glm::vec3 n = mtv / penetration;
-                    float vn = glm::dot(velocity, n);
+                    glm::vec3 n = glm::normalize(mtv);
+                    float vn = glm::dot(frameVelocity, n);
                     if (vn < 0.0f) {
-                        velocity -= n * vn;
+                        frameVelocity -= n * vn;
+                        velocity -= n * glm::dot(velocity, n);
                     }
-                    setTransform(applyWorldTranslation(getTransform(), n * 0.001f)); // nudge out slightly
                 }
             } else {
                 setTransform(applyWorldTranslation(getTransform(), hStep));
@@ -161,17 +162,17 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
             
             // check if MTV points up enough to be considered ground
             if (penetration > 1e-6f) {
-                glm::vec3 n = mtv / penetration;
+                glm::vec3 n = glm::normalize(mtv);
                 if (n.y > groundedNormalThreshold) {
                     touchedGround = true;
                     groundNormalAccum += n;
                 }
                 setTransform(applyWorldTranslation(getTransform(), mtv));
-                float vn = glm::dot(velocity, n);
+                float vn = glm::dot(frameVelocity, n);
                 if (vn < 0.0f) {
-                    velocity -= n * vn;
+                    frameVelocity -= n * vn;
+                    velocity -= n * glm::dot(velocity, n);
                 }
-                setTransform(applyWorldTranslation(getTransform(), n * 0.001f)); // nudge out slightly
             }
         }
     }

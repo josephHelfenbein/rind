@@ -45,7 +45,7 @@ namespace rind {
         std::chrono::steady_clock::time_point lastShotTime = std::chrono::steady_clock::now();
         
         bool canDash = false;
-        long long dashCooldown = 1000; // ms
+        long long dashCooldown = 500; // ms
         std::chrono::steady_clock::time_point lastDashTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(dashCooldown);
 
         uint32_t trailFramesRemaining = 0u;

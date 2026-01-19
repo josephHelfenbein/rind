@@ -158,13 +158,13 @@ void engine::Renderer::initVulkan() {
     ensureFallback2DTexture();
     ensureFallbackShadowCubeTexture();
     particleManager->init();
+    modelManager->init();
     sceneManager->setActiveScene(0);
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
     entityManager->createAllShadowMaps();
     createPostProcessDescriptorSets();
-    modelManager->init();
     createCommandBuffers();
     createSyncObjects();
     createQuadResources();

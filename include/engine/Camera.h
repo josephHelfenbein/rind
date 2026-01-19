@@ -9,7 +9,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace engine {
-    class Camera  : public Entity {
+    class Camera : public Entity {
     public:
         Camera(EntityManager* entityManager, const std::string& name, glm::mat4 transform, float fovY, float nearPlane, float farPlane, bool isMovable = true)
             : Entity(entityManager, name, "", transform, {}, isMovable),

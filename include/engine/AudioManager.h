@@ -29,7 +29,7 @@ namespace engine {
 
         bool loadSound(const std::string& name, const std::string& filePath);
         
-        void playSound(const std::string& name, float volume = 1.0f, bool varyPitch = false);
+        void playSound(const std::string& name, float volume = 1.0f, bool varyPitch = false, bool persistent = false);
         void playSound3D(const std::string& name, const glm::vec3& position, float volume = 1.0f, bool varyPitch = false);
         
         void stopSound(const std::string& name);
@@ -44,6 +44,7 @@ namespace engine {
         std::map<std::string, std::string> m_soundPaths;
         std::map<std::string, std::unique_ptr<SoundData>> m_sounds;
         std::vector<std::unique_ptr<SoundData>> m_oneShots;
+        std::vector<std::unique_ptr<SoundData>> m_persistentSounds;
         bool m_initialized = false;
 
         SettingsManager::Settings* settings = nullptr;

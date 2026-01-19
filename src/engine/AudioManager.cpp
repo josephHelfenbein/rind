@@ -45,6 +45,14 @@ void engine::AudioManager::update() {
         }
         return false;
     });
+    std::erase_if(m_persistentSounds, [](const auto& soundData) {
+        if (!soundData->isLoaded) return true;
+        if (!ma_sound_is_playing(&soundData->sound) && ma_sound_at_end(&soundData->sound)) {
+            ma_sound_uninit(&soundData->sound);
+            return true;
+        }
+        return false;
+    });
     if (!settings) {
         settings = renderer->getSettingsManager()->getSettings();
         return;
@@ -68,6 +76,12 @@ void engine::AudioManager::cleanup() {
             }
         }
         m_oneShots.clear();
+
+        for (auto& data : m_persistentSounds) {
+            if (data && data->isLoaded) {
+                ma_sound_uninit(&data->sound);
+            }
+        }
 
         ma_engine_uninit(&m_engine);
         m_initialized = false;
@@ -124,7 +138,7 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
     m_oneShots.push_back(std::move(data));
 }
 
-void engine::AudioManager::playSound(const std::string& name, float volume, bool varyPitch) {
+void engine::AudioManager::playSound(const std::string& name, float volume, bool varyPitch, bool persistent) {
     if (!m_initialized) return;
     auto it = m_soundPaths.find(name);
     if (it == m_soundPaths.end()) {
@@ -149,7 +163,11 @@ void engine::AudioManager::playSound(const std::string& name, float volume, bool
     }
 
     ma_sound_start(&data->sound);
-    m_oneShots.push_back(std::move(data));
+    if (persistent) {
+        m_persistentSounds.push_back(std::move(data));
+    } else {
+        m_oneShots.push_back(std::move(data));
+    }
 }
 
 void engine::AudioManager::stopSound(const std::string& name) {
