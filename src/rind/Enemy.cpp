@@ -8,28 +8,49 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), targetPlayer(player) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.6f, 0.0f)),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.25f, 0.0f)),
             name,
-            glm::vec3(0.8f, 1.8f, 0.8f)
+            glm::vec3(0.8f, 0.6f, 0.8f)
         );
         addChild(box);
         setCollider(box);
-        setModel(entityManager->getRenderer()->getModelManager()->getModel("cube"));
+        std::vector<std::string> gunMaterial = {
+            "materials_lasergun_albedo",
+            "materials_lasergun_metallic",
+            "materials_lasergun_roughness",
+            "materials_lasergun_normal"
+        };
+        engine::Entity* enemyModel = new engine::Entity(
+            entityManager,
+            "enemy1_model",
+            "gbuffer",
+            glm::rotate(
+                glm::mat4(1.0f),
+                glm::radians(90.0f),
+                glm::vec3(0.0f, 1.0f, 0.0f)
+            ),
+            gunMaterial
+        );
         engine::Entity* face = new engine::Entity(
             entityManager,
             "enemy1_face",
             "gbuffer",
-            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, -0.51f)), glm::vec3(0.5f, 0.5f, 1.0f)),
-            {}
+            glm::translate(
+                glm::mat4(1.0f),
+                glm::vec3(0.9f, 2.22f, 0.0f)
+            ),
+            gunMaterial
         );
-        face->setModel(entityManager->getRenderer()->getModelManager()->getModel("cube"));
-        addChild(face);
+        enemyModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("enemy"));
+        face->setModel(entityManager->getRenderer()->getModelManager()->getModel("enemy-head"));
+        enemyModel->addChild(face);
+        addChild(enemyModel);
         setHead(face);
         gunEndPosition = new engine::Entity(
             entityManager,
             "playerGunEndPosition",
             "",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f)),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.0f, 0.0f)),
             {},
             false
         );
@@ -84,7 +105,7 @@ void rind::Enemy::update(float deltaTime) {
                         hi = mid;
                     }
                 }
-                const float desiredDistance = 15.0f;
+                const float desiredDistance = 12.0f;
                 float safeDistance = glm::min(desiredDistance, distanceToPlayer + maxSafeBackup);
                 glm::vec3 targetDir = glm::normalize(glm::vec3(toPlayer.x, 0.0f, toPlayer.z));
                 float dot = glm::clamp(glm::dot(forward, targetDir), -1.0f, 1.0f);
@@ -137,16 +158,24 @@ void rind::Enemy::update(float deltaTime) {
                 float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
                 float maxRotation = deltaTime * PI;
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
-                glm::vec3 headWorldPos = getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
+                glm::vec3 headWorldPos = glm::vec3(getHead()->getWorldTransform()[3]);
                 glm::vec3 toPlayerFromHead = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f) - headWorldPos;
-                float horizontalDist = glm::length(glm::vec2(toPlayerFromHead.x, toPlayerFromHead.z));
-                float targetPitch = atan2(toPlayerFromHead.y, horizontalDist);
-                glm::quat headRotation = glm::quat_cast(getHead()->getTransform());
+                glm::mat4 headParentWorldTransform = getHead()->getParent()->getWorldTransform();
+                glm::mat3 headParentRotation = glm::mat3(headParentWorldTransform);
+                glm::vec3 toPlayerLocal = glm::transpose(headParentRotation) * toPlayerFromHead;
+                float horizontalDist = glm::length(glm::vec2(toPlayerLocal.x, toPlayerLocal.z));
+                float targetPitch = atan2(toPlayerLocal.y, horizontalDist);
+                glm::mat4 headTransform = getHead()->getTransform();
+                glm::quat headRotation = glm::quat_cast(headTransform);
                 glm::vec3 headEuler = glm::eulerAngles(headRotation);
-                float currentPitch = headEuler.x;
+                float currentPitch = headEuler.z;
                 float pitchDiff = targetPitch - currentPitch;
-                float headRotationAmount = glm::clamp(pitchDiff, -maxRotation, maxRotation);
-                rotate(glm::vec3(0.0f, rotationAmount, headRotationAmount));
+                float headPitchAmount = glm::clamp(pitchDiff, -maxRotation, maxRotation);
+                headEuler.z = glm::clamp(headEuler.z + headPitchAmount, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
+                glm::mat4 newHeadTransform = glm::mat4_cast(glm::quat(headEuler));
+                newHeadTransform[3] = headTransform[3];
+                getHead()->setTransform(newHeadTransform);
+                rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
                 if (lastShotTime + std::chrono::duration<float>(shootingCooldown) < std::chrono::steady_clock::now()) {
                     lastShotTime = std::chrono::steady_clock::now();
                     shoot();
@@ -191,8 +220,8 @@ void rind::Enemy::update(float deltaTime) {
 }
 
 void rind::Enemy::shoot() {
-    glm::vec3 rayDir = -glm::normalize(glm::vec3(getHead()->getWorldTransform()[2]));
-    glm::vec3 gunPos = glm::vec3(getHead()->getWorldTransform() * glm::vec4(0.4f, -0.15f, -1.0f, 1.0f));
+    glm::vec3 rayDir = -glm::normalize(glm::vec3(glm::rotate(getHead()->getWorldTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))[2]));
+    glm::vec3 gunPos = gunEndPosition->getWorldPosition();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         trailColor,
