@@ -76,7 +76,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         );
         addChild(box);
         setCollider(box);
-        engine::Entity* playerModel = new engine::Entity(
+        playerModel = new engine::Entity(
             entityManager,
             "playerModel",
             "gbuffer",
@@ -122,17 +122,17 @@ void rind::Player::update(float deltaTime) {
     float speed = horizontalSpeed + std::abs(rotateSpeed);
     glm::vec3 rotateVelocity = getRotateVelocity();
     if (speed > 0.1f) {
-        if (getChildByName("playerModel")->getAnimationState().currentAnimation != "Run") {
-            getChildByName("playerModel")->playAnimation("Run", true, speed / 5.0f);
-            getChildByName("playerModel")->getChildByName("playerShadow")->playAnimation("Run", true, speed / 5.0f);
+        if (playerModel->getAnimationState().currentAnimation != "Run") {
+            playerModel->playAnimation("Run", true, speed / 5.0f);
+            playerModel->getChildByName("playerShadow")->playAnimation("Run", true, speed / 5.0f);
         } else {
-            getChildByName("playerModel")->getAnimationState().playbackSpeed = speed / 5.0f;
-            getChildByName("playerModel")->getChildByName("playerShadow")->getAnimationState().playbackSpeed = speed / 5.0f;
+            playerModel->getAnimationState().playbackSpeed = speed / 5.0f;
+            playerModel->getChildByName("playerShadow")->getAnimationState().playbackSpeed = speed / 5.0f;
         }
     } else {
-        if (getChildByName("playerModel")->getAnimationState().currentAnimation != "Idle") {
-            getChildByName("playerModel")->playAnimation("Idle", true, 1.0f);
-            getChildByName("playerModel")->getChildByName("playerShadow")->playAnimation("Idle", true, 1.0f);
+        if (playerModel->getAnimationState().currentAnimation != "Idle") {
+            playerModel->playAnimation("Idle", true, 1.0f);
+            playerModel->getChildByName("playerShadow")->playAnimation("Idle", true, 1.0f);
         }
     }
     engine::CharacterEntity::update(deltaTime);

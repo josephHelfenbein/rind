@@ -8,19 +8,19 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
     : engine::CharacterEntity(entityManager, name, shader, transform, textures), targetPlayer(player) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.25f, 0.0f)),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.3f, 0.0f)),
             name,
-            glm::vec3(0.8f, 0.6f, 0.8f)
+            glm::vec3(0.9f, 0.7f, 0.9f)
         );
         addChild(box);
         setCollider(box);
         std::vector<std::string> gunMaterial = {
-            "materials_lasergun_albedo",
-            "materials_lasergun_metallic",
-            "materials_lasergun_roughness",
-            "materials_lasergun_normal"
+            "materials_enemy_albedo",
+            "materials_enemy_metallic",
+            "materials_enemy_roughness",
+            "materials_enemy_normal"
         };
-        engine::Entity* enemyModel = new engine::Entity(
+        enemyModel = new engine::Entity(
             entityManager,
             "enemy1_model",
             "gbuffer",
@@ -60,6 +60,21 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
     }
 
 void rind::Enemy::update(float deltaTime) {
+    const glm::vec3& vel = getVelocity();
+    float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
+    float rotateSpeed = std::abs(getRotateVelocity().y);
+    float speed = horizontalSpeed + std::abs(rotateSpeed);
+    if (speed > 0.1f) {
+        if (enemyModel->getAnimationState().currentAnimation != "Walk") {
+            enemyModel->playAnimation("Walk", true, speed / 5.0f);
+        } else {
+            enemyModel->getAnimationState().playbackSpeed = speed / 5.0f;
+        }
+    } else {
+        if (enemyModel->getAnimationState().currentAnimation != "Idle") {
+            enemyModel->playAnimation("Idle", true, 1.0f);
+        }
+    }
     if (targetPlayer) {
         glm::vec3 toPlayer = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - getWorldPosition();
         toPlayer.y = 0.0f;

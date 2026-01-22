@@ -26,6 +26,7 @@ namespace rind {
         const float gunModelScale = 0.16f;
         const glm::vec3 gunModelTranslation = glm::vec3(0.55856f, -0.273792f, -0.642208f);
         engine::Entity* gunModel = nullptr;
+        engine::Entity* playerModel = nullptr;
 
         glm::vec3 currentGunRotOffset = glm::vec3(0.0f);
         glm::vec3 currentGunLocOffset = glm::vec3(0.0f);
