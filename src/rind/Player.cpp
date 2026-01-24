@@ -8,11 +8,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {})
-    : engine::CharacterEntity(entityManager, name, shader, transform, textures), inputManager(inputManager) {
+rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, glm::mat4 transform)
+    : engine::CharacterEntity(entityManager, name, "", transform, {}), inputManager(inputManager) {
         engine::Entity* head = new engine::Entity(
             entityManager,
-            "player_head",
+            "playerHead",
             "",
             glm::mat4(1.0f),
             {},

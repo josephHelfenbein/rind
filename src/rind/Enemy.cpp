@@ -4,8 +4,8 @@
 
 #define PI 3.14159265358979323846f
 
-rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures)
-    : engine::CharacterEntity(entityManager, name, shader, transform, textures), targetPlayer(player) {
+rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform, uint32_t& enemyCount)
+    : engine::CharacterEntity(entityManager, name, "", transform, {}), targetPlayer(player), enemyCount(enemyCount) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.3f, 0.0f)),
@@ -31,6 +31,7 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
             ),
             gunMaterial
         );
+        addChild(enemyModel);
         engine::Entity* face = new engine::Entity(
             entityManager,
             "enemy1_face",
@@ -41,10 +42,9 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
             ),
             gunMaterial
         );
+        enemyModel->addChild(face);
         enemyModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("enemy"));
         face->setModel(entityManager->getRenderer()->getModelManager()->getModel("enemy-head"));
-        enemyModel->addChild(face);
-        addChild(enemyModel);
         setHead(face);
         gunEndPosition = new engine::Entity(
             entityManager,
@@ -86,7 +86,7 @@ void rind::Enemy::update(float deltaTime) {
                     state = EnemyState::Idle;
                 } else if (firstFrame) {
                     rotateToPlayer();
-                    dash(glm::vec3(0.0f, 1.0f, 1.0f), 200.0f);
+                    dash(glm::vec3(0.0f, 1.0f, 0.5f), 250.0f);
                     move(glm::vec3(0.0f, 0.0f, 1.0f), false);
                     firstFrame = false;
                 }

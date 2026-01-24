@@ -15,7 +15,11 @@ namespace rind {
     };
     class Enemy : public engine::CharacterEntity {
     public:
-        Enemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures);
+        Enemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform, uint32_t& enemyCount);
+
+        ~Enemy() {
+            enemyCount--;
+        }
 
         void update(float deltaTime) override;
         void damage(float amount) override;
@@ -39,6 +43,7 @@ namespace rind {
     private:
         engine::AudioManager* audioManager = nullptr;
         engine::ParticleManager* particleManager = nullptr;
+        uint32_t& enemyCount;
         EnemyState state = EnemyState::Spawning;
         bool firstFrame = true;
         Player* targetPlayer = nullptr;

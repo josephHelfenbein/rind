@@ -8,7 +8,7 @@
 #include <engine/io.h>
 
 #include <rind/Player.h>
-#include <rind/Enemy.h>
+#include <rind/EnemySpawner.h>
 
 static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
     // Title screen UI setup
@@ -406,17 +406,13 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         entityManager,
         renderer->getInputManager(),
         "player1",
-        "",
-        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f)),
-        {}
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f))
     );
-    rind::Enemy* enemy1 = new rind::Enemy(
+    rind::EnemySpawner* enemySpawner = new rind::EnemySpawner(
         entityManager,
         player,
-        "enemy1",
-        "",
-        glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, -10.0f, 0.0f)),
-        {}
+        "enemySpawner1",
+        glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -25.0f, 0.0f))
     );
     renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);

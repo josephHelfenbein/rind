@@ -8,7 +8,7 @@
 namespace rind {
     class Player : public engine::CharacterEntity {
     public:
-        Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures);
+        Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, glm::mat4 transform);
 
         void update(float deltaTime) override;
 
