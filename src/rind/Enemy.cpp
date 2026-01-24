@@ -80,6 +80,18 @@ void rind::Enemy::update(float deltaTime) {
         toPlayer.y = 0.0f;
         float distanceToPlayer = glm::length(toPlayer);
         switch (state) {
+            case EnemyState::Spawning: {
+                size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
+                if (hits > 0 && hits <= 2) {
+                    state = EnemyState::Idle;
+                } else if (firstFrame) {
+                    rotateToPlayer();
+                    dash(glm::vec3(0.0f, 1.0f, 1.0f), 200.0f);
+                    move(glm::vec3(0.0f, 0.0f, 1.0f), false);
+                    firstFrame = false;
+                }
+                break;
+            }
             case EnemyState::Idle: {
                 wanderTo(deltaTime);
                 if (checkVisibilityOfPlayer()) {
@@ -112,7 +124,7 @@ void rind::Enemy::update(float deltaTime) {
                     float mid = (lo + hi) * 0.5f;
                     glm::vec3 testPos = getWorldPosition() + backward * mid;
                     glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                    size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f).size();
+                    size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
                     if (hits > 0 && hits <= 2) {
                         maxSafeBackup = mid;
                         lo = mid;
@@ -203,7 +215,7 @@ void rind::Enemy::update(float deltaTime) {
                 glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
                 glm::vec3 testPos = getWorldPosition() + right * strafeDir.x * 2.0f;
                 glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f).size();
+                size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
                 if (hits > 0 && hits <= 2 ) {
                     if (getPressed() != strafeDir) {
                         stopMove(getPressed(), false);
@@ -217,7 +229,7 @@ void rind::Enemy::update(float deltaTime) {
         }
     } else {
         wanderTo(deltaTime);
-    }    
+    }
     engine::CharacterEntity::update(deltaTime);
     if (trailFramesRemaining > 0) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();

@@ -8,6 +8,7 @@
 
 namespace rind {
     enum class EnemyState {
+        Spawning,
         Idle,
         Chasing,
         Attacking
@@ -38,7 +39,8 @@ namespace rind {
     private:
         engine::AudioManager* audioManager = nullptr;
         engine::ParticleManager* particleManager = nullptr;
-        EnemyState state = EnemyState::Idle;
+        EnemyState state = EnemyState::Spawning;
+        bool firstFrame = true;
         Player* targetPlayer = nullptr;
         engine::Entity* enemyModel = nullptr;
         std::mt19937 rng{std::random_device{}()};

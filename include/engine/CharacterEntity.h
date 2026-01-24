@@ -25,6 +25,7 @@ namespace engine {
 
         const glm::vec3& getPressed() const { return pressed; }
         const glm::vec3& getVelocity() const { return velocity; }
+        void setVelocity(const glm::vec3& velocity) { this->velocity = velocity; }
 
         void setCollider(OBBCollider* collider) { this->collider = collider; }
         OBBCollider* getCollider() const { return collider; }
