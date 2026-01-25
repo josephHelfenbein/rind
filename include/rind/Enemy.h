@@ -21,11 +21,10 @@ namespace rind {
             enemyCount--;
         }
 
-        void update(float deltaTime) override;
         void damage(float amount) override;
 
-        void wander();
-        void wanderTo(float deltaTime);
+        virtual void wander() = 0;
+        virtual void wanderTo(float deltaTime) = 0;
         void setWanderTarget(const glm::vec3& target) {
             waiting = false;
             wandering = true;
@@ -37,10 +36,10 @@ namespace rind {
         bool checkVisibilityOfPlayer();
 
         EnemyState getState() const { return state; }
-        
+
         void rotateToPlayer();
 
-    private:
+    protected:
         engine::AudioManager* audioManager = nullptr;
         engine::ParticleManager* particleManager = nullptr;
         uint32_t& enemyCount;

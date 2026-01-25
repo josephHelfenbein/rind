@@ -5,6 +5,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace rind {
+    template<typename EnemyType>
     class EnemySpawner : public engine::Entity {
     public:
         EnemySpawner(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform)
@@ -33,7 +34,7 @@ namespace rind {
                     getWorldPosition()
                 )
             );
-            rind::Enemy* enemy = new rind::Enemy(
+            EnemyType* enemy = new EnemyType(
                 getEntityManager(),
                 targetPlayer,
                 enemyName,

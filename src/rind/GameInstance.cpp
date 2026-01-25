@@ -8,6 +8,7 @@
 #include <engine/io.h>
 
 #include <rind/Player.h>
+#include <rind/WalkingEnemy.h>
 #include <rind/EnemySpawner.h>
 
 static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
@@ -408,7 +409,7 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "player1",
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f))
     );
-    rind::EnemySpawner* enemySpawner = new rind::EnemySpawner(
+    rind::EnemySpawner<rind::WalkingEnemy>* enemySpawner = new rind::EnemySpawner<rind::WalkingEnemy>(
         entityManager,
         player,
         "enemySpawner1",
