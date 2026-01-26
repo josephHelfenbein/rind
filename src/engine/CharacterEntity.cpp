@@ -38,7 +38,7 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
             right = glm::normalize(right);
         }
 
-        glm::vec3 worldDir = right * pressed.x + forward * pressed.z;
+        glm::vec3 worldDir = right * pressed.x + glm::vec3(0.0f, 1.0f, 0.0f) * pressed.y + forward * pressed.z;
         glm::vec3 dashDir = right * dashing.x + glm::vec3(0.0f, 1.0f, 0.0f) * dashing.y + forward * dashing.z;
         float m = glm::length(worldDir);
         if (m > 1e-6f) {
@@ -52,7 +52,7 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     }
     velocity.x = desiredVel.x + dashVelocity.x;
     if (dashVelocity.y > 0.0f) {
-        velocity.y = std::min(velocity.y + dashVelocity.y, dashVelocity.y);
+        velocity.y = std::min(velocity.y + dashVelocity.y + desiredVel.y, dashVelocity.y + desiredVel.y);
     }
     velocity.z = desiredVel.z + dashVelocity.z;
     if (glm::length(dashVelocity) > 1e-6f) {

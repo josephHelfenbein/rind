@@ -9,6 +9,7 @@
 
 #include <rind/Player.h>
 #include <rind/WalkingEnemy.h>
+#include <rind/FlyingEnemy.h>
 #include <rind/EnemySpawner.h>
 
 static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
@@ -412,9 +413,15 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
     rind::EnemySpawner<rind::WalkingEnemy>* enemySpawner = new rind::EnemySpawner<rind::WalkingEnemy>(
         entityManager,
         player,
-        "enemySpawner1",
+        "groundEnemySpawner",
         glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -25.0f, 0.0f))
     );
+    // rind::EnemySpawner<rind::FlyingEnemy>* enemySpawner2 = new rind::EnemySpawner<rind::FlyingEnemy>(
+    //     entityManager,
+    //     player,
+    //     "airEnemySpawner",
+    //     glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 25.0f, 0.0f))
+    // );
     renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);
 };

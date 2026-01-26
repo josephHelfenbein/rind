@@ -56,39 +56,19 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
         );
         face->addChild(gunEndPosition);
         setGravityEnabled(false);
+        visionBox = {
+            .min = glm::vec3(-8.0f, -8.0f, -50.0f),
+            .max = glm::vec3(8.0f, 8.0f, 0.0f)
+        };
     }
 
 void rind::FlyingEnemy::update(float deltaTime) {
-    const glm::vec3& vel = getVelocity();
-    float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
-    float rotateSpeed = std::abs(getRotateVelocity().y);
-    float speed = horizontalSpeed + std::abs(rotateSpeed);
-    if (speed > 0.1f) {
-        if (enemyModel->getAnimationState().currentAnimation != "Walk") {
-            enemyModel->playAnimation("Walk", true, speed / 5.0f);
-        } else {
-            enemyModel->getAnimationState().playbackSpeed = speed / 5.0f;
-        }
-    } else {
-        if (enemyModel->getAnimationState().currentAnimation != "Idle") {
-            enemyModel->playAnimation("Idle", true, 1.0f);
-        }
-    }
     if (targetPlayer) {
-        glm::vec3 toPlayer = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - getWorldPosition();
-        toPlayer.y = 0.0f;
+        glm::vec3 toPlayer = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - getHead()->getWorldPosition();
         float distanceToPlayer = glm::length(toPlayer);
         switch (state) {
             case EnemyState::Spawning: {
-                size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
-                if (hits > 0 && hits <= 2) {
-                    state = EnemyState::Idle;
-                } else if (firstFrame) {
-                    rotateToPlayer();
-                    dash(glm::vec3(0.0f, 1.0f, 0.5f), 250.0f);
-                    move(glm::vec3(0.0f, 0.0f, 1.0f), false);
-                    firstFrame = false;
-                }
+                state = EnemyState::Idle;
                 break;
             }
             case EnemyState::Idle: {
@@ -109,32 +89,12 @@ void rind::FlyingEnemy::update(float deltaTime) {
                     audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, true);
                     break;
                 }
-                glm::mat4 t = getTransform();
+                glm::mat4 t = getHead()->getWorldTransform();
                 glm::vec3 forward = -glm::vec3(t[2]);
-                forward.y = 0.0f;
                 forward = glm::length(forward) > 1e-6f ? glm::normalize(forward) : glm::vec3(0.0f, 0.0f, -1.0f);
                 glm::vec3 backward = -forward;
-                const float maxBackupDist = 15.0f;
-                float lo = 0.0f;
-                float hi = maxBackupDist;
-                float maxSafeBackup = 0.0f;
-                const int binarySearchIterations = 8;
-                for (int i = 0; i < binarySearchIterations; ++i) {
-                    float mid = (lo + hi) * 0.5f;
-                    glm::vec3 testPos = getWorldPosition() + backward * mid;
-                    glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                    size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
-                    if (hits > 0 && hits <= 2) {
-                        maxSafeBackup = mid;
-                        lo = mid;
-                    } else {
-                        hi = mid;
-                    }
-                }
-                const float desiredDistance = 12.0f;
-                float safeDistance = glm::min(desiredDistance, distanceToPlayer + maxSafeBackup);
-                glm::vec3 targetDir = glm::normalize(glm::vec3(toPlayer.x, 0.0f, toPlayer.z));
-                float dot = glm::clamp(glm::dot(forward, targetDir), -1.0f, 1.0f);
+                glm::vec3 targetDir = glm::normalize(toPlayer);
+                float dot = glm::clamp(glm::dot(glm::vec3(forward.x, 0.0f, forward.z), glm::vec3(targetDir.x, 0.0f, targetDir.z)), -1.0f, 1.0f);
                 float angle = acos(dot);
                 glm::vec3 cross = glm::cross(forward, targetDir);
                 float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
@@ -142,26 +102,9 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
                 rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
                 bool facingPlayer = (angle < PI / 4.0f);
-                float distanceError = distanceToPlayer - safeDistance;
-                if (std::abs(distanceError) < 0.5f) {
-                    stopMove(getPressed(), false);
-                    state = EnemyState::Attacking;
-                } else if (distanceError > 0.0f && facingPlayer) {
-                    if (getPressed() != glm::vec3(0.0f, 0.0f, 1.0f)) {
-                        stopMove(getPressed(), false);
-                        move(glm::vec3(0.0f, 0.0f, 1.0f), false);
-                    }
-                } else if (distanceError < 0.0f && maxSafeBackup > 0.5f) {
-                    if (getPressed() != glm::vec3(0.0f, 0.0f, -1.0f)) {
-                        stopMove(getPressed(), false);
-                        move(glm::vec3(0.0f, 0.0f, -1.0f), false);
-                    }
-                } else if (!facingPlayer) {
-                    stopMove(getPressed(), false);
-                } else {
-                    stopMove(getPressed(), false);
-                    state = EnemyState::Attacking;
-                }
+                float desiredDistance = 10.0f;
+                float distanceError = distanceToPlayer - desiredDistance;
+                
                 break;
             }
             case EnemyState::Attacking: {
@@ -247,16 +190,24 @@ void rind::FlyingEnemy::update(float deltaTime) {
 
 void rind::FlyingEnemy::wander() {
     float direction = 0.0f;
+    float yOffset = 0.0f;
     float amount = 0.0f;
     uint32_t tries = 0;
+    glm::vec3 playerPos = targetPlayer->getWorldPosition();
     while (tries < 20) {
         direction = (dist(rng) + 1.0f) * PI;
+        yOffset = dist(rng);
         amount = (dist(rng) + 1.0f) * 10.0f;
-        glm::vec3 goal = glm::vec3(cos(direction), 0.0f, sin(direction)) * amount;
-        glm::vec3 worldGoal = getWorldPosition() + goal;
-        glm::vec3 rayOrigin = worldGoal + glm::vec3(0.0f, 2.0f, 0.0f);
-        size_t rayHits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f).size();
-        if (rayHits > 0 && rayHits <= 2 ) {
+        glm::vec3 goal = glm::normalize(glm::vec3(cos(direction), yOffset, sin(direction)));
+        glm::vec3 worldGoal = getWorldPosition() + goal * amount;
+        float originalDistanceToPlayer = glm::length(getWorldPosition() - playerPos);
+        float distanceToPlayer = glm::length(worldGoal - playerPos);
+        if (distanceToPlayer < 2.0f || (distanceToPlayer > 50.0f && distanceToPlayer > originalDistanceToPlayer)) {
+            tries++;
+            continue;
+        }
+        size_t rayHits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), goal, amount).size();
+        if (rayHits == 0) {
             wanderTarget = worldGoal;
             wandering = true;
             break;
@@ -282,7 +233,7 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
         return;
     }
     glm::vec3 toTarget = wanderTarget - getWorldPosition();
-    if (glm::length(glm::vec3(toTarget.x, 0.0f, toTarget.z)) <= 2.0f) {
+    if (glm::length(toTarget) <= 2.0f) {
         stopMove(getPressed(), false);
         wandering = false;
         waiting = true;
@@ -300,8 +251,7 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
     float maxRotation = deltaTime * 2 * PI;
     float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
     rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
-    if (getPressed() != glm::vec3(0.0f, 0.0f, -1.0f)) {
-        stopMove(getPressed(), false);
-        move(glm::vec3(1.0f, 0.0f, 0.0f));
-    }
+    float yDiff = wanderTarget.y - getWorldPosition().y;
+    stopMove(getPressed(), false);
+    move(glm::vec3(1.0f, yDiff * deltaTime, 0.0f));
 }
