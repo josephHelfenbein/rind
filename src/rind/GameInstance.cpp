@@ -410,18 +410,18 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "player1",
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f))
     );
-    rind::EnemySpawner<rind::WalkingEnemy>* enemySpawner = new rind::EnemySpawner<rind::WalkingEnemy>(
+    // rind::EnemySpawner<rind::WalkingEnemy>* enemySpawner = new rind::EnemySpawner<rind::WalkingEnemy>(
+    //    entityManager,
+      //  player,
+      //  "groundEnemySpawner",
+      //  glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -25.0f, 0.0f))
+    //);
+    rind::EnemySpawner<rind::FlyingEnemy>* enemySpawner2 = new rind::EnemySpawner<rind::FlyingEnemy>(
         entityManager,
         player,
-        "groundEnemySpawner",
-        glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -25.0f, 0.0f))
+        "airEnemySpawner",
+        glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 15.0f, 0.0f))
     );
-    // rind::EnemySpawner<rind::FlyingEnemy>* enemySpawner2 = new rind::EnemySpawner<rind::FlyingEnemy>(
-    //     entityManager,
-    //     player,
-    //     "airEnemySpawner",
-    //     glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 25.0f, 0.0f))
-    // );
     renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);
 };

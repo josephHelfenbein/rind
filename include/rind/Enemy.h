@@ -21,6 +21,7 @@ namespace rind {
             enemyCount--;
         }
 
+        void update(float deltaTime) override;
         void damage(float amount) override;
 
         virtual void wander() = 0;

@@ -74,6 +74,23 @@ void rind::Enemy::shoot() {
     trailEndPos = endPos;
 }
 
+void rind::Enemy::update(float deltaTime) {
+    engine::CharacterEntity::update(deltaTime);
+    if (trailFramesRemaining > 0) {
+        float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
+        glm::vec3 velocityOffset = getVelocity() * deltaTime;
+        glm::vec3 currentGunEndPos = glm::vec3(gunEndPosition->getWorldTransform()[3]) + velocityOffset;
+        particleManager->spawnTrail(
+            currentGunEndPos,
+            trailEndPos - currentGunEndPos,
+            trailColor,
+            deltaTime * 2.0f,
+            (static_cast<float>(maxTrailFrames) - static_cast<float>(trailFramesRemaining)) / static_cast<float>(maxTrailFrames) * deltaTime
+        );
+        trailFramesRemaining--;
+    }
+}
+
 void rind::Enemy::rotateToPlayer() {
     glm::vec3 toPlayer = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - getWorldPosition();
     toPlayer.y = 0.0f;

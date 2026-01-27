@@ -228,20 +228,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
     } else {
         wanderTo(deltaTime);
     }
-    engine::CharacterEntity::update(deltaTime);
-    if (trailFramesRemaining > 0) {
-        float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
-        glm::vec3 velocityOffset = getVelocity() * deltaTime;
-        glm::vec3 currentGunEndPos = glm::vec3(gunEndPosition->getWorldTransform()[3]) + velocityOffset;
-        particleManager->spawnTrail(
-            currentGunEndPos,
-            trailEndPos - currentGunEndPos,
-            trailColor,
-            deltaTime * 2.0f,
-            (static_cast<float>(maxTrailFrames) - static_cast<float>(trailFramesRemaining)) / static_cast<float>(maxTrailFrames) * deltaTime
-        );
-        trailFramesRemaining--;
-    }
+    rind::Enemy::update(deltaTime);
 }
 
 void rind::WalkingEnemy::wander() {
