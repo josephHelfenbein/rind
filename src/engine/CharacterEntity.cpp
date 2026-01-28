@@ -51,9 +51,7 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
         }
     }
     velocity.x = desiredVel.x + dashVelocity.x;
-    if (dashVelocity.y > 0.0f) {
-        velocity.y = std::min(velocity.y + dashVelocity.y + desiredVel.y, dashVelocity.y + desiredVel.y);
-    }
+    velocity.y += dashVelocity.y + desiredVel.y;
     velocity.z = desiredVel.z + dashVelocity.z;
     if (glm::length(dashVelocity) > 1e-6f) {
         float decayFactor = glm::exp(-dashDecayRate * deltaTime);

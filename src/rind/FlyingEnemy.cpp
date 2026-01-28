@@ -101,25 +101,31 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 float maxRotation = deltaTime * PI;
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
                 rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
-                float yOffset = toPlayer.y;
-                if (std::abs(yOffset) > 0.1f) {
-                    dash(glm::vec3(0.0f, glm::clamp(yOffset, -1.0f, 1.0f), 0.0f), 5.0f);
-                }
+                float desiredHeight = targetPlayer->getWorldPosition().y + 3.0f;
+                float currentHeight = getWorldPosition().y;
+                float yDiff = desiredHeight - currentHeight;
+                float targetYVel = yDiff * 2.0f;
+                float currentYVel = getVelocity().y;
+                float yVel = currentYVel + (targetYVel - currentYVel) * std::min(deltaTime * 5.0f, 1.0f);
+                yVel = std::clamp(yVel, -5.0f, 5.0f);
+                setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
                 bool facingPlayer = (angle < PI / 4.0f);
-                float desiredDistance = 15.0f;
+                float desiredDistance = 12.0f;
                 float distanceError = distanceToPlayer - desiredDistance;
                 if (distanceError < 0.5f && distanceError > -0.5f) {
                     stopMove(getPressed(), false);
                     state = EnemyState::Attacking;
                 } else if (distanceError > 0.5f && facingPlayer) {
-                    if (getPressed() != glm::vec3(0.0f, 0.0f, 1.0f)) {
+                    glm::vec3 desiredMove = glm::vec3(0.0f, 0.0f, 1.0f);
+                    if (getPressed() != desiredMove) {
                         stopMove(getPressed(), false);
-                        move(glm::vec3(0.0f, std::clamp(yOffset, -1.0f, 1.0f), 1.0f), false);
+                        move(desiredMove, false);
                     }
                 } else if (distanceError < -0.5f) {
-                    if (getPressed() != glm::vec3(0.0f, 0.0f, -1.0f)) {
+                    glm::vec3 desiredMove = glm::vec3(0.0f, 0.0f, -1.0f);
+                    if (getPressed() != desiredMove) {
                         stopMove(getPressed(), false);
-                        move(glm::vec3(0.0f, std::clamp(yOffset, -1.0f, 1.0f), -1.0f), false);
+                        move(desiredMove, false);
                     }
                 } else if (!facingPlayer) {
                     stopMove(getPressed(), false);
@@ -131,7 +137,7 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 break;
             }
             case EnemyState::Attacking: {
-                float backToChaseDistance = 20.0f;
+                float backToChaseDistance = 16.0f;
                 float switchToChaseChance = dist(rng) + 1.0f;
                 if (!checkVisibilityOfPlayer() 
                 || distanceToPlayer > backToChaseDistance
@@ -205,7 +211,11 @@ void rind::FlyingEnemy::wander() {
     glm::vec3 playerPos = targetPlayer->getWorldPosition();
     while (tries < 20) {
         direction = (dist(rng) + 1.0f) * PI;
-        yOffset = dist(rng);
+        yOffset = dist(rng) * 0.5f;
+        if ((getWorldPosition().y + yOffset <= -5.0f && yOffset < 0.0f)
+         || (getWorldPosition().y + yOffset >= 10.0f && yOffset > 0.0f)) {
+            yOffset = -yOffset;
+        }
         amount = (dist(rng) + 1.0f) * 10.0f;
         glm::vec3 goal = glm::normalize(glm::vec3(cos(direction), yOffset, sin(direction)));
         glm::vec3 worldGoal = getWorldPosition() + goal * amount;
@@ -261,6 +271,11 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
     float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
     rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
     float yDiff = wanderTarget.y - getWorldPosition().y;
+    float targetYVel = yDiff * 2.0f;
+    float currentYVel = getVelocity().y;
+    float yVel = currentYVel + (targetYVel - currentYVel) * std::min(deltaTime * 5.0f, 1.0f);
+    yVel = std::clamp(yVel, -5.0f, 5.0f);
+    setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
     stopMove(getPressed(), false);
-    move(glm::vec3(1.0f, std::clamp(yDiff, -1.0f, 1.0f), 0.0f));
+    move(glm::vec3(1.0f, 0.0f, 0.0f));
 }

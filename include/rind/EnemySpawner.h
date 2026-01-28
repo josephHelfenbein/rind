@@ -23,7 +23,8 @@ namespace rind {
             if (enemyCount >= maxEnemies) {
                 return;
             }
-            std::string enemyName = "enemy" + std::to_string(enemyCount++);
+            std::string enemyName = "enemy" + std::to_string(spawnedEnemies++);
+            enemyCount++;
             setTransform(
                 glm::translate(
                     glm::rotate(
@@ -47,6 +48,7 @@ namespace rind {
         float spawnInterval = 5.0f;
         float spawnTimer = 0.0f;
         uint32_t enemyCount = 0u;
+        uint32_t spawnedEnemies = 0u;
         uint32_t maxEnemies = 15u;
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
