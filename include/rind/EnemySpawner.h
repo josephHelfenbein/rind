@@ -23,7 +23,7 @@ namespace rind {
             if (enemyCount >= maxEnemies) {
                 return;
             }
-            std::string enemyName = "enemy" + std::to_string(spawnedEnemies++);
+            std::string enemyName = "enemy" + getName() + std::to_string(spawnedEnemies++);
             enemyCount++;
             setTransform(
                 glm::translate(
@@ -39,7 +39,7 @@ namespace rind {
                 getEntityManager(),
                 targetPlayer,
                 enemyName,
-                getWorldTransform(),
+                glm::translate(glm::mat4(1.0f), getWorldPosition()),
                 enemyCount
             );
         }

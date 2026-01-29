@@ -114,9 +114,8 @@ bool rind::Enemy::checkVisibilityOfPlayer() {
     }
     engine::AABB playerAABB = targetPlayer->getCollider()->getWorldAABB();
     std::array<glm::vec3, 8> corners = engine::Collider::getCornersFromAABB(visionBox);
-    glm::mat4 worldTransform = getWorldTransform();
     for (auto& corner : corners) {
-        corner = glm::vec3(worldTransform * glm::vec4(corner, 1.0f));
+        corner = glm::vec3(getWorldTransform() * glm::vec4(corner, 1.0f));
     }
     engine::AABB enemyVisionBox = engine::Collider::aabbFromCorners(corners);
     return engine::Collider::aabbIntersects(enemyVisionBox, playerAABB);

@@ -57,8 +57,8 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
         face->addChild(gunEndPosition);
         setGravityEnabled(false);
         visionBox = {
-            .min = glm::vec3(-8.0f, -8.0f, -50.0f),
-            .max = glm::vec3(8.0f, 8.0f, 0.0f)
+            .min = glm::vec3(-8.0f, -15.0f, -50.0f),
+            .max = glm::vec3(8.0f, 6.0f, 0.0f)
         };
     }
 
@@ -89,10 +89,9 @@ void rind::FlyingEnemy::update(float deltaTime) {
                     audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, true);
                     break;
                 }
-                glm::mat4 t = getHead()->getWorldTransform();
+                glm::mat4 t = getTransform();
                 glm::vec3 forward = -glm::vec3(t[2]);
                 forward = glm::length(forward) > 1e-6f ? glm::normalize(forward) : glm::vec3(0.0f, 0.0f, -1.0f);
-                glm::vec3 backward = -forward;
                 glm::vec3 targetDir = glm::normalize(toPlayer);
                 float dot = glm::clamp(glm::dot(glm::vec3(forward.x, 0.0f, forward.z), glm::vec3(targetDir.x, 0.0f, targetDir.z)), -1.0f, 1.0f);
                 float angle = acos(dot);
@@ -104,10 +103,10 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 float desiredHeight = targetPlayer->getWorldPosition().y + 3.0f;
                 float currentHeight = getWorldPosition().y;
                 float yDiff = desiredHeight - currentHeight;
-                float targetYVel = yDiff * 2.0f;
+                float targetYVel = yDiff * 10.0f;
                 float currentYVel = getVelocity().y;
-                float yVel = currentYVel + (targetYVel - currentYVel) * std::min(deltaTime * 5.0f, 1.0f);
-                yVel = std::clamp(yVel, -5.0f, 5.0f);
+                float yVel = currentYVel + (targetYVel - currentYVel) * deltaTime * 5.0f;
+                yVel = std::clamp(yVel, -10.0f, 10.0f);
                 setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
                 bool facingPlayer = (angle < PI / 4.0f);
                 float desiredDistance = 12.0f;
@@ -169,7 +168,7 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 float currentPitch = headEuler.z;
                 float pitchDiff = targetPitch - currentPitch;
                 float headPitchAmount = glm::clamp(pitchDiff, -maxRotation, maxRotation);
-                headEuler.z = glm::clamp(headEuler.z + headPitchAmount, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
+                headEuler.z = glm::clamp(currentPitch + headPitchAmount, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
                 glm::mat4 newHeadTransform = glm::mat4_cast(glm::quat(headEuler));
                 newHeadTransform[3] = headTransform[3];
                 getHead()->setTransform(newHeadTransform);
@@ -182,14 +181,13 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 if (std::abs(randX) < 0.95f && getPressed() != glm::vec3(0.0f)) {
                     break;
                 }
-                glm::vec3 strafeDir = glm::normalize(glm::vec3(randX, 0.0f, 0.0f));
+                float strafeDir = randX > 0.0f ? 1.0f : -1.0f;
                 glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-                glm::vec3 testPos = getWorldPosition() + right * strafeDir.x * 2.0f;
-                size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), right * strafeDir.x, 2.0f, this->getCollider()).size();
+                size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), right * strafeDir, 2.0f, this->getCollider()).size();
                 if (hits > 0) {
-                    if (getPressed() != strafeDir) {
+                    if (getPressed().x != strafeDir) {
                         stopMove(getPressed(), false);
-                        move(strafeDir, false);
+                        move(glm::vec3(strafeDir, 0.0f, 0.0f), false);
                     }
                 } else {
                     stopMove(getPressed(), false);
@@ -212,11 +210,11 @@ void rind::FlyingEnemy::wander() {
     while (tries < 20) {
         direction = (dist(rng) + 1.0f) * PI;
         yOffset = dist(rng) * 0.5f;
-        if ((getWorldPosition().y + yOffset <= -5.0f && yOffset < 0.0f)
-         || (getWorldPosition().y + yOffset >= 10.0f && yOffset > 0.0f)) {
+        amount = (dist(rng) + 1.0f) * 10.0f;
+        if ((getWorldPosition().y + yOffset * amount <= -5.0f && yOffset < 0.0f)
+         || (getWorldPosition().y + yOffset * amount >= 10.0f && yOffset > 0.0f)) {
             yOffset = -yOffset;
         }
-        amount = (dist(rng) + 1.0f) * 10.0f;
         glm::vec3 goal = glm::normalize(glm::vec3(cos(direction), yOffset, sin(direction)));
         glm::vec3 worldGoal = getWorldPosition() + goal * amount;
         float originalDistanceToPlayer = glm::length(getWorldPosition() - playerPos);
@@ -271,10 +269,10 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
     float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
     rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
     float yDiff = wanderTarget.y - getWorldPosition().y;
-    float targetYVel = yDiff * 2.0f;
+    float targetYVel = yDiff * 10.0f;
     float currentYVel = getVelocity().y;
-    float yVel = currentYVel + (targetYVel - currentYVel) * std::min(deltaTime * 5.0f, 1.0f);
-    yVel = std::clamp(yVel, -5.0f, 5.0f);
+    float yVel = currentYVel + (targetYVel - currentYVel) * deltaTime * 5.0f;
+    yVel = std::clamp(yVel, -10.0f, 10.0f);
     setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
     stopMove(getPressed(), false);
     move(glm::vec3(1.0f, 0.0f, 0.0f));

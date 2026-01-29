@@ -209,15 +209,15 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 if (std::abs(randX) < 0.95f && getPressed() != glm::vec3(0.0f)) {
                     break;
                 }
-                glm::vec3 strafeDir = glm::normalize(glm::vec3(randX, 0.0f, 0.0f));
+                float strafeDir = randX > 0.0f ? 1.0f : -1.0f;
                 glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-                glm::vec3 testPos = getWorldPosition() + right * strafeDir.x * 2.0f;
+                glm::vec3 testPos = getWorldPosition() + right * strafeDir * 2.0f;
                 glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
                 size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
                 if (hits > 0 && hits <= 2 ) {
-                    if (getPressed() != strafeDir) {
+                    if (getPressed().x != strafeDir) {
                         stopMove(getPressed(), false);
-                        move(strafeDir, false);
+                        move(glm::vec3(strafeDir, 0.0f, 0.0f), false);
                     }
                 } else {
                     stopMove(getPressed(), false);
