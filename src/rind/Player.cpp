@@ -374,7 +374,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             }
         }
     }
-    const glm::vec3 currentPress = getPressed();
+    const glm::vec3& currentPress = getPressed();
     if (glm::length(currentPress) > 1e-6f) {
         auto now = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastDashTime).count();

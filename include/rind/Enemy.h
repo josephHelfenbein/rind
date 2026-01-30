@@ -52,7 +52,7 @@ namespace rind {
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
 
         engine::AABB visionBox = {
-            .min = glm::vec3(-5.0f, -5.0f, -25.0f),
+            .min = glm::vec3(-5.0f, -5.0f, -40.0f),
             .max = glm::vec3(5.0f, 5.0f, 0.0f)
         };
 

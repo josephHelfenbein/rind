@@ -22,7 +22,7 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
         };
         enemyModel = new engine::Entity(
             entityManager,
-            "enemy1_model",
+            name + "Model",
             "gbuffer",
             glm::rotate(
                 glm::mat4(1.0f),
@@ -34,7 +34,7 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
         addChild(enemyModel);
         engine::Entity* face = new engine::Entity(
             entityManager,
-            "enemy1_face",
+            name + "Face",
             "gbuffer",
             glm::translate(
                 glm::mat4(1.0f),
@@ -48,7 +48,7 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
         setHead(face);
         gunEndPosition = new engine::Entity(
             entityManager,
-            "playerGunEndPosition",
+            name + "GunEndPosition",
             "",
             glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.0f, 0.0f)),
             {},

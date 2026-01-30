@@ -22,7 +22,7 @@ rind::WalkingEnemy::WalkingEnemy(engine::EntityManager* entityManager, rind::Pla
         };
         enemyModel = new engine::Entity(
             entityManager,
-            "enemy1_model",
+            name + "Model",
             "gbuffer",
             glm::rotate(
                 glm::mat4(1.0f),
@@ -34,7 +34,7 @@ rind::WalkingEnemy::WalkingEnemy(engine::EntityManager* entityManager, rind::Pla
         addChild(enemyModel);
         engine::Entity* face = new engine::Entity(
             entityManager,
-            "enemy1_face",
+            name + "Face",
             "gbuffer",
             glm::translate(
                 glm::mat4(1.0f),
@@ -48,7 +48,7 @@ rind::WalkingEnemy::WalkingEnemy(engine::EntityManager* entityManager, rind::Pla
         setHead(face);
         gunEndPosition = new engine::Entity(
             entityManager,
-            "playerGunEndPosition",
+            name + "GunEndPosition",
             "",
             glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.0f, 0.0f)),
             {},
@@ -214,7 +214,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 glm::vec3 testPos = getWorldPosition() + right * strafeDir * 2.0f;
                 glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
                 size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
-                if (hits > 0 && hits <= 2 ) {
+                if (hits > 0 && hits <= 2) {
                     if (getPressed().x != strafeDir) {
                         stopMove(getPressed(), false);
                         move(glm::vec3(strafeDir, 0.0f, 0.0f), false);

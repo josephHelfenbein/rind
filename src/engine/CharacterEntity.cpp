@@ -51,8 +51,8 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
         }
     }
     velocity.x = desiredVel.x + dashVelocity.x;
-    if (std::abs(dashVelocity.y) > 1e-6f || std::abs(desiredVel.y) > 1e-6f) {
-        velocity.y = std::min(velocity.y + dashVelocity.y + desiredVel.y, dashVelocity.y + desiredVel.y);
+    if (desiredVel.y > 1e-6f || dashVelocity.y > 1e-6f) {
+        velocity.y = std::min(desiredVel.y + dashVelocity.y, velocity.y + desiredVel.y + dashVelocity.y);
     }
     velocity.z = desiredVel.z + dashVelocity.z;
     if (glm::length(dashVelocity) > 1e-6f) {
@@ -66,7 +66,7 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
         velocity.y -= gravity * deltaTime;
     }
     const float totalMoveLength = glm::length(velocity * deltaTime);
-    int steps;
+    uint32_t steps;
     if (totalMoveLength < 0.01f) {
         steps = 1; // small movement
     } else if (totalMoveLength < 0.05f) {
@@ -81,24 +81,28 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     glm::vec3 frameVelocity = velocity;
     bool touchedGround = false;
     glm::vec3 groundNormalAccum(0.0f);
-    for (int i = 0; i < steps; ++i) {
-        glm::vec3 vStep(0.0f, frameVelocity.y * subDt, 0.0f);
-        if (std::abs(vStep.y) < 1e-6f && !touchedGround) {
-            Collider::Collision collision = willCollide(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.2f, 0.0f)));
-            if (collision.other) {
-                float penetration = collision.mtv.penetrationDepth;
-                if (penetration > 1e-6f) {
-                    glm::vec3 gn = collision.mtv.mtv / penetration;
-                    if (gn.y > groundedNormalThreshold) {
-                        touchedGround = true;
-                        groundNormalAccum += gn;
-                        if (velocity.y < 0.0f) {
-                            velocity.y = 0.0f;
-                        }
-                    }
-                }
+    Collider::Collision postCollision = willCollide(glm::mat4(1.0f));
+    if (postCollision.other) {
+        glm::vec3 mtv = postCollision.mtv.mtv;
+        float penetration = postCollision.mtv.penetrationDepth;
+        
+        // check if MTV points up enough to be considered ground
+        if (penetration > 1e-6f) {
+            glm::vec3 n = glm::normalize(mtv);
+            if (n.y > groundedNormalThreshold) {
+                touchedGround = true;
+                groundNormalAccum += n;
+            }
+            setTransform(applyWorldTranslation(getTransform(), mtv));
+            float vn = glm::dot(frameVelocity, n);
+            if (vn < 0.0f) {
+                frameVelocity -= n * vn;
+                velocity -= n * glm::dot(velocity, n);
             }
         }
+    }
+    for (uint32_t i = 0u; i < steps; ++i) {
+        glm::vec3 vStep(0.0f, frameVelocity.y * subDt, 0.0f);
         if (std::abs(vStep.y) >= 1e-6f) {
             Collider::Collision collision = willCollide(glm::translate(glm::mat4(1.0f), vStep));
             if (collision.other) {
@@ -158,31 +162,11 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
                 setTransform(applyWorldTranslation(getTransform(), hStep));
             }
         }
-        Collider::Collision postCollision = willCollide(glm::mat4(1.0f));
-        if (postCollision.other) {
-            glm::vec3 mtv = postCollision.mtv.mtv;
-            float penetration = postCollision.mtv.penetrationDepth;
-            
-            // check if MTV points up enough to be considered ground
-            if (penetration > 1e-6f) {
-                glm::vec3 n = glm::normalize(mtv);
-                if (n.y > groundedNormalThreshold) {
-                    touchedGround = true;
-                    groundNormalAccum += n;
-                }
-                setTransform(applyWorldTranslation(getTransform(), mtv));
-                float vn = glm::dot(frameVelocity, n);
-                if (vn < 0.0f) {
-                    frameVelocity -= n * vn;
-                    velocity -= n * glm::dot(velocity, n);
-                }
-            }
-        }
     }
     if (touchedGround) {
         grounded = true;
         groundedTimer = 0.0f;
-        if (velocity.y < 0.0f) {
+        if (velocity.y < 1e-6f) {
             velocity.y = 0.0f;
         }
     } else {

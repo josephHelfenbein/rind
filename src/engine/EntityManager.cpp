@@ -630,14 +630,15 @@ void engine::EntityManager::updateAll(float deltaTime) {
     }
     
     std::function<void(Entity*)> traverse = [&](Entity* entity) {
+        entity->updateWorldTransform();
         entity->update(deltaTime);
         entity->updateAnimation(deltaTime);
-        entity->updateWorldTransform();
         for (Entity* child : entity->getChildren()) {
             traverse(child);
         }
     };
-    for (Entity* rootEntity : rootEntities) {
+    std::vector<Entity*> rootsCopy = rootEntities;
+    for (Entity* rootEntity : rootsCopy) {
         traverse(rootEntity);
     }
     loadTextures();
@@ -646,7 +647,8 @@ void engine::EntityManager::updateAll(float deltaTime) {
 void engine::EntityManager::processPendingDeletions() {
     if (pendingDeletions.empty()) return;
     vkDeviceWaitIdle(renderer->getDevice());
-    for (Entity* entity : pendingDeletions) {
+    std::vector<Entity*> deletionsCopy = pendingDeletions;
+    for (Entity* entity : deletionsCopy) {
         if (entity) {
             removeEntity(entity->getName());
         }

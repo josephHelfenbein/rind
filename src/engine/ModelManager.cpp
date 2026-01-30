@@ -225,7 +225,6 @@ void engine::Model::loadFromFile() {
                 tempVertices[base + 0] = v.x;
                 tempVertices[base + 1] = v.y;
                 tempVertices[base + 2] = v.z;
-                // Update AABB
                 if (index == 0 && aabb.min == glm::vec3(FLT_MAX)) {
                     aabb.min = v;
                     aabb.max = v;
