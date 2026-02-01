@@ -422,13 +422,27 @@ void engine::EntityManager::destroyDummySkinningBuffer() {
 }
 
 void engine::EntityManager::addEntity(const std::string& name, Entity* entity) {
-    entities[name] = entity;
+    pendingAdditions.push_back(std::make_pair(name, entity));
+}
 
-    if (entities[name]->getIsMovable()) {
-        addMovableEntry(entity);
+void engine::EntityManager::processPendingAdditions() {
+    bool resetShadows = false;
+    for (const auto& [name, entity] : pendingAdditions) {
+        entities[name] = entity;
+        if (entities[name]->getIsMovable()) {
+            addMovableEntry(entity);
+        }
+        if (entities[name]->getParent() == nullptr) {
+            addRootEntry(entity);
+        }
+        if (!entity->getIsMovable() && entity->getShader() == "gbuffer") {
+            resetShadows = true;
+        }
     }
-    if (entities[name]->getParent() == nullptr) {
-        addRootEntry(entity);
+    pendingAdditions.clear();
+    if (resetShadows) {
+        createAllShadowMaps();
+        renderer->refreshDescriptorSets();
     }
 }
 

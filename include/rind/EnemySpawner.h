@@ -13,7 +13,9 @@ namespace rind {
 
         void update(float deltaTime) override {
             spawnTimer += deltaTime;
-            if (spawnTimer >= spawnInterval) {
+            float timeRandomness = (dist(rng) - 0.5f) * 2.0f;
+            float adjustedSpawnInterval = spawnInterval + timeRandomness;
+            if (spawnTimer >= adjustedSpawnInterval) {
                 spawnTimer = 0.0f;
                 spawnEnemy();
             }
@@ -45,11 +47,11 @@ namespace rind {
         }
 
         rind::Player* targetPlayer = nullptr;
-        float spawnInterval = 5.0f;
-        float spawnTimer = 0.0f;
+        float spawnInterval = 6.5f;
+        float spawnTimer = 4.0f;
         uint32_t enemyCount = 0u;
         uint32_t spawnedEnemies = 0u;
-        uint32_t maxEnemies = 15u;
+        uint32_t maxEnemies = 10u;
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
     };

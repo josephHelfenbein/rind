@@ -8,8 +8,6 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <memory>
-#include <format>
 #include <glm/glm.hpp>
 
 namespace engine {
@@ -182,6 +180,7 @@ namespace engine {
             pendingDeletions.push_back(entity);
         }
         void processPendingDeletions();
+        void processPendingAdditions();
 
     private:
         engine::Renderer* renderer;
@@ -192,6 +191,7 @@ namespace engine {
         std::vector<Collider*> colliders;
         std::vector<Light*> lights;
         std::vector<Entity*> pendingDeletions;
+        std::vector<std::pair<std::string, Entity*>> pendingAdditions;
         SpatialGrid spatialGrid{10.0f};
         bool spatialGridDirty = true;
 

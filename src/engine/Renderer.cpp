@@ -258,6 +258,7 @@ void engine::Renderer::drawFrame() {
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     fpsFrameCount++;
     entityManager->processPendingDeletions();
+    entityManager->processPendingAdditions();
 }
 
 void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {

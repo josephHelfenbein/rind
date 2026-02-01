@@ -1,11 +1,15 @@
 #include <rind/Enemy.h>
 #include <engine/ParticleManager.h>
 #include <glm/gtc/quaternion.hpp>
+#include <stdexcept>
 
 #define PI 3.14159265358979323846f
 
 rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform, uint32_t& enemyCount)
     : engine::CharacterEntity(entityManager, name, "", transform, {}), targetPlayer(player), enemyCount(enemyCount) {
+        if (player == nullptr) {
+            throw std::runtime_error("Enemy spawned without player reference");
+        }
         audioManager = getEntityManager()->getRenderer()->getAudioManager();
         particleManager = getEntityManager()->getRenderer()->getParticleManager();
     }

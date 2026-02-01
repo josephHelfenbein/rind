@@ -81,26 +81,6 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     glm::vec3 frameVelocity = velocity;
     bool touchedGround = false;
     glm::vec3 groundNormalAccum(0.0f);
-    Collider::Collision postCollision = willCollide(glm::mat4(1.0f));
-    if (postCollision.other) {
-        glm::vec3 mtv = postCollision.mtv.mtv;
-        float penetration = postCollision.mtv.penetrationDepth;
-        
-        // check if MTV points up enough to be considered ground
-        if (penetration > 1e-6f) {
-            glm::vec3 n = glm::normalize(mtv);
-            if (n.y > groundedNormalThreshold) {
-                touchedGround = true;
-                groundNormalAccum += n;
-            }
-            setTransform(applyWorldTranslation(getTransform(), mtv));
-            float vn = glm::dot(frameVelocity, n);
-            if (vn < 0.0f) {
-                frameVelocity -= n * vn;
-                velocity -= n * glm::dot(velocity, n);
-            }
-        }
-    }
     for (uint32_t i = 0u; i < steps; ++i) {
         glm::vec3 vStep(0.0f, frameVelocity.y * subDt, 0.0f);
         if (std::abs(vStep.y) >= 1e-6f) {
@@ -160,6 +140,26 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
                 }
             } else {
                 setTransform(applyWorldTranslation(getTransform(), hStep));
+            }
+        }
+    }
+    Collider::Collision postCollision = willCollide(glm::mat4(1.0f));
+    if (postCollision.other) {
+        glm::vec3 mtv = postCollision.mtv.mtv;
+        float penetration = postCollision.mtv.penetrationDepth;
+        
+        // check if MTV points up enough to be considered ground
+        if (penetration > 1e-6f) {
+            glm::vec3 n = glm::normalize(mtv);
+            if (n.y > groundedNormalThreshold) {
+                touchedGround = true;
+                groundNormalAccum += n;
+            }
+            setTransform(applyWorldTranslation(getTransform(), mtv));
+            float vn = glm::dot(frameVelocity, n);
+            if (vn < 0.0f) {
+                frameVelocity -= n * vn;
+                velocity -= n * glm::dot(velocity, n);
             }
         }
     }
