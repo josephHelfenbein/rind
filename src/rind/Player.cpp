@@ -111,11 +111,46 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             this->registerInput(events);
         });
         inputManager->resetKeyStates();
+        const float healthbarWidth = 1920.0f;
+        float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;
+        float healthbarScale = healthbarDisplayWidth / healthbarWidth;
+        healthbarEmptyObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
+            "healthbarEmpty",
+            glm::vec4(1.0f),
+            "ui_healthbar_empty",
+            engine::Corner::Bottom
+        );
+        healthbarObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
+            "healthbarFull",
+            glm::vec4(1.0f),
+            "ui_healthbar_full",
+            engine::Corner::Bottom
+        );
+        entityManager->getRenderer()->getInputManager()->registerRecreateSwapChainCallback("playerHealthbarResize", [this]() {
+            this->resizeHealthbar();
+        });
         particleManager = entityManager->getRenderer()->getParticleManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
     }
 
+void rind::Player::resizeHealthbar() {
+    const float healthbarWidth = 1920.0f;
+    float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;
+    float healthbarScale = healthbarDisplayWidth / healthbarWidth;
+    healthbarEmptyObject->setTransform(
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
+    );
+    healthbarObject->setTransform(
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
+    );
+}
+
 void rind::Player::update(float deltaTime) {
+    
     const glm::vec3& vel = getVelocity();
     float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
     float rotateSpeed = std::abs(getRotateVelocity().y);
@@ -256,6 +291,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         "Lato",
         [this]() {
             this->inputManager->unregisterCallback("playerInput");
+            this->inputManager->unregisterCallback("playerHealthbarResize");
             this->inputManager->resetKeyStates();
             this->hidePauseMenu();
             this->getEntityManager()->getRenderer()->getSceneManager()->setActiveScene(0);
@@ -396,6 +432,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
 
 void rind::Player::damage(float amount) {
     setHealth(getHealth() - amount);
+    healthbarObject->setUVClip(glm::vec4(0.0f, 0.0f, getHealth() / getMaxHealth(), 1.0f));
     if (getHealth() <= 0.0f && !isDead) {
         isDead = true;
         stopMove(getPressed(), false);

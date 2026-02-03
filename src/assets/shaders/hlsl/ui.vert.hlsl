@@ -9,8 +9,9 @@ struct VSOutput {
 };
 
 struct PushConstants {
-    float3 tint;
     float4x4 model;
+    float4 tint;
+    float4 uvClip;
 };
 
 [[vk::push_constant]] PushConstants pc;

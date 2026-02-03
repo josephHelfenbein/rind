@@ -23,7 +23,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, -0.5f, 1.0f)), glm::vec3(0.0f, -200.0f, 0.0f)),
         "LogoObject",
         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "ui_logo-light",
+        "ui_logo_light",
         engine::Corner::Center
     );
     engine::ButtonObject* startButton = new engine::ButtonObject(

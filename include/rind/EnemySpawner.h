@@ -47,8 +47,8 @@ namespace rind {
         }
 
         rind::Player* targetPlayer = nullptr;
-        float spawnInterval = 6.5f;
-        float spawnTimer = 4.0f;
+        float spawnInterval = 8.0f;
+        float spawnTimer = 5.0f;
         uint32_t enemyCount = 0u;
         uint32_t spawnedEnemies = 0u;
         uint32_t maxEnemies = 10u;

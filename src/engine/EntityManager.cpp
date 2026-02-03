@@ -436,7 +436,16 @@ void engine::EntityManager::processPendingAdditions() {
             addRootEntry(entity);
         }
         if (!entity->getIsMovable() && entity->getShader() == "gbuffer") {
-            resetShadows = true;
+            bool hasMovableParent = false;
+            Entity* current = entity->getParent();
+            while (current) {
+                if (current->getIsMovable()) {
+                    hasMovableParent = true;
+                    break;
+                }
+                current = current->getParent();
+            }
+            resetShadows = !hasMovableParent;
         }
     }
     pendingAdditions.clear();
@@ -733,8 +742,9 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
                 }
             } else if (type == std::type_index(typeid(UIPC))) {
                 UIPC pc = {
+                    .model = entity->getWorldTransform(),
                     .tint = glm::vec4(1.0f),
-                    .model = entity->getWorldTransform()
+                    .uvClip = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f)
                 };
                 vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(UIPC), &pc);
             }

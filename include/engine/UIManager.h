@@ -96,6 +96,8 @@ namespace engine {
         bool isEnabled() const { return enabled; }
         glm::vec4 getTint() const { return tint; }
         void setTint(const glm::vec4& tint) { this->tint = tint; }
+        glm::vec4 getUVClip() const { return uvClip; }
+        void setUVClip(const glm::vec4& uvClip) { this->uvClip = uvClip; }
         Corner getAnchorCorner() const { return anchorCorner; }
         std::function<void()>* getOnHover() const { return onHover; }
         std::function<void()>* getOnStopHover() const { return onStopHover; }
@@ -118,6 +120,7 @@ namespace engine {
         UIManager* uiManager;
         std::string name;
         glm::vec4 tint;
+        glm::vec4 uvClip = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
         glm::mat4 transform;
         Corner anchorCorner;
         std::string texture;

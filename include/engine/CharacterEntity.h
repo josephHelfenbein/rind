@@ -22,6 +22,8 @@ namespace engine {
 
         const float getHealth() const { return health; }
         void setHealth(float health) { this->health = health; }
+        const float getMaxHealth() const { return maxHealth; }
+        void setMaxHealth(float maxHealth) { this->maxHealth = maxHealth; }
 
         const glm::vec3& getPressed() const { return pressed; }
         const glm::vec3& getVelocity() const { return velocity; }
@@ -39,6 +41,7 @@ namespace engine {
         Collider::Collision willCollide(const glm::mat4& deltaTransform);
     private:
         float health = 100.0f;
+        float maxHealth = 100.0f;
         glm::vec3 velocity = glm::vec3(0.0f);
         glm::vec3 pressed = glm::vec3(0.0f);
         glm::vec3 dashing = glm::vec3(0.0f);

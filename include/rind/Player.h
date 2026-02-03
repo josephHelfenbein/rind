@@ -19,6 +19,8 @@ namespace rind {
         void shoot();
         void damage(float amount) override;
 
+        void resizeHealthbar();
+
     private:
         engine::Camera* camera = nullptr;
         engine::Entity* gunEndPosition = nullptr;
@@ -37,6 +39,8 @@ namespace rind {
         float mouseSensitivity = 0.003f;
 
         engine::UIObject* pauseUIObject = nullptr;
+        engine::UIObject* healthbarObject = nullptr;
+        engine::UIObject* healthbarEmptyObject = nullptr;
 
         bool isDead = false;
 

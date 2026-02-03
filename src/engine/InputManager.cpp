@@ -69,6 +69,9 @@ void engine::InputManager::dispatch(const std::vector<InputEvent>& events) {
             if (callbacks.find(name) != callbacks.end()) {
                 callbacks.erase(name);
             }
+            if (recreateSwapChainCallbacks.find(name) != recreateSwapChainCallbacks.end()) {
+                recreateSwapChainCallbacks.erase(name);
+            }
         }
         unregisterQueue.clear();
     }
@@ -77,9 +80,21 @@ void engine::InputManager::dispatch(const std::vector<InputEvent>& events) {
     }
 }
 
+void engine::InputManager::dispatchRecreateSwapChain() {
+    for (const auto& [name, callback] : recreateSwapChainCallbacks) {
+        callback();
+    }
+}
+
 void engine::InputManager::registerCallback(const std::string& name, std::function<void(const std::vector<InputEvent>&)> callback) {
     if (callback) {
         callbacks[name] = std::move(callback);
+    }
+}
+
+void engine::InputManager::registerRecreateSwapChainCallback(const std::string& name, std::function<void()> callback) {
+    if (callback) {
+        recreateSwapChainCallbacks[name] = std::move(callback);
     }
 }
 

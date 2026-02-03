@@ -18,8 +18,9 @@ namespace engine {
     };
 
     struct UIPC {
-        glm::vec4 tint;
         glm::mat4 model;
+        glm::vec4 tint;
+        glm::vec4 uvClip;
     };
 
     struct ShadowPC {

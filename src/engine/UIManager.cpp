@@ -620,6 +620,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
         
         UIPC pushConstants{};
         pushConstants.tint = object->getTint();
+        pushConstants.uvClip = object->getUVClip();
         pushConstants.model = pixelToNdc * pixelModel;
         vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(UIPC), &pushConstants);
         vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
@@ -673,8 +674,9 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node
             pixelModel = glm::scale(pixelModel, glm::vec3(w, h, 1.0f));
 
             UIPC pushConstants = {
+                .model = pixelToNdc * pixelModel,
                 .tint = object->getTint(),
-                .model = pixelToNdc * pixelModel
+                .uvClip = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f)
             };
 
             if (!ch.descriptorSets.empty()) {
