@@ -2,6 +2,7 @@
 
 #include <engine/Camera.h>
 #include <engine/Light.h>
+#include <engine/IrradianceProbe.h>
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
@@ -159,6 +160,16 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
         200.0f,
         false
     );
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            engine::IrradianceProbe* probe = new engine::IrradianceProbe(
+                entityManager,
+                "titleProbe" + std::to_string(i) + std::to_string(j),
+                glm::translate(glm::mat4(1.0f), glm::vec3(i * 6.0f, 2.0f, j * 6.0f)),
+                10.0f
+            );
+        }
+    }
     renderer->getInputManager()->setUIFocused(true);
     renderer->toggleLockCursor(false);
 };
@@ -422,6 +433,18 @@ static std::function<void(engine::Renderer*)> mainGameScene = [](engine::Rendere
         "airEnemySpawner",
         glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, -25.0f, 0.0f))
     );
+
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            engine::IrradianceProbe* probe = new engine::IrradianceProbe(
+                entityManager,
+                "gameProbe" + std::to_string(i) + std::to_string(j),
+                glm::translate(glm::mat4(1.0f), glm::vec3(i * 9.0f, 5.0f, j * 9.0f)),
+                10.0f
+            );
+        }
+    }
+
     renderer->getInputManager()->setUIFocused(false);
     renderer->toggleLockCursor(true);
 };

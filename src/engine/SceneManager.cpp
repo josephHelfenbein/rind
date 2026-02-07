@@ -15,10 +15,11 @@ void engine::SceneManager::setActiveScene(int index) {
         throw std::out_of_range("Scene index out of range");
     }
     vkDeviceWaitIdle(renderer->getDevice());
+    renderer->resetPostProcessDescriptorPools();
     renderer->getEntityManager()->clear();
     renderer->getUIManager()->clear();
     renderer->getParticleManager()->clear();
     renderer->getAudioManager()->stopAllSounds();
     scenes[index]->run(renderer);
-    renderer->refreshDescriptorSets();
+    renderer->getEntityManager()->setIrradianceBakingPending(true);
 }

@@ -59,6 +59,21 @@ namespace engine {
         glm::uvec4 numPointLights;
     };
 
+    struct IrradianceProbeData {
+        glm::vec4 position; // w = influence radius
+        glm::vec4 shCoeffs[9]; // spherical harmonics coefficients
+    };
+
+    struct IrradianceProbesUBO {
+        IrradianceProbeData probes[32];
+        glm::uvec4 numProbes;
+    };
+
+    struct IrradianceBakePC {
+        glm::mat4 model;
+        glm::mat4 viewProj;
+    };
+
     struct ParticlePC {
         glm::mat4 viewProj;
         glm::vec2 screenSize;

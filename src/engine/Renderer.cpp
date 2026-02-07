@@ -10,6 +10,7 @@
 #include <engine/ModelManager.h>
 #include <engine/Camera.h>
 #include <engine/Light.h>
+#include <engine/IrradianceProbe.h>
 #include <engine/io.h>
 #include <engine/PushConstants.h>
 #include <engine/AudioManager.h>
@@ -164,6 +165,7 @@ void engine::Renderer::initVulkan() {
     uiManager->loadFonts();
     entityManager->loadTextures();
     entityManager->createAllShadowMaps();
+    entityManager->createAllIrradianceMaps();
     createPostProcessDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
@@ -180,10 +182,25 @@ void engine::Renderer::mainLoop() {
 }
 
 void engine::Renderer::drawFrame() {
+    entityManager->processPendingDeletions();
+    entityManager->processPendingAdditions();
     if (shadowMapRecreationPending) {
         entityManager->createAllShadowMaps();
         refreshDescriptorSets();
         shadowMapRecreationPending = false;
+    }
+    if (entityManager->needsIrradianceBaking()) {
+        entityManager->loadTextures();
+        entityManager->createAllIrradianceMaps();
+        VkCommandBuffer cmdBuffer = beginSingleTimeCommands();
+        entityManager->bakeIrradianceMaps(cmdBuffer);
+        entityManager->recordIrradianceReadback(cmdBuffer);
+        endSingleTimeCommands(cmdBuffer);
+        entityManager->processIrradianceSH();
+        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            entityManager->updateIrradianceProbesUBO(i);
+        }
+        refreshDescriptorSets();
     }
     if (settingsManager->getSettings()->fpsLimit > 1e-6f) {
         double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);
@@ -257,8 +274,6 @@ void engine::Renderer::drawFrame() {
     }
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     fpsFrameCount++;
-    entityManager->processPendingDeletions();
-    entityManager->processPendingAdditions();
 }
 
 void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
@@ -300,6 +315,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     }
     entityManager->renderShadows(commandBuffer, currentFrame);
     entityManager->updateLightsUBO(currentFrame);
+    entityManager->updateIrradianceProbesUBO(currentFrame);
 
     for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
         auto& node = renderGraph[nodeIdx];
@@ -1032,6 +1048,20 @@ void engine::Renderer::refreshDescriptorSets() {
     createPostProcessDescriptorSets();
 }
 
+void engine::Renderer::resetPostProcessDescriptorPools() {
+    vkDeviceWaitIdle(device);
+    auto shaders = shaderManager->getGraphicsShaders();
+    for (const auto& shaderCopy : shaders) {
+        if (shaderCopy.config.inputBindings.empty()) continue;
+        auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
+        if (!shader) continue;
+        if (shader->descriptorPool != VK_NULL_HANDLE) {
+            vkResetDescriptorPool(device, shader->descriptorPool, 0);
+        }
+        shader->descriptorSets.clear();
+    }
+}
+
 VkImageView engine::Renderer::getPassImageView(const std::string& shaderName, const std::string& attachmentName) {
     auto shader = shaderManager->getGraphicsShader(shaderName);
     if (!shader || !shader->config.passInfo || !shader->config.passInfo->images.has_value()) {
@@ -1341,6 +1371,16 @@ void engine::Renderer::transitionImageLayoutInline(
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else {
         throw std::invalid_argument("Unsupported layout transition!");
     }
@@ -1933,14 +1973,22 @@ void engine::Renderer::createPostProcessDescriptorSets() {
 
         std::vector<VkWriteDescriptorSet> descriptorWrites;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
-        bufferInfos.reserve(static_cast<size_t>(MAX_FRAMES_IN_FLIGHT * std::max(vertexBindings, 1)));
-        descriptorWrites.reserve(static_cast<size_t>(MAX_FRAMES_IN_FLIGHT * (vertexBindings + fragmentBindings)));
+        size_t bufferInfoReserve = static_cast<size_t>(MAX_FRAMES_IN_FLIGHT * std::max(vertexBindings, 1));
+        if (shader->name == "lighting") {
+            bufferInfoReserve = MAX_FRAMES_IN_FLIGHT * 2;
+        }
+        bufferInfos.reserve(bufferInfoReserve);
+        descriptorWrites.reserve(static_cast<size_t>(MAX_FRAMES_IN_FLIGHT * (vertexBindings + fragmentBindings + 2)));
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             std::vector<bool> fragmentBindingWritten(static_cast<size_t>(fragmentBindings), false);
             if (shader->name == "lighting") {
                 auto& lightsBuffers = entityManager->getLightsBuffers();
                 if (lightsBuffers.size() < MAX_FRAMES_IN_FLIGHT) {
                     entityManager->createLightsUBO();
+                }
+                auto& irradianceProbesBuffers = entityManager->getIrradianceProbesBuffers();
+                if (irradianceProbesBuffers.size() < MAX_FRAMES_IN_FLIGHT) {
+                    entityManager->createIrradianceProbesUBO();
                 }
                 if (i >= lightsBuffers.size() || lightsBuffers[i] == VK_NULL_HANDLE) {
                     std::cout << "Warning: Lights UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
@@ -1954,6 +2002,20 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                         .dstSet = shader->descriptorSets[i],
                         .dstBinding = 0,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &bufferInfos.back()
+                    });
+                    bufferInfos.push_back({
+                        .buffer = irradianceProbesBuffers[i],
+                        .offset = 0,
+                        .range = sizeof(engine::IrradianceProbesUBO)
+                    });
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = 1,
                         .dstArrayElement = 0,
                         .descriptorCount = 1,
                         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,

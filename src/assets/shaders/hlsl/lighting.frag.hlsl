@@ -17,28 +17,41 @@ struct LightsUBO {
     uint4 numPointLights;
 };
 
+struct IrradianceProbe {
+    float4 position; // w = influence radius
+    float4 shCoeffs[9];
+};
+
+struct IrradianceProbesUBO {
+    IrradianceProbe probes[32];
+    uint4 numProbes;
+};
+
 [[vk::binding(0)]]
 ConstantBuffer<LightsUBO> lightsUBO;
 
 [[vk::binding(1)]]
-Texture2D<float4> gBufferAlbedo;
+ConstantBuffer<IrradianceProbesUBO> irradianceProbesUBO;
 
 [[vk::binding(2)]]
-Texture2D<float4> gBufferNormal;
+Texture2D<float4> gBufferAlbedo;
 
 [[vk::binding(3)]]
-Texture2D<float4> gBufferMaterial;
+Texture2D<float4> gBufferNormal;
 
 [[vk::binding(4)]]
-Texture2D<float> gBufferDepth;
+Texture2D<float4> gBufferMaterial;
 
 [[vk::binding(5)]]
-Texture2D<float4> particleTexture;
+Texture2D<float> gBufferDepth;
 
 [[vk::binding(6)]]
-TextureCube<float> shadowMaps[64];
+Texture2D<float4> particleTexture;
 
 [[vk::binding(7)]]
+TextureCube<float> shadowMaps[64];
+
+[[vk::binding(8)]]
 SamplerState sampleSampler;
 
 struct PushConstants {
@@ -163,6 +176,94 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     return 1.0 - shadow;
 }
 
+float shEval(float3 f, uint index) {
+    float3 n = float3(f.z, f.x, f.y);
+    const float k01 = 0.282095;
+    const float k02 = 0.488603;
+    const float k03 = 1.092548;
+    const float k04 = 0.315392;
+    const float k05 = 0.546274;
+    const float k06 = 0.590044;
+    const float k07 = 2.890611;
+    const float k08 = 0.457046;
+    const float k09 = 0.373176;
+    const float k10 = 1.445306;
+
+    [branch] switch(index) {
+        case 0: return k01;
+        case 1: return -k02 * n.y;
+        case 2: return k02 * n.z;
+        case 3: return -k02 * n.x;
+        case 4: return k03 * n.x * n.y;
+        case 5: return -k03 * n.y * n.z;
+        case 6: return k04 * (3.0 * n.z * n.z - 1.0);
+        case 7: return -k03 * n.x * n.z;
+        case 8: return k05 * (n.x * n.x - n.y * n.y);
+        default: return 0.0;
+    }
+}
+
+float3 evaluateIrradiance(float3 N, float3 fragPos) {
+    float3 irradiance = float3(0.0, 0.0, 0.0);
+    uint numProbes = irradianceProbesUBO.numProbes.x;
+    float totalWeight = 0.0001;
+    
+    const float k01 = 0.282095;
+    const float k02 = 0.488603;
+    const float k03 = 1.092548;
+    const float k04 = 0.315392;
+    const float k05 = 0.546274;
+    
+    float3 n = float3(N.z, N.x, N.y);
+    float sh0 = k01;
+    float sh1 = -k02 * n.y;
+    float sh2 = k02 * n.z;
+    float sh3 = -k02 * n.x;
+    float sh4 = k03 * n.x * n.y;
+    float sh5 = -k03 * n.y * n.z;
+    float sh6 = k04 * (3.0 * n.z * n.z - 1.0);
+    float sh7 = -k03 * n.x * n.z;
+    float sh8 = k05 * (n.x * n.x - n.y * n.y);
+    
+    for (uint i = 0; i < numProbes; ++i) {
+        float3 probePos = irradianceProbesUBO.probes[i].position.xyz;
+        float probeRadius = irradianceProbesUBO.probes[i].position.w;
+        float dist = length(fragPos - probePos);
+        
+        if (dist <= probeRadius) {
+            float t = saturate(1.0 - dist / probeRadius);
+            float weight = t * t;
+            
+            float3 L00 = irradianceProbesUBO.probes[i].shCoeffs[0].xyz;
+            float3 L1m1 = irradianceProbesUBO.probes[i].shCoeffs[1].xyz;
+            float3 L10 = irradianceProbesUBO.probes[i].shCoeffs[2].xyz;
+            float3 L11 = irradianceProbesUBO.probes[i].shCoeffs[3].xyz;
+            float3 L2m2 = irradianceProbesUBO.probes[i].shCoeffs[4].xyz;
+            float3 L2m1 = irradianceProbesUBO.probes[i].shCoeffs[5].xyz;
+            float3 L20 = irradianceProbesUBO.probes[i].shCoeffs[6].xyz;
+            float3 L21 = irradianceProbesUBO.probes[i].shCoeffs[7].xyz;
+            float3 L22 = irradianceProbesUBO.probes[i].shCoeffs[8].xyz;
+            
+            const float c1 = 0.429043;
+            const float c2 = 0.511664;
+            const float c3 = 0.743125;
+            const float c4 = 0.886227;
+            const float c5 = 0.247708;
+            
+            float3 shSum = c4 * L00
+                         + 2.0 * c2 * (L11 * n.x + L1m1 * n.y + L10 * n.z)
+                         + 2.0 * c1 * (L2m2 * n.x * n.y + L21 * n.x * n.z + L2m1 * n.y * n.z)
+                         + c3 * L20 * n.z * n.z
+                         + c1 * L22 * (n.x * n.x - n.y * n.y)
+                         - c5 * L20;
+            
+            irradiance += shSum * weight;
+            totalWeight += weight;
+        }
+    }
+    return max(irradiance / totalWeight, float3(0.0, 0.0, 0.0));
+}
+
 float3 ACESFilm(float3 x) {
     float a = 2.51;
     float b = 0.03;
@@ -247,13 +348,34 @@ float4 main(VSOutput input) : SV_Target {
         float3 diffuse = kD * albedoSample;
 
         float shadow = computePointShadow(light, fragPos, geomNormal, L);
-        
+
         float3 contribution = (diffuse + specular) * radiance * NdotL * shadow;
         contribution = clamp(contribution, float3(0.0, 0.0, 0.0), float3(100.0, 100.0, 100.0));
         Lo += contribution;
     }
-    float3 ambient = float3(0.02, 0.02, 0.02) * albedoSample;
-    Lo += ambient;
+    float3 irradiance = evaluateIrradiance(N, fragPos);
+    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedoSample, metallic);
+    float NdotV = max(dot(N, V), 0.0);
+    float3 FIndirect = fresnelSchlickRoughness(NdotV, F0, roughness);
+    float3 kDIndirect = (1.0 - FIndirect) * (1.0 - metallic);
+    
+    float3 indirectDiffuse = kDIndirect * irradiance * albedoSample;
+    
+    float3 R = reflect(-V, N);
+    
+    float3 dominantDir = lerp(R, N, roughness * roughness);
+    float3 specularIrradiance = evaluateIrradiance(dominantDir, fragPos);
+    
+    float shSpecularValidity = roughness * roughness;
+    
+    float2 envBRDF = float2(1.0 - roughness, roughness) * FIndirect.r;
+    float3 specularScale = FIndirect * envBRDF.x + envBRDF.y;
+    
+    float specularAttenuation = lerp(shSpecularValidity, 1.0, roughness);
+    float3 indirectSpecular = specularScale * specularIrradiance * specularAttenuation;
+    
+    Lo += indirectDiffuse + indirectSpecular;
+
     if (any(isnan(Lo)) || any(isinf(Lo))) {
         Lo = albedoSample * 0.1;
     }

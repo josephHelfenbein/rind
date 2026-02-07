@@ -138,6 +138,7 @@ namespace engine {
         void ensureFallbackShadowCubeTexture();
         void ensureFallback2DTexture();
         void refreshDescriptorSets();
+        void resetPostProcessDescriptorPools();
         VkImageView getPassImageView(const std::string& shaderName, const std::string& attachmentName);
 
         VkDevice getDevice() const { return device; }

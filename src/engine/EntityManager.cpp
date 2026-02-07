@@ -1,6 +1,7 @@
 #include <engine/EntityManager.h>
 #include <engine/Camera.h>
 #include <engine/Light.h>
+#include <engine/IrradianceProbe.h>
 #include <engine/Collider.h>
 #include <engine/SettingsManager.h>
 #include <glm/gtc/quaternion.hpp>
@@ -385,6 +386,17 @@ engine::EntityManager::~EntityManager() {
     lightsBuffers.clear();
     lightsBuffersMemory.clear();
     lightBuffersMapped.clear();
+    for (size_t i = 0; i < irradianceBuffers.size(); ++i) {
+        if (irradianceBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, irradianceBuffers[i], nullptr);
+        }
+        if (i < irradianceBuffersMemory.size() && irradianceBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, irradianceBuffersMemory[i], nullptr);
+        }
+    }
+    irradianceBuffers.clear();
+    irradianceBuffersMemory.clear();
+    irradianceBuffersMapped.clear();
 }
 
 void engine::EntityManager::createDummySkinningBuffer() {
@@ -492,6 +504,7 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
 void engine::EntityManager::clear() {
     movableEntities.clear();
     lights.clear();
+    irradianceProbes.clear();
     colliders.clear();
     spatialGrid.clear();
     std::vector<Entity*> rootsSnapshot;
@@ -594,11 +607,26 @@ void engine::EntityManager::createLightsUBO() {
     lightBuffersMapped.resize(frames, nullptr);
     for (size_t frame = 0; frame < frames; ++frame) {
         std::tie(lightsBuffers[frame], lightsBuffersMemory[frame]) = renderer->createBuffer(
-            sizeof(engine::LightsUBO),
+            sizeof(LightsUBO),
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
-        vkMapMemory(renderer->getDevice(), lightsBuffersMemory[frame], 0, sizeof(engine::LightsUBO), 0, &lightBuffersMapped[frame]);
+        vkMapMemory(renderer->getDevice(), lightsBuffersMemory[frame], 0, sizeof(LightsUBO), 0, &lightBuffersMapped[frame]);
+    }
+}
+
+void engine::EntityManager::createIrradianceProbesUBO() {
+    const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
+    irradianceBuffers.resize(frames, VK_NULL_HANDLE);
+    irradianceBuffersMemory.resize(frames, VK_NULL_HANDLE);
+    irradianceBuffersMapped.resize(frames, nullptr);
+    for (size_t frame = 0; frame < frames; ++frame) {
+        std::tie(irradianceBuffers[frame], irradianceBuffersMemory[frame]) = renderer->createBuffer(
+            sizeof(IrradianceProbesUBO),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(renderer->getDevice(), irradianceBuffersMemory[frame], 0, sizeof(IrradianceProbesUBO), 0, &irradianceBuffersMapped[frame]);
     }
 }
 
@@ -610,7 +638,7 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
         std::cout << std::format("Warning: Lights UBO buffer unavailable for frame {}. Skipping lights update.\n", frameIndex);
         return;
     }
-    engine::LightsUBO lightsUBO{};
+    LightsUBO lightsUBO{};
     auto lights = getLights();
     size_t count = std::min(lights.size(), static_cast<size_t>(64));
     for (size_t i = 0; i < count; ++i) {
@@ -618,6 +646,24 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
     }
     lightsUBO.numPointLights = glm::uvec4(count, 0, 0, 0);
     memcpy(lightBuffersMapped[frameIndex], &lightsUBO, sizeof(lightsUBO));
+}
+
+void engine::EntityManager::updateIrradianceProbesUBO(uint32_t frameIndex) {
+    if (irradianceBuffers.size() < static_cast<size_t>(renderer->getFramesInFlight())) {
+        createIrradianceProbesUBO();
+    }
+    if (frameIndex >= irradianceBuffers.size() || irradianceBuffers[frameIndex] == VK_NULL_HANDLE) {
+        std::cout << std::format("Warning: Irradiance Probes UBO buffer unavailable for frame {}. Skipping irradiance probes update.\n", frameIndex);
+        return;
+    }
+    IrradianceProbesUBO irradianceProbesUBO{};
+    auto probes = getIrradianceProbes();
+    size_t count = std::min(probes.size(), static_cast<size_t>(32));
+    for (size_t i = 0; i < count; ++i) {
+        irradianceProbesUBO.probes[i] = probes[i]->getProbeData();
+    }
+    irradianceProbesUBO.numProbes = glm::uvec4(count, 0, 0, 0);
+    memcpy(irradianceBuffersMapped[frameIndex], &irradianceProbesUBO, sizeof(irradianceProbesUBO));
 }
 
 void engine::EntityManager::createAllShadowMaps() {
@@ -628,11 +674,39 @@ void engine::EntityManager::createAllShadowMaps() {
     }
 }
 
+void engine::EntityManager::createAllIrradianceMaps() {
+    vkDeviceWaitIdle(renderer->getDevice());
+    auto& probes = getIrradianceProbes();
+    for (auto& probe : probes) {
+        probe->createCubemaps(renderer);
+    }
+}
+
 void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
     auto& lights = getLights();
     for (auto& light : lights) {
         light->renderShadowMap(renderer, commandBuffer, currentFrame);
     }
+}
+
+void engine::EntityManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer) {
+    auto& probes = getIrradianceProbes();
+    for (auto& probe : probes) {
+        probe->bakeCubemap(renderer, commandBuffer);
+    }
+}
+
+void engine::EntityManager::recordIrradianceReadback(VkCommandBuffer commandBuffer) {
+    for (auto& probe : getIrradianceProbes()) {
+        probe->recordCubemapReadback(renderer, commandBuffer);
+    }
+}
+
+void engine::EntityManager::processIrradianceSH() {
+    for (auto& probe : getIrradianceProbes()) {
+        probe->processSHProjection(renderer);
+    }
+    irradianceBakingPending = false;
 }
 
 void engine::EntityManager::updateAll(float deltaTime) {

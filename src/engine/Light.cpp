@@ -170,15 +170,15 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     };
     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
     VkRect2D scissor = {
-        .offset = {0, 0}, 
-        .extent = {shadowMapSize, shadowMapSize}
+        .offset = { 0, 0 }, 
+        .extent = { shadowMapSize, shadowMapSize }
     };
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     std::function<void(Entity*, glm::mat4&)> drawStaticEntity = [&](Entity* entity, glm::mat4& viewProj) {
-        if (!entity->getIsMovable() 
-         && entity->getModel() 
-         && (entity->getShader() == "gbuffer" || entity->getShader() == "shadow") 
+        if (!entity->getIsMovable()
+         && entity->getModel()
+         && (entity->getShader() == "gbuffer" || entity->getShader() == "shadow")
          && entity->getCastShadow()) {
             Model* model = entity->getModel();
             VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
@@ -205,20 +205,20 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
         }
     };
     
-    for (int face = 0; face < 6; ++face) {
+    for (uint32_t face = 0u; face < 6u; ++face) {
         VkRenderingAttachmentInfo depthAttachment = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .imageView = bakedShadowFaceViews[face],
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = { .depthStencil = {1.0f, 0} }
+            .clearValue = { .depthStencil = { 1.0f, 0 } }
         };
         VkRenderingInfo renderInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea = {
-                .offset = {0, 0},
-                .extent = {shadowMapSize, shadowMapSize}
+                .offset = { 0, 0 },
+                .extent = { shadowMapSize, shadowMapSize }
             },
             .layerCount = 1,
             .colorAttachmentCount = 0,

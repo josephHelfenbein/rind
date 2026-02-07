@@ -403,6 +403,69 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shaders.push_back(shader);
     }
 
+    // Irradiance Pass
+    auto irradiancePass = std::make_shared<PassInfo>();
+    irradiancePass->name = "IrradiancePass";
+    irradiancePass->usesSwapchain = false;
+    irradiancePass->hasDepthAttachment = false;
+    irradiancePass->attachmentFormats = { VK_FORMAT_R16G16B16A16_SFLOAT };
+
+    // Irradiance Shader
+    {
+        GraphicsShader shader = {
+            .name = "irradiance",
+            .vertex = { shaderPath("irradiance.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("irradiance.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .poolMultiplier = 512,
+                .vertexBitBindings = 1,
+                .fragmentBitBindings = 5,
+                .vertexDescriptorCounts = { 1 },
+                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .depthCompare = VK_COMPARE_OP_ALWAYS,
+                .enableDepth = false,
+                .passInfo = irradiancePass,
+                .colorAttachmentCount = 1,
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(1);
+                    bindings[0].binding = 0;
+                    bindings[0].stride = sizeof(Vertex);
+                    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                    attributes.resize(3);
+                    attributes[0].binding = 0;
+                    attributes[0].location = 0;
+                    attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+                    attributes[0].offset = offsetof(Vertex, pos);
+
+                    attributes[1].binding = 0;
+                    attributes[1].location = 1;
+                    attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+                    attributes[1].offset = offsetof(Vertex, normal);
+
+                    attributes[2].binding = 0;
+                    attributes[2].location = 2;
+                    attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
+                    attributes[2].offset = offsetof(Vertex, texCoord);
+                }
+            }
+        };
+        shader.config.setPushConstant<IrradianceBakePC>(VK_SHADER_STAGE_VERTEX_BIT);
+        shaders.push_back(shader);
+    }
+
     // Text Pass
     auto textPass = std::make_shared<PassInfo>();
     textPass->name = "TextPass";
@@ -503,8 +566,13 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .vertexBitBindings = 1,
+                .vertexBitBindings = 2,
                 .fragmentBitBindings = 7,
+                .vertexDescriptorCounts = { 1, 1 },
+                .vertexDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                },
                 .fragmentDescriptorCounts = {
                     1, 1, 1, 1, 1, 64, 1
                 },
@@ -523,11 +591,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .passInfo = lightingPass,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
-                    { 1, "gbuffer", "Albedo" },
-                    { 2, "gbuffer", "Normal" },
-                    { 3, "gbuffer", "Material" },
-                    { 4, "gbuffer", "Depth" },
-                    { 5, "particle", "ParticleColor" }
+                    { 2, "gbuffer", "Albedo" },
+                    { 3, "gbuffer", "Normal" },
+                    { 4, "gbuffer", "Material" },
+                    { 5, "gbuffer", "Depth" },
+                    { 6, "particle", "ParticleColor" }
                 }
             }
         };
