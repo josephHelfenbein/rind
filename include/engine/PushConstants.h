@@ -86,4 +86,9 @@ namespace engine {
         uint32_t flags; // bit 0 = use fxaa
         uint32_t pad;
     };
+
+    struct SHPC {
+        uint32_t cubemapSize;
+        uint32_t pad[3];
+    };
 }

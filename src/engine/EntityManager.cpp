@@ -698,7 +698,7 @@ void engine::EntityManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer) {
 
 void engine::EntityManager::recordIrradianceReadback(VkCommandBuffer commandBuffer) {
     for (auto& probe : getIrradianceProbes()) {
-        probe->recordCubemapReadback(renderer, commandBuffer);
+        probe->dispatchSHCompute(renderer, commandBuffer);
     }
 }
 

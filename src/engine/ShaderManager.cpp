@@ -857,6 +857,34 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     return shaders;
 }
 
+std::vector<engine::ComputeShader> engine::ShaderManager::createDefaultComputeShaders() {
+    std::vector<ComputeShader> shaders;
+
+    auto shaderPath = [&](const std::string& baseName) {
+        auto mapped = getShaderFilePath(baseName);
+        if (!mapped.empty()) return mapped;
+        return (std::filesystem::path(shaderDirectory) / baseName).string();
+    };
+
+    // Spherical Harmonics Projection
+    {
+        ComputeShader shader = {
+            .name = "sh",
+            .compute = { shaderPath("sh.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
+            .config = {
+                .poolMultiplier = 128,
+                .computeBitBindings = 1,
+                .storageImageCount = 0,
+                .storageBufferCount = 1
+            }
+        };
+        shader.config.setPushConstant<SHPC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        shaders.push_back(shader);
+    }
+
+    return shaders;
+}
+
 std::vector<engine::RenderNode>& engine::ShaderManager::getRenderGraph() {
     return renderGraph.nodes;
 }
@@ -1185,25 +1213,37 @@ void engine::GraphicsShader::createDescriptorSetLayout(engine::Renderer* rendere
 }
 
 void engine::ComputeShader::createDescriptorSetLayout(engine::Renderer* renderer) {
-    const int totalStorageBindings = std::max(config.storageImageCount, 0);
+    const int totalStorageImageBindings = std::max(config.storageImageCount, 0);
+    const int totalStorageBufferBindings = std::max(config.storageBufferCount, 0);
     const int totalComputeBindings = std::max(config.computeBitBindings, 0);
     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    bindings.reserve(static_cast<size_t>(totalStorageBindings + totalComputeBindings));
-    VkShaderStageFlags uboStageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    for (int bindingIndex = 0; bindingIndex < config.storageImageCount; ++bindingIndex) {
-        VkDescriptorSetLayoutBinding uboLayoutBinding = {
-            .binding = static_cast<uint32_t>(bindingIndex),
+    bindings.reserve(static_cast<size_t>(totalStorageImageBindings + totalStorageBufferBindings + totalComputeBindings));
+    VkShaderStageFlags stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    uint32_t currentBinding = 0;
+    for (int i = 0; i < config.storageImageCount; ++i) {
+        VkDescriptorSetLayoutBinding storageImageBinding = {
+            .binding = currentBinding++,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
             .descriptorCount = 1,
-            .stageFlags = uboStageFlags,
+            .stageFlags = stageFlags,
             .pImmutableSamplers = nullptr
         };
-        bindings.push_back(uboLayoutBinding);
+        bindings.push_back(storageImageBinding);
+    }
+    for (int i = 0; i < config.storageBufferCount; ++i) {
+        VkDescriptorSetLayoutBinding storageBufferBinding = {
+            .binding = currentBinding++,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = stageFlags,
+            .pImmutableSamplers = nullptr
+        };
+        bindings.push_back(storageBufferBinding);
     }
     for (int offset = 0; offset < config.computeBitBindings; ++offset) {
         uint32_t descriptorCount = 1;
         VkDescriptorSetLayoutBinding computeLayoutBinding = {
-            .binding = static_cast<uint32_t>(totalStorageBindings + offset),
+            .binding = currentBinding++,
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .descriptorCount = descriptorCount,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -1504,6 +1544,13 @@ void engine::ComputeShader::createDescriptorPool(Renderer* renderer) {
         };
         poolSizes.push_back(storageImagePoolSize);
     }
+    if (config.storageBufferCount > 0) {
+        VkDescriptorPoolSize storageBufferPoolSize = {
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = static_cast<uint32_t>(config.storageBufferCount * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+        };
+        poolSizes.push_back(storageBufferPoolSize);
+    }
     if (config.computeBitBindings > 0) {
         VkDescriptorPoolSize computePoolSize = {
             .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1513,6 +1560,7 @@ void engine::ComputeShader::createDescriptorPool(Renderer* renderer) {
     }
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
         .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * config.poolMultiplier),
         .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
         .pPoolSizes = poolSizes.data()

@@ -1,4 +1,5 @@
 #include <engine/IrradianceProbe.h>
+#include <engine/ShaderManager.h>
 #include <cmath>
 #include <limits>
 #include <functional>
@@ -26,12 +27,10 @@ engine::IrradianceProbe::~IrradianceProbe() {
     if (bakedCubemapMemory != VK_NULL_HANDLE) {
         vkFreeMemory(device, bakedCubemapMemory, nullptr);
     }
-    if (stagingBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
+    if (cubemapSampler != VK_NULL_HANDLE) {
+        vkDestroySampler(device, cubemapSampler, nullptr);
     }
-    if (stagingMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, stagingMemory, nullptr);
-    }
+    cleanupComputeResources(getEntityManager()->getRenderer());
 }
 
 void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
@@ -40,7 +39,7 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
     }
     
     bakedImageReady = false;
-    readbackRecorded = false;
+    computeDispatched = false;
     
     std::tie(bakedCubemapImage, bakedCubemapMemory) = renderer->createImage(
         cubemapSize, cubemapSize,
@@ -77,7 +76,117 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
         };
         vkCreateImageView(renderer->getDevice(), &viewInfo, nullptr, &bakedCubemapFaceViews[i]);
     }
+    
+    cubemapSampler = renderer->createTextureSampler(
+        VK_FILTER_LINEAR,
+        VK_FILTER_LINEAR,
+        VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        0.0f,
+        VK_FALSE,
+        1.0f,
+        VK_FALSE,
+        VK_COMPARE_OP_ALWAYS,
+        0.0f,
+        0.0f,
+        VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        VK_FALSE
+    );
+    
     hasImageMap = true;
+    
+    createComputeResources(renderer);
+}
+
+void engine::IrradianceProbe::createComputeResources(Renderer* renderer) {
+    if (computeResourcesCreated) return;
+    
+    VkDevice device = renderer->getDevice();
+    
+    numWorkgroupsX = (cubemapSize + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    numWorkgroupsY = (cubemapSize + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    totalWorkgroups = numWorkgroupsX * numWorkgroupsY * 6;
+    
+    const size_t outputBufferSize = totalWorkgroups * 9 * sizeof(float) * 4;
+    std::tie(shOutputBuffer, shOutputMemory) = renderer->createBuffer(
+        outputBufferSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    
+    ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
+    if (!shCompute) {
+        throw std::runtime_error("sh compute shader not found!");
+    }
+    
+    VkDescriptorSetAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = shCompute->descriptorPool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &shCompute->descriptorSetLayout
+    };
+    if (vkAllocateDescriptorSets(device, &allocInfo, &shDescriptorSet) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate SH compute descriptor set!");
+    }
+    
+    VkDescriptorBufferInfo bufferInfo = {
+        .buffer = shOutputBuffer,
+        .offset = 0,
+        .range = VK_WHOLE_SIZE
+    };
+    VkDescriptorImageInfo imageInfo = {
+        .sampler = cubemapSampler,
+        .imageView = bakedCubemapView,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    };
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites = {{
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = shDescriptorSet,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo = &bufferInfo
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = shDescriptorSet,
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &imageInfo
+        }
+    }};
+    vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    
+    computeResourcesCreated = true;
+}
+
+void engine::IrradianceProbe::cleanupComputeResources(Renderer* renderer) {
+    VkDevice device = renderer->getDevice();
+    
+    if (shDescriptorSet != VK_NULL_HANDLE) {
+        ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
+        if (shCompute) {
+            vkFreeDescriptorSets(device, shCompute->descriptorPool, 1, &shDescriptorSet);
+        }
+        shDescriptorSet = VK_NULL_HANDLE;
+    }
+    
+    if (shOutputBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, shOutputBuffer, nullptr);
+        shOutputBuffer = VK_NULL_HANDLE;
+    }
+    if (shOutputMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, shOutputMemory, nullptr);
+        shOutputMemory = VK_NULL_HANDLE;
+    }
+    
+    computeResourcesCreated = false;
 }
 
 void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer commandBuffer) {
@@ -199,224 +308,142 @@ void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer co
         }
         renderer->getFpCmdEndRendering()(commandBuffer);
     }
-    renderer->transitionImageLayoutInline(
+    
+    VkImageMemoryBarrier imageBarrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = bakedCubemapImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 6
+        }
+    };
+    vkCmdPipelineBarrier(
         commandBuffer,
-        bakedCubemapImage,
-        VK_FORMAT_R16G16B16A16_SFLOAT,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        1,
-        6
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &imageBarrier
     );
+    
     bakedImageReady = true;
 }
 
-void engine::IrradianceProbe::recordCubemapReadback(Renderer* renderer, VkCommandBuffer commandBuffer) {
-    if (!bakedImageReady || readbackRecorded) {
-        std::cout << "WARNING: recordCubemapReadback skipped for " << getName()
+void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuffer commandBuffer) {
+    if (!bakedImageReady || computeDispatched) {
+        std::cout << "WARNING: dispatchSHCompute skipped for " << getName()
                   << " bakedImageReady=" << bakedImageReady
-                  << " readbackRecorded=" << readbackRecorded << "\n";
+                  << " computeDispatched=" << computeDispatched << "\n";
         return;
     }
-    VkDevice device = renderer->getDevice();
-    const size_t pixelSize = sizeof(uint16_t) * 4;
-    const size_t faceSize = cubemapSize * cubemapSize * pixelSize;
-    const size_t totalSize = faceSize * 6;
     
-    if (stagingBuffer == VK_NULL_HANDLE) {
-        std::tie(stagingBuffer, stagingMemory) = renderer->createBuffer(
-            totalSize,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        );
+    if (!computeResourcesCreated) {
+        createComputeResources(renderer);
     }
     
-    std::vector<VkBufferImageCopy> copyRegions(6);
-    for (uint32_t face = 0u; face < 6u; ++face) {
-        copyRegions[face] = {
-            .bufferOffset = face * faceSize,
-            .bufferRowLength = 0,
-            .bufferImageHeight = 0,
-            .imageSubresource = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .mipLevel = 0,
-                .baseArrayLayer = face,
-                .layerCount = 1
-            },
-            .imageOffset = { 0, 0, 0 },
-            .imageExtent = { cubemapSize, cubemapSize, 1 }
-        };
+    ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
+    if (!shCompute) {
+        std::cout << "ERROR: sh compute shader not found!\n";
+        return;
     }
-    vkCmdCopyImageToBuffer(
-        commandBuffer,
-        bakedCubemapImage,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        stagingBuffer,
-        static_cast<uint32_t>(copyRegions.size()),
-        copyRegions.data()
-    );
     
-    renderer->transitionImageLayoutInline(
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, shCompute->pipeline);
+    
+    vkCmdBindDescriptorSets(
         commandBuffer,
-        bakedCubemapImage,
-        VK_FORMAT_R16G16B16A16_SFLOAT,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        shCompute->pipelineLayout,
+        0,
         1,
-        6
+        &shDescriptorSet,
+        0,
+        nullptr
     );
     
-    readbackRecorded = true;
+    SHPC pc = { .cubemapSize = cubemapSize, .pad = {0, 0, 0} };
+    vkCmdPushConstants(
+        commandBuffer,
+        shCompute->pipelineLayout,
+        VK_SHADER_STAGE_COMPUTE_BIT,
+        0,
+        sizeof(SHPC),
+        &pc
+    );
+    
+    vkCmdDispatch(commandBuffer, numWorkgroupsX, numWorkgroupsY, 6);
+    
+    VkBufferMemoryBarrier bufferBarrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = shOutputBuffer,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        0,
+        0, nullptr,
+        1, &bufferBarrier,
+        0, nullptr
+    );
+    
+    computeDispatched = true;
 }
 
 void engine::IrradianceProbe::processSHProjection(Renderer* renderer) {
-    if (!readbackRecorded || stagingBuffer == VK_NULL_HANDLE) {
+    if (!computeDispatched || shOutputBuffer == VK_NULL_HANDLE) {
         std::cout << "WARNING: processSHProjection skipped for " << getName() 
-                  << " readbackRecorded=" << readbackRecorded 
-                  << " stagingBuffer=" << (stagingBuffer != VK_NULL_HANDLE) << "\n";
+                  << " computeDispatched=" << computeDispatched 
+                  << " shOutputBuffer=" << (shOutputBuffer != VK_NULL_HANDLE) << "\n";
         return;
     }
     
     VkDevice device = renderer->getDevice();
     
-    const size_t pixelSize = sizeof(uint16_t) * 4;
-    const size_t faceSize = cubemapSize * cubemapSize * pixelSize;
-    const size_t totalSize = faceSize * 6;
+    const size_t outputSize = totalWorkgroups * 9 * sizeof(float) * 4;
     
     void* mappedData;
-    vkMapMemory(device, stagingMemory, 0, totalSize, 0, &mappedData);
-    uint16_t* pixelData = static_cast<uint16_t*>(mappedData);
-
-    std::function<float(uint16_t)> halfToFloat = [&](uint16_t h) -> float {
-        uint32_t sign = (h >> 15) & 0x1;
-        uint32_t exp = (h >> 10) & 0x1F;
-        uint32_t mant = h & 0x3FF;
-        if (exp == 0) {
-            if (mant == 0) return sign ? -0.0f : 0.0f;
-            float m = mant / 1024.0f;
-            return (sign ? -1.0f : 1.0f) * m * std::pow(2.0f, -14.0f);
-        } else if (exp == 31) {
-            return mant ? std::numeric_limits<float>::quiet_NaN() 
-                        : (sign ? -std::numeric_limits<float>::infinity() 
-                                : std::numeric_limits<float>::infinity());
-        }
-        return (sign ? -1.0f : 1.0f) * (1.0f + mant / 1024.0f) * std::pow(2.0f, static_cast<float>(exp) - 15.0f);
-    };
-    std::function<glm::vec3(uint32_t, float, float)> cubemapTexelToDirection = [&](uint32_t face, float u, float v) -> glm::vec3 {
-        glm::vec3 dir;
-        switch (face) {
-            case 0: dir = glm::vec3( 1.0f, -v, -u); break;
-            case 1: dir = glm::vec3(-1.0f, -v, u); break;
-            case 2: dir = glm::vec3(u, 1.0f, v); break;
-            case 3: dir = glm::vec3(u, -1.0f, -v); break;
-            case 4: dir = glm::vec3(u, -v, 1.0f); break;
-            case 5: dir = glm::vec3(-u, -v, -1.0f); break;
-        }
-        return glm::normalize(dir);
-    };
-    std::function<float(float, float, float)> texelSolidAngle = [&](float u, float v, float invSize) -> float {
-        float x0 = u - invSize;
-        float y0 = v - invSize;
-        float x1 = u + invSize;
-        float y1 = v + invSize;
-        return std::atan2(x0 * y0, std::sqrt(x0 * x0 + y0 * y0 + 1.0f)) -
-               std::atan2(x0 * y1, std::sqrt(x0 * x0 + y1 * y1 + 1.0f)) -
-               std::atan2(x1 * y0, std::sqrt(x1 * x1 + y0 * y0 + 1.0f)) +
-               std::atan2(x1 * y1, std::sqrt(x1 * x1 + y1 * y1 + 1.0f));
-    };
-    std::function<float(const glm::vec3&, int)> shBasis = [&](const glm::vec3& n, int index) -> float {
-        float x = n.z, y = n.x, z = n.y;
-        constexpr float k01 = 0.282095f;
-        constexpr float k02 = 0.488603f;
-        constexpr float k03 = 1.092548f;
-        constexpr float k04 = 0.315392f;
-        constexpr float k05 = 0.546274f;
-        
-        switch (index) {
-            case 0: return k01;
-            case 1: return -k02 * y;
-            case 2: return k02 * z;
-            case 3: return -k02 * x;
-            case 4: return k03 * x * y;
-            case 5: return -k03 * y * z;
-            case 6: return k04 * (3.0f * z * z - 1.0f);
-            case 7: return -k03 * x * z;
-            case 8: return k05 * (x * x - y * y);
-            default: return 0.0f;
-        }
-    };
+    vkMapMemory(device, shOutputMemory, 0, outputSize, 0, &mappedData);
+    float* outputData = static_cast<float*>(mappedData);
+    
     std::array<glm::vec3, 9> shAccum{};
     for (int i = 0; i < 9; ++i) {
         shAccum[i] = glm::vec3(0.0f);
     }
-    float invSize = 1.0f / static_cast<float>(cubemapSize);
-#if defined(USE_OPENMP)
-    #pragma omp parallel
-    {
-        std::array<glm::vec3, 9> localAccum{};
+    
+    for (uint32_t workgroup = 0; workgroup < totalWorkgroups; ++workgroup) {
+        const size_t baseOffset = workgroup * 9 * 4;
         for (int i = 0; i < 9; ++i) {
-            localAccum[i] = glm::vec3(0.0f);
-        }
-        
-        #pragma omp for collapse(2) schedule(static)
-        for (int face = 0; face < 6; ++face) {
-            for (int y = 0; y < static_cast<int>(cubemapSize); ++y) {
-                for (int x = 0; x < static_cast<int>(cubemapSize); ++x) {
-                    float u = (static_cast<float>(x) + 0.5f) * invSize * 2.0f - 1.0f;
-                    float v = (static_cast<float>(y) + 0.5f) * invSize * 2.0f - 1.0f;
-                    glm::vec3 dir = cubemapTexelToDirection(static_cast<uint32_t>(face), u, v);
-                    float solidAngle = texelSolidAngle(u, v, invSize);
-                    size_t pixelOffset = (face * cubemapSize * cubemapSize + y * cubemapSize + x) * 4;
-                    float r = halfToFloat(pixelData[pixelOffset + 0]);
-                    float g = halfToFloat(pixelData[pixelOffset + 1]);
-                    float b = halfToFloat(pixelData[pixelOffset + 2]);
-                    if (std::isnan(r) || std::isnan(g) || std::isnan(b)) continue;
-                    glm::vec3 color(r, g, b);
-                    for (int i = 0; i < 9; ++i) {
-                        float basis = shBasis(dir, i);
-                        localAccum[i] += color * basis * solidAngle;
-                    }
-                }
-            }
-        }
-        #pragma omp critical
-        {
-            for (int i = 0; i < 9; ++i) {
-                shAccum[i] += localAccum[i];
+            const size_t coeffOffset = baseOffset + i * 4;
+            float x = outputData[coeffOffset + 0];
+            float y = outputData[coeffOffset + 1];
+            float z = outputData[coeffOffset + 2];
+            if (!std::isnan(x) && !std::isnan(y) && !std::isnan(z)) {
+                shAccum[i] += glm::vec3(x, y, z);
             }
         }
     }
-#else
-    for (int face = 0; face < 6; ++face) {
-        for (int y = 0; y < static_cast<int>(cubemapSize); ++y) {
-            for (int x = 0; x < static_cast<int>(cubemapSize); ++x) {
-                float u = (static_cast<float>(x) + 0.5f) * invSize * 2.0f - 1.0f;
-                float v = (static_cast<float>(y) + 0.5f) * invSize * 2.0f - 1.0f;
-                glm::vec3 dir = cubemapTexelToDirection(static_cast<uint32_t>(face), u, v);
-                float solidAngle = texelSolidAngle(u, v, invSize);
-                size_t pixelOffset = (face * cubemapSize * cubemapSize + y * cubemapSize + x) * 4;
-                float r = halfToFloat(pixelData[pixelOffset + 0]);
-                float g = halfToFloat(pixelData[pixelOffset + 1]);
-                float b = halfToFloat(pixelData[pixelOffset + 2]);
-                if (std::isnan(r) || std::isnan(g) || std::isnan(b)) continue;
-                glm::vec3 color(r, g, b);
-                for (int i = 0; i < 9; ++i) {
-                    float basis = shBasis(dir, i);
-                    shAccum[i] += color * basis * solidAngle;
-                }
-            }
-        }
-    }
-#endif
-
+    
     shCoeffs = shAccum;
     
-    vkUnmapMemory(device, stagingMemory);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingMemory, nullptr);
-    stagingBuffer = VK_NULL_HANDLE;
-    stagingMemory = VK_NULL_HANDLE;
-    readbackRecorded = false;
+    vkUnmapMemory(device, shOutputMemory);
+    
+    computeDispatched = false;
 }
 
 engine::IrradianceProbeData engine::IrradianceProbe::getProbeData() const {

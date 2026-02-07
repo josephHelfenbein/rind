@@ -149,6 +149,10 @@ void engine::Renderer::initVulkan() {
     for (auto& shader : defaultShaders) {
         shaderManager->addGraphicsShader(std::move(shader));
     }
+    std::vector<ComputeShader> defaultComputeShaders = shaderManager->createDefaultComputeShaders();
+    for (auto& shader : defaultComputeShaders) {
+        shaderManager->addComputeShader(std::move(shader));
+    }
     shaderManager->resolveRenderGraphShaders();
     createAttachmentResources();
     createCommandPool();

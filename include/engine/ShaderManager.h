@@ -117,6 +117,16 @@ namespace engine {
             int poolMultiplier = 1;
             int computeBitBindings = 1;
             int storageImageCount = 1;
+            int storageBufferCount = 0;
+            std::type_index pushConstantType = std::type_index(typeid(void));
+
+            template<typename T>
+            void setPushConstant(VkShaderStageFlags stageFlags) {
+                pushConstantRange.stageFlags = stageFlags;
+                pushConstantRange.offset = 0;
+                pushConstantRange.size = sizeof(T);
+                pushConstantType = std::type_index(typeid(T));
+            }
         } config;
 
         VkPipeline pipeline{};
@@ -163,6 +173,7 @@ namespace engine {
         std::string getShaderFilePath(const std::string& name);
 
         std::vector<GraphicsShader> createDefaultShaders();
+        std::vector<ComputeShader> createDefaultComputeShaders();
         std::vector<RenderNode>& getRenderGraph();
         const std::vector<RenderNode>& getRenderGraph() const;
         void resolveRenderGraphShaders();

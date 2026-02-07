@@ -17,12 +17,15 @@ namespace engine {
 
         void createCubemaps(Renderer* renderer);
         void bakeCubemap(Renderer* renderer, VkCommandBuffer commandBuffer);
-        void recordCubemapReadback(Renderer* renderer, VkCommandBuffer commandBuffer);
+        void dispatchSHCompute(Renderer* renderer, VkCommandBuffer commandBuffer);
         void processSHProjection(Renderer* renderer);
 
         IrradianceProbeData getProbeData() const;
 
     private:
+        void createComputeResources(Renderer* renderer);
+        void cleanupComputeResources(Renderer* renderer);
+
         float radius;
         std::array<glm::vec3, 9> shCoeffs{};
 
@@ -30,13 +33,22 @@ namespace engine {
         VkImageView bakedCubemapView = VK_NULL_HANDLE;
         VkDeviceMemory bakedCubemapMemory = VK_NULL_HANDLE;
         VkImageView bakedCubemapFaceViews[6] = { VK_NULL_HANDLE };
+        VkSampler cubemapSampler = VK_NULL_HANDLE;
 
         const uint32_t cubemapSize = 32;
-        VkBuffer stagingBuffer = VK_NULL_HANDLE;
-        VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+        
+        // Compute shader resources for SH projection
+        static constexpr uint32_t WORKGROUP_SIZE = 8;
+        uint32_t numWorkgroupsX = 0;
+        uint32_t numWorkgroupsY = 0;
+        uint32_t totalWorkgroups = 0;
+        VkBuffer shOutputBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory shOutputMemory = VK_NULL_HANDLE;
+        VkDescriptorSet shDescriptorSet = VK_NULL_HANDLE;
 
         bool hasImageMap = false;
         bool bakedImageReady = false;
-        bool readbackRecorded = false;
+        bool computeDispatched = false;
+        bool computeResourcesCreated = false;
     };
 };
