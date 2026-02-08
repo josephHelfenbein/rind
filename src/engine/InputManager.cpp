@@ -81,6 +81,17 @@ void engine::InputManager::dispatch(const std::vector<InputEvent>& events) {
 }
 
 void engine::InputManager::dispatchRecreateSwapChain() {
+    if (unregisterQueue.size()) {
+        for (const std::string& name : unregisterQueue) {
+            if (callbacks.find(name) != callbacks.end()) {
+                callbacks.erase(name);
+            }
+            if (recreateSwapChainCallbacks.find(name) != recreateSwapChainCallbacks.end()) {
+                recreateSwapChainCallbacks.erase(name);
+            }
+        }
+        unregisterQueue.clear();
+    }
     for (const auto& [name, callback] : recreateSwapChainCallbacks) {
         callback();
     }

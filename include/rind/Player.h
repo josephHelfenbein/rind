@@ -9,6 +9,7 @@ namespace rind {
     class Player : public engine::CharacterEntity {
     public:
         Player(engine::EntityManager* entityManager, engine::InputManager* inputManager, const std::string& name, glm::mat4 transform);
+        ~Player();
 
         void update(float deltaTime) override;
 

@@ -23,7 +23,9 @@ struct PushConstants {
     float4x4 viewProj;
     float2 screenSize;
     float particleSize;
+    float trailWidth;
     float streakScale;
+    float pad;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -57,13 +59,11 @@ VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
         }
         perpWorld = normalize(perpWorld);
         
-        float width = 0.03;
-        
         float2 localOffset = offsets[vertexID];
         
         float t = localOffset.y * 0.5 + 0.5;
         float3 worldPos = lerp(startPos, endPos, t);
-        worldPos += perpWorld * localOffset.x * width;
+        worldPos += perpWorld * localOffset.x * pc.trailWidth;
         float4 posClip = mul(float4(worldPos, 1.0), pc.viewProj);
         
         posClip.z -= 0.001 * posClip.w;

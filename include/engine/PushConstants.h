@@ -78,7 +78,9 @@ namespace engine {
         glm::mat4 viewProj;
         glm::vec2 screenSize;
         float particleSize;
+        float trailWidth;
         float streakScale;
+        float pad;
     };
 
     struct CompositePC {

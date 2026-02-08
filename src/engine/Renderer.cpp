@@ -309,6 +309,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         entityManager->updateAll(deltaTime);
         audioManager->update();
         particleManager->updateAll(deltaTime);
+        particleManager->updateParticleBuffer(currentFrame);
     }
     if (entityManager->getCamera()) {
         Camera* cam = entityManager->getCamera();
@@ -318,6 +319,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         audioManager->updateListener(pos, fwd, up);
     }
     entityManager->renderShadows(commandBuffer, currentFrame);
+    entityManager->renderDynamicIrradiance(commandBuffer, currentFrame);
     entityManager->updateLightsUBO(currentFrame);
     entityManager->updateIrradianceProbesUBO(currentFrame);
 

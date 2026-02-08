@@ -353,7 +353,6 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
     if (particles.empty()) return;
     GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
-    updateParticleBuffer(currentFrame);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
     Camera* camera = renderer->getEntityManager()->getCamera();
     if (!camera) return;
@@ -362,6 +361,7 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
         .viewProj = camera->getProjectionMatrix() * camera->getViewMatrix(),
         .screenSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
         .particleSize = 0.03f,
+        .trailWidth = 0.03f,
         .streakScale = 0.0005f
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);

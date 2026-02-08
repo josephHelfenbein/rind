@@ -698,6 +698,17 @@ void engine::EntityManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer) {
 
 void engine::EntityManager::recordIrradianceReadback(VkCommandBuffer commandBuffer) {
     for (auto& probe : getIrradianceProbes()) {
+        probe->copyBakedToDynamic(renderer, commandBuffer);
+        probe->dispatchSHCompute(renderer, commandBuffer);
+    }
+}
+
+void engine::EntityManager::renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    for (auto& probe : getIrradianceProbes()) {
+        probe->processSHProjection(renderer);
+    }
+    for (auto& probe : getIrradianceProbes()) {
+        probe->renderDynamicCubemap(renderer, commandBuffer, currentFrame);
         probe->dispatchSHCompute(renderer, commandBuffer);
     }
 }

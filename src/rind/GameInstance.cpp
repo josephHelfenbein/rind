@@ -165,7 +165,7 @@ static std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Rend
             engine::IrradianceProbe* probe = new engine::IrradianceProbe(
                 entityManager,
                 "titleProbe" + std::to_string(i) + std::to_string(j),
-                glm::translate(glm::mat4(1.0f), glm::vec3(i * 6.0f, 2.0f, j * 6.0f)),
+                glm::translate(glm::mat4(1.0f), glm::vec3(i * 6.0f, 1.0f, j * 6.0f)),
                 10.0f
             );
         }

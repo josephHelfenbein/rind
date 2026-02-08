@@ -179,6 +179,7 @@ namespace engine {
         void createAllShadowMaps();
         void createAllIrradianceMaps();
         void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
+        void renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         void bakeIrradianceMaps(VkCommandBuffer commandBuffer);
         void recordIrradianceReadback(VkCommandBuffer commandBuffer);
         void processIrradianceSH();

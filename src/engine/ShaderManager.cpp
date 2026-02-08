@@ -872,7 +872,7 @@ std::vector<engine::ComputeShader> engine::ShaderManager::createDefaultComputeSh
             .name = "sh",
             .compute = { shaderPath("sh.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
             .config = {
-                .poolMultiplier = 128,
+                .poolMultiplier = 32,
                 .computeBitBindings = 1,
                 .storageImageCount = 0,
                 .storageBufferCount = 1

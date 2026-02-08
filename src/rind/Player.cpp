@@ -137,6 +137,11 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         audioManager = entityManager->getRenderer()->getAudioManager();
     }
 
+rind::Player::~Player() {
+    inputManager->unregisterCallback("playerInput");
+    inputManager->unregisterCallback("playerHealthbarResize");
+}
+
 void rind::Player::resizeHealthbar() {
     const float healthbarWidth = 1920.0f;
     float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;

@@ -17,6 +17,8 @@ namespace engine {
 
         void createCubemaps(Renderer* renderer);
         void bakeCubemap(Renderer* renderer, VkCommandBuffer commandBuffer);
+        void copyBakedToDynamic(Renderer* renderer, VkCommandBuffer commandBuffer);
+        void renderDynamicCubemap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame);
         void dispatchSHCompute(Renderer* renderer, VkCommandBuffer commandBuffer);
         void processSHProjection(Renderer* renderer);
 
@@ -33,11 +35,16 @@ namespace engine {
         VkImageView bakedCubemapView = VK_NULL_HANDLE;
         VkDeviceMemory bakedCubemapMemory = VK_NULL_HANDLE;
         VkImageView bakedCubemapFaceViews[6] = { VK_NULL_HANDLE };
+
+        VkImage dynamicCubemapImage = VK_NULL_HANDLE;
+        VkImageView dynamicCubemapView = VK_NULL_HANDLE;
+        VkDeviceMemory dynamicCubemapMemory = VK_NULL_HANDLE;
+        VkImageView dynamicCubemapFaceViews[6] = { VK_NULL_HANDLE };
+
         VkSampler cubemapSampler = VK_NULL_HANDLE;
 
         const uint32_t cubemapSize = 32;
         
-        // Compute shader resources for SH projection
         static constexpr uint32_t WORKGROUP_SIZE = 8;
         uint32_t numWorkgroupsX = 0;
         uint32_t numWorkgroupsY = 0;
@@ -48,7 +55,11 @@ namespace engine {
 
         bool hasImageMap = false;
         bool bakedImageReady = false;
-        bool computeDispatched = false;
+        bool dynamicImageReady = false;
+        bool dynamicCubemapDirty = false;
+        bool shComputePending = false;
+        bool initialSHComputed = false;
         bool computeResourcesCreated = false;
+        size_t lastParticleCount = 0;
     };
 };
