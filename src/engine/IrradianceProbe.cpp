@@ -168,6 +168,8 @@ void engine::IrradianceProbe::createComputeResources(Renderer* renderer) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
     
+    vkMapMemory(renderer->getDevice(), shOutputMemory, 0, outputBufferSize, 0, &shOutputMappedData);
+    
     ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
     if (!shCompute) {
         throw std::runtime_error("sh compute shader not found!");
@@ -234,6 +236,10 @@ void engine::IrradianceProbe::cleanupComputeResources(Renderer* renderer) {
         shOutputBuffer = VK_NULL_HANDLE;
     }
     if (shOutputMemory != VK_NULL_HANDLE) {
+        if (shOutputMappedData != nullptr) {
+            vkUnmapMemory(device, shOutputMemory);
+            shOutputMappedData = nullptr;
+        }
         vkFreeMemory(device, shOutputMemory, nullptr);
         shOutputMemory = VK_NULL_HANDLE;
     }
@@ -630,9 +636,9 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
         ParticlePC pushConstants = {
             .viewProj = viewProjs[face],
             .screenSize = glm::vec2(static_cast<float>(cubemapSize), static_cast<float>(cubemapSize)),
-            .particleSize = 0.3f,
-            .trailWidth = 1.4f,
-            .streakScale = 0.005f
+            .particleSize = 0.35f,
+            .trailWidth = 1.5f,
+            .streakScale = 0.05f
         };
         vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);
         vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(particles.size()), 0, 0);
@@ -732,18 +738,13 @@ void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuf
 }
 
 void engine::IrradianceProbe::processSHProjection(Renderer* renderer) {
-    if (!shComputePending || shOutputBuffer == VK_NULL_HANDLE) {
+    if (!shComputePending || shOutputMappedData == nullptr) {
         return;
     }
     
     shComputePending = false;
-    VkDevice device = renderer->getDevice();
     
-    const size_t outputSize = totalWorkgroups * 9 * sizeof(float) * 4;
-    
-    void* mappedData;
-    vkMapMemory(device, shOutputMemory, 0, outputSize, 0, &mappedData);
-    float* outputData = static_cast<float*>(mappedData);
+    float* outputData = static_cast<float*>(shOutputMappedData);
     
     std::array<glm::vec3, 9> shAccum{};
     for (int i = 0; i < 9; ++i) {
@@ -764,8 +765,6 @@ void engine::IrradianceProbe::processSHProjection(Renderer* renderer) {
     }
     
     shCoeffs = shAccum;
-    
-    vkUnmapMemory(device, shOutputMemory);
 }
 
 engine::IrradianceProbeData engine::IrradianceProbe::getProbeData() const {

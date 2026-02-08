@@ -51,6 +51,7 @@ namespace engine {
         uint32_t totalWorkgroups = 0;
         VkBuffer shOutputBuffer = VK_NULL_HANDLE;
         VkDeviceMemory shOutputMemory = VK_NULL_HANDLE;
+        void* shOutputMappedData = nullptr;
         VkDescriptorSet shDescriptorSet = VK_NULL_HANDLE;
 
         bool hasImageMap = false;
