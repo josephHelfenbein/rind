@@ -35,7 +35,8 @@ float3 sampleCombined(float2 uv) {
     float3 scene = sceneTexture.Sample(sampleSampler, uv).rgb;
     float4 ssr = ssrTexture.Sample(sampleSampler, uv);
     float ao = aoTexture.Sample(sampleSampler, uv);
-    return scene * ao + ssr.rgb * ssr.a;
+    float4 bloom = bloomTexture.Sample(sampleSampler, uv);
+    return scene * ao + ssr.rgb * ssr.a + bloom.rgb;
 }
 
 float3 FXAA(float2 uv) {

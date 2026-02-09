@@ -9,7 +9,8 @@ rind::SlowBullet::SlowBullet(engine::EntityManager* entityManager, const std::st
         collider = new engine::OBBCollider(
             entityManager,
             glm::mat4(1.0f),
-            name
+            name,
+            glm::vec3(0.25f)
         );
         addChild(collider);
         particleManager = entityManager->getRenderer()->getParticleManager();
