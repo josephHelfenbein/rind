@@ -64,10 +64,10 @@ void rind::Enemy::shoot() {
             0.3f
         );
         if (rind::Player* character = dynamic_cast<rind::Player*>(collision.other->getParent())) {
-            character->damage(10.0f);
+            character->damage(5.0f);
             audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
         } else if (rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent())) {
-            character->damage(10.0f);
+            character->damage(5.0f);
             audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
         } else {
             audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);

@@ -1,6 +1,7 @@
 #include <rind/FlyingEnemy.h>
 #include <engine/ParticleManager.h>
 #include <glm/gtc/quaternion.hpp>
+#include <rind/SlowBullet.h>
 
 #define PI 3.14159265358979323846f
 
@@ -276,4 +277,24 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
     setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
     stopMove(getPressed(), false);
     move(glm::vec3(1.0f, 0.0f, 0.0f));
+}
+
+void rind::FlyingEnemy::shoot() {
+    glm::vec3 rayDir = -glm::normalize(glm::vec3(glm::rotate(getHead()->getWorldTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))[2]));
+    glm::vec3 gunPos = gunEndPosition->getWorldPosition();
+    particleManager->burstParticles(
+        glm::translate(glm::mat4(1.0f), gunPos),
+        trailColor,
+        rayDir * 15.0f,
+        10,
+        3.0f,
+        0.3f
+    );
+    audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
+    new rind::SlowBullet(
+        getEntityManager(),
+        "slowBullet" + getName() + std::to_string(spawnedBullets++),
+        glm::translate(glm::mat4(1.0f), gunPos + rayDir * 0.5f),
+        rayDir * 10.0f
+    );
 }

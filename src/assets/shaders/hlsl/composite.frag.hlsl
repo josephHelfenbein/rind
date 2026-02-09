@@ -26,6 +26,9 @@ Texture2D<float4> ssrTexture;
 Texture2D<float> aoTexture;
 
 [[vk::binding(5)]]
+Texture2D<float4> bloomTexture;
+
+[[vk::binding(6)]]
 SamplerState sampleSampler;
 
 float3 sampleCombined(float2 uv) {
@@ -85,8 +88,9 @@ float4 main(VSOutput input) : SV_Target {
     float4 textColor = textTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 ssrColor = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
     float aoColor = aoTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 bloomColor = bloomTexture.Sample(sampleSampler, input.fragTexCoord);
 
-    float3 combinedScene = sceneColor.rgb * aoColor + ssrColor.rgb * ssrColor.a;
+    float3 combinedScene = sceneColor.rgb * aoColor + ssrColor.rgb * ssrColor.a + bloomColor.rgb;
 
     if ((pc.flag & 1) != 0) {
         combinedScene = FXAA(input.fragTexCoord);

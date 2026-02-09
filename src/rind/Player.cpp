@@ -552,7 +552,7 @@ void rind::Player::shoot() {
             0.3f
         );
         if (rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent())) {
-            character->damage(25.0f);
+            character->damage(34.0f);
             if (character->getState() == EnemyState::Idle) {
                 character->rotateToPlayer();
                 if (!character->checkVisibilityOfPlayer()) {

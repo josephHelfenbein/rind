@@ -303,6 +303,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         ssrPass->images = images;
     }
 
+    // Particle Pass
     auto particlePass = std::make_shared<PassInfo>();
     particlePass->name = "ParticlePass";
     particlePass->usesSwapchain = false;
@@ -330,6 +331,49 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         aoPass->images = images;
+    }
+
+    // Bloom Pass
+    auto bloomPass = std::make_shared<PassInfo>();
+    bloomPass->name = "BloomPass";
+    bloomPass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "BloomColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        bloomPass->images = images;
+    }
+
+    // Bloom Blur Pass
+    auto bloomBlurPassH = std::make_shared<PassInfo>();
+    bloomBlurPassH->name = "BloomBlurPassH";
+    bloomBlurPassH->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "BloomBlurHColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        bloomBlurPassH->images = images;
+    }
+
+    auto bloomBlurPassV = std::make_shared<PassInfo>();
+    bloomBlurPassV->name = "BloomBlurPassV";
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "BloomBlurVColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        bloomBlurPassV->images = images;
     }
 
     // UI Pass
@@ -704,6 +748,93 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shaders.push_back(shader);
     }
 
+    // Bloom
+    {
+        GraphicsShader shader = {
+            .name = "bloom",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("bloom.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = bloomPass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "lighting", "SceneColor" }
+                }
+            }
+        };
+        shaders.push_back(shader);
+    }
+
+    // Bloom Blur Horizontal
+    {
+        GraphicsShader shader = {
+            .name = "hblur",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("hblur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = bloomBlurPassH,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "bloom", "BloomColor" }
+                }
+            }
+        };
+        shaders.push_back(shader);
+    }
+
+    // Bloom Blur Vertical
+    {
+        GraphicsShader shader = {
+            .name = "vblur",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("vblur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = bloomBlurPassV,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "hblur", "BloomBlurHColor" }
+                }
+            }
+        };
+        shaders.push_back(shader);
+    }
+
     // UI
     {
         GraphicsShader shader = {
@@ -802,11 +933,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 6,
+                .fragmentBitBindings = 7,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1, 1
+                    1, 1, 1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -824,7 +956,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 1, "ui", "UIColor" },
                     { 2, "text", "TextColor" },
                     { 3, "ssr", "SceneColor"},
-                    { 4, "ao", "AOColor" }
+                    { 4, "ao", "AOColor" },
+                    { 5, "vblur", "BloomBlurVColor" }
                 }
             }
         };
@@ -850,6 +983,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     pushNode(true, lightingPass.get(), { "lighting" });
     pushNode(true, ssrPass.get(), { "ssr" });
     pushNode(true, aoPass.get(), { "ao" });
+    pushNode(true, bloomPass.get(), { "bloom" });
+    pushNode(true, bloomBlurPassH.get(), { "hblur" });
+    pushNode(true, bloomBlurPassV.get(), { "vblur" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });

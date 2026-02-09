@@ -32,7 +32,7 @@ namespace rind {
             wanderTarget = target;
         }
 
-        void shoot();
+        virtual void shoot();
 
         bool checkVisibilityOfPlayer();
 
