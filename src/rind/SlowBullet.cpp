@@ -3,8 +3,8 @@
 #include <rind/Enemy.h>
 #include <engine/SpatialGrid.h>
 
-rind::SlowBullet::SlowBullet(engine::EntityManager* entityManager, const std::string& name, glm::mat4 transform, const glm::vec3 velocity)
-    : engine::Entity(entityManager, name, "gbuffer", transform, {"materials_slowbullet_albedo", "materials_slowbullet_metallic", "materials_slowbullet_roughness", "materials_slowbullet_normal"}, true), velocity(velocity) {
+rind::SlowBullet::SlowBullet(engine::EntityManager* entityManager, const std::string& name, glm::mat4 transform, const glm::vec3 velocity, const glm::vec4 color)
+    : engine::Entity(entityManager, name, "gbuffer", transform, {"materials_slowbullet_albedo", "materials_slowbullet_metallic", "materials_slowbullet_roughness", "materials_slowbullet_normal"}, true), velocity(velocity), color(color) {
         setModel(entityManager->getRenderer()->getModelManager()->getModel("slowbullet"));
         setCastShadow(false);
         collider = new engine::OBBCollider(
@@ -13,6 +13,8 @@ rind::SlowBullet::SlowBullet(engine::EntityManager* entityManager, const std::st
             name,
             glm::vec3(0.25f)
         );
+        collider->setIsTrigger(true);
+        collider->setIsDynamic(true);
         addChild(collider);
         particleManager = entityManager->getRenderer()->getParticleManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
@@ -60,7 +62,7 @@ void rind::SlowBullet::update(float deltaTime) {
         }
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
-            glm::vec4(1.0f, 1.0f, 0.5f, 1.0f),
+            color,
             reflectedDir * 40.0f,
             50,
             4.0f,
@@ -68,7 +70,7 @@ void rind::SlowBullet::update(float deltaTime) {
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
-            glm::vec4(1.0f, 1.0f, 0.5f, 1.0f),
+            color,
             reflectedDir * 25.0f,
             30,
             4.0f,
@@ -76,17 +78,17 @@ void rind::SlowBullet::update(float deltaTime) {
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
-            glm::vec4(1.0f, 1.0f, 0.5f, 1.0f),
+            color,
             reflectedDir * 10.0f,
             50,
             2.0f,
-            0.3f
+            0.8f
         );
         getEntityManager()->markForDeletion(this);
     } else {
         particleManager->burstParticles(
             getWorldTransform(),
-            glm::vec4(1.0f, 1.0f, 0.5f, 1.0f),
+            color,
             -velocity * 0.5f,
             2,
             1.0f,

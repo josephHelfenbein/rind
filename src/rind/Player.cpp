@@ -74,6 +74,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             name,
             glm::vec3(0.5f, 1.8f, 0.5f)
         );
+        box->setIsDynamic(true);
         addChild(box);
         setCollider(box);
         playerModel = new engine::Entity(

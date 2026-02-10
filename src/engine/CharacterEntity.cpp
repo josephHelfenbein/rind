@@ -2,6 +2,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
 #include <engine/io.h>
+#include <limits>
 
 static inline glm::mat4 applyWorldTranslation(const glm::mat4& transform, const glm::vec3& offset) {
     glm::mat4 result = transform;
@@ -271,8 +272,11 @@ engine::Collider::Collision engine::CharacterEntity::willCollide(const glm::mat4
     std::vector<Collider*> candidates;
     getEntityManager()->getSpatialGrid().query(queryAABB, candidates);
     
+    Collider::Collision bestCollision;
+    float bestScore = -std::numeric_limits<float>::max();
+    
     for (Collider* otherCollider : candidates) {
-        if (otherCollider == collider) {
+        if (otherCollider == collider || otherCollider->getIsTrigger()) {
             continue;
         }
         AABB otherAABB = otherCollider->getWorldAABB();
@@ -282,8 +286,17 @@ engine::Collider::Collision engine::CharacterEntity::willCollide(const glm::mat4
         Collider::Collision collision;
         if (collider->intersectsMTV(*otherCollider, collision.mtv, deltaTransform)) {
             collision.other = otherCollider;
-            return collision;
+            
+            glm::vec3 mtv = collision.mtv.mtv;
+            float opposition = -glm::dot(glm::normalize(mtv + glm::vec3(1e-6f)), delta + glm::vec3(1e-6f));
+            float penetration = collision.mtv.penetrationDepth;
+            float score = penetration + opposition * 0.1f;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestCollision = collision;
+            }
         }
     }
-    return Collider::Collision();
+    return bestCollision;
 }

@@ -9,10 +9,11 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
     : rind::Enemy(entityManager, player, name, transform, enemyCount) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.3f, 0.0f)),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.4f, 0.0f)),
             name,
             glm::vec3(0.9f, 0.7f, 0.9f)
         );
+        box->setIsDynamic(true);
         addChild(box);
         setCollider(box);
         std::vector<std::string> gunMaterial = {
@@ -109,6 +110,13 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 float currentYVel = getVelocity().y;
                 float yVel = currentYVel + (targetYVel - currentYVel) * deltaTime * 5.0f;
                 yVel = std::clamp(yVel, -10.0f, 10.0f);
+                if (yVel < 0.0f) {
+                    float groundCheckDist = std::abs(yVel * deltaTime) + 1.5f;
+                    size_t groundHits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), groundCheckDist, this->getCollider()).size();
+                    if (groundHits > 0) {
+                        yVel = 0.0f;
+                    }
+                }
                 setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
                 bool facingPlayer = (angle < PI / 4.0f);
                 float desiredDistance = 12.0f;
@@ -275,6 +283,13 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
     float currentYVel = getVelocity().y;
     float yVel = currentYVel + (targetYVel - currentYVel) * deltaTime * 5.0f;
     yVel = std::clamp(yVel, -10.0f, 10.0f);
+    if (yVel < 0.0f) {
+        float groundCheckDist = std::abs(yVel * deltaTime) + 1.5f;
+        size_t groundHits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), groundCheckDist, this->getCollider()).size();
+        if (groundHits > 0) {
+            yVel = 0.0f;
+        }
+    }
     setVelocity(glm::vec3(getVelocity().x, yVel, getVelocity().z));
     stopMove(getPressed(), false);
     move(glm::vec3(1.0f, 0.0f, 0.0f));
@@ -292,10 +307,11 @@ void rind::FlyingEnemy::shoot() {
         0.3f
     );
     audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
-    new rind::SlowBullet(
+    rind::SlowBullet* slowBullet = new rind::SlowBullet(
         getEntityManager(),
         "slowBullet" + getName() + std::to_string(spawnedBullets++),
         glm::translate(glm::mat4(1.0f), gunPos + rayDir * 0.5f),
-        rayDir * 10.0f
+        rayDir * 10.0f,
+        trailColor
     );
 }

@@ -26,7 +26,7 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
     entityManager->getSpatialGrid().query(rayAABB, candidates);
     
     for (Collider* collider : candidates) {
-        if (collider == ignoreCollider) {
+        if (collider == ignoreCollider || collider->getIsTrigger()) {
             continue;
         }
         AABB aabb = collider->getWorldAABB();

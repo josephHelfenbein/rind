@@ -15,6 +15,6 @@ namespace rind {
         void wanderTo(float deltaTime) override;
     private:
         uint32_t spawnedBullets = 0u;
-        glm::vec4 trailColor = glm::vec4(1.0f, 1.0f, 0.5f, 1.0f);
+        glm::vec4 trailColor = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f);
     };
 };

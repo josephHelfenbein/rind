@@ -12,6 +12,7 @@ rind::WalkingEnemy::WalkingEnemy(engine::EntityManager* entityManager, rind::Pla
             name,
             glm::vec3(0.9f, 0.7f, 0.9f)
         );
+        box->setIsDynamic(true);
         addChild(box);
         setCollider(box);
         std::vector<std::string> gunMaterial = {

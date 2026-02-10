@@ -47,7 +47,9 @@ namespace engine {
         
         float cellSize;
         float invCellSize;
-        std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash> cells;
-        std::unordered_map<Collider*, std::vector<CellCoord>> colliderCells;
+        std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash> dynamicCells;
+        std::unordered_map<Collider*, std::vector<CellCoord>> dynamicColliderCells;
+        std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash> staticCells;
+        std::unordered_map<Collider*, std::vector<CellCoord>> staticColliderCells;
     };
 }

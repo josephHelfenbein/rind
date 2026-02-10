@@ -25,8 +25,7 @@ void engine::EntityManager::rebuildSpatialGrid() {
 
 void engine::EntityManager::updateDynamicColliders() {
     for (Collider* c : colliders) {
-        Entity* parent = c->getParent();
-        if (parent && parent->getIsMovable()) {
+        if (c->getIsDynamic()) {
             spatialGrid.update(c, c->getWorldAABB());
         }
     }

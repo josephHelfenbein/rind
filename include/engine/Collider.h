@@ -39,6 +39,10 @@ namespace engine {
         static std::vector<Collision> raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance = FLT_MAX, Collider* ignoreCollider = nullptr, bool returnFirstHit = false);
         static AABB aabbFromCorners(const std::array<glm::vec3, 8>& corners);
         static std::array<glm::vec3, 8> getCornersFromAABB(const AABB& aabb);
+        bool getIsTrigger() const { return isTrigger; }
+        void setIsTrigger(bool trigger) { isTrigger = trigger; }
+        bool getIsDynamic() const { return isDynamic; }
+        void setIsDynamic(bool dynamic) { isDynamic = dynamic; }
     protected:
         static std::array<glm::vec3, 8> buildOBBCorners(const glm::mat4& transform, const glm::vec3& half);
         static std::pair<float, float> projectOntoAxis(const std::array<glm::vec3, 8>& corners, const glm::vec3& axis); // min, max
@@ -47,6 +51,8 @@ namespace engine {
         static void addAxisUnique(std::vector<glm::vec3>& axes, const glm::vec3& axis);
         static std::pair<float, float> projectVertsOntoAxis(const std::vector<glm::vec3>& verts, const glm::vec3& axis, const glm::vec3& offset = glm::vec3(0.0f)); // min, max
         static bool satMTV(const std::vector<glm::vec3>& vertsA, const std::vector<glm::vec3>& vertsB, const std::vector<glm::vec3>& edgesA, const std::vector<glm::vec3>& edgesB, const std::vector<glm::vec3>& axesA, const std::vector<glm::vec3>& axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f));
+        bool isTrigger = false;
+        bool isDynamic = false;
     };
     class AABBCollider;
     class OBBCollider;
