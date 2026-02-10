@@ -15,12 +15,15 @@ engine::Collider::~Collider() {
 std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit) {
     std::vector<Collision> results;
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
+
+    const float margin = 0.1f;
     AABB rayAABB = {
-        glm::min(rayOrigin, rayEnd),
-        glm::max(rayOrigin, rayEnd)
+        .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
+        .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
     
-    const std::vector<Collider*>& candidates = entityManager->getColliders();
+    std::vector<Collider*> candidates;
+    entityManager->getSpatialGrid().query(rayAABB, candidates);
     
     for (Collider* collider : candidates) {
         if (collider == ignoreCollider) {
@@ -297,16 +300,19 @@ std::pair<float, float> engine::Collider::projectVertsOntoAxis(const std::vector
 
 bool engine::Collider::satMTV(const std::vector<glm::vec3>& vertsA, const std::vector<glm::vec3>& vertsB, const std::vector<glm::vec3>& edgesA, const std::vector<glm::vec3>& edgesB, const std::vector<glm::vec3>& axesA, const std::vector<glm::vec3>& axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB) {
     std::vector<glm::vec3> axes;
-    axes.reserve(axesA.size() + axesB.size() + edgesA.size() * edgesB.size());
+    axes.reserve(axesA.size() + axesB.size() + 36);
     for (const auto& axis : axesA) {
         addAxisUnique(axes, axis);
     }
     for (const auto& axis : axesB) {
         addAxisUnique(axes, axis);
     }
-    for (const auto& edgeA : edgesA) {
-        for (const auto& edgeB : edgesB) {
-            addAxisUnique(axes, glm::cross(edgeA, edgeB));
+    const size_t maxEdgesPerShape = 6;
+    size_t edgeCountA = std::min(edgesA.size(), maxEdgesPerShape);
+    size_t edgeCountB = std::min(edgesB.size(), maxEdgesPerShape);
+    for (size_t i = 0; i < edgeCountA; ++i) {
+        for (size_t j = 0; j < edgeCountB; ++j) {
+            addAxisUnique(axes, glm::cross(edgesA[i], edgesB[j]));
         }
     }
     float minPenetration = std::numeric_limits<float>::max();
@@ -411,9 +417,11 @@ void engine::ConvexHullCollider::buildConvexData(const std::vector<glm::vec3>& v
         if (len > 1e-6f) {
             addAxisUnique(outFaceAxes, normal / len);
         }
-        addAxisUnique(outEdgeAxes, normalizeOrZero(b - a));
-        addAxisUnique(outEdgeAxes, normalizeOrZero(c - b));
-        addAxisUnique(outEdgeAxes, normalizeOrZero(a - c));
+        if (outEdgeAxes.size() < 12) {
+            addAxisUnique(outEdgeAxes, normalizeOrZero(b - a));
+            addAxisUnique(outEdgeAxes, normalizeOrZero(c - b));
+            addAxisUnique(outEdgeAxes, normalizeOrZero(a - c));
+        }
     }
     if (outFaceAxes.empty()) {
         outFaceAxes = {

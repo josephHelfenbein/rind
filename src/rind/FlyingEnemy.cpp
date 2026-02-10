@@ -39,7 +39,7 @@ rind::FlyingEnemy::FlyingEnemy(engine::EntityManager* entityManager, rind::Playe
             "gbuffer",
             glm::translate(
                 glm::mat4(1.0f),
-                glm::vec3(0.9f, 0.4f, 0.0f)
+                glm::vec3(1.0f, 0.2f, 0.0f)
             ),
             gunMaterial
         );

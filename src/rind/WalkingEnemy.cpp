@@ -97,6 +97,9 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     wandering = false;
                     waiting = false;
                     stopMove(getPressed(), false);
+                    cachedMaxSafeBackup = 0.0f;
+                    backupSearchLo = 0.0f;
+                    backupSearchHi = 15.0f;
                     audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, true);
                 }
                 break;
@@ -113,23 +116,24 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 forward.y = 0.0f;
                 forward = glm::length(forward) > 1e-6f ? glm::normalize(forward) : glm::vec3(0.0f, 0.0f, -1.0f);
                 glm::vec3 backward = -forward;
-                const float maxBackupDist = 15.0f;
-                float lo = 0.0f;
-                float hi = maxBackupDist;
-                float maxSafeBackup = 0.0f;
-                const int binarySearchIterations = 8;
+                if (backupSearchHi - backupSearchLo < 0.5f) {
+                    backupSearchLo = 0.0f;
+                    backupSearchHi = 15.0f;
+                }
+                const int binarySearchIterations = 4;
                 for (int i = 0; i < binarySearchIterations; ++i) {
-                    float mid = (lo + hi) * 0.5f;
+                    float mid = (backupSearchLo + backupSearchHi) * 0.5f;
                     glm::vec3 testPos = getWorldPosition() + backward * mid;
                     glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
                     size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
                     if (hits > 0 && hits <= 2) {
-                        maxSafeBackup = mid;
-                        lo = mid;
+                        cachedMaxSafeBackup = mid;
+                        backupSearchLo = mid;
                     } else {
-                        hi = mid;
+                        backupSearchHi = mid;
                     }
                 }
+                float maxSafeBackup = cachedMaxSafeBackup;
                 const float desiredDistance = 12.0f;
                 float safeDistance = glm::min(desiredDistance, distanceToPlayer + maxSafeBackup);
                 glm::vec3 targetDir = glm::normalize(glm::vec3(toPlayer.x, 0.0f, toPlayer.z));

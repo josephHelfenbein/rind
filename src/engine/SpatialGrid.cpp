@@ -84,7 +84,7 @@ void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCan
     getCellRange(aabb, minCell, maxCell);
     std::unordered_set<Collider*> seen;
     
-    const int maxCellsPerAxis = 10;
+    const int maxCellsPerAxis = 150;
     int rangeX = std::min(maxCell.x - minCell.x, maxCellsPerAxis);
     int rangeY = std::min(maxCell.y - minCell.y, maxCellsPerAxis);
     int rangeZ = std::min(maxCell.z - minCell.z, maxCellsPerAxis);

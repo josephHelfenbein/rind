@@ -11,5 +11,9 @@ namespace rind {
 
         void wander() override;
         void wanderTo(float deltaTime) override;
+    private:
+        float cachedMaxSafeBackup = 0.0f;
+        float backupSearchLo = 0.0f;
+        float backupSearchHi = 15.0f;
     };
 };
