@@ -102,7 +102,8 @@ void engine::TextureManager::init() {
             } else {
                 bool isNoncolorMap = textureName.find("metallic") != std::string::npos 
                 || textureName.find("roughness") != std::string::npos 
-                || textureName.find("normal") != std::string::npos;
+                || textureName.find("normal") != std::string::npos
+                || textureName.find("smaa_") != std::string::npos;
                 format = isNoncolorMap ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB;
                 pixelSize = static_cast<VkDeviceSize>(texWidth) * static_cast<VkDeviceSize>(texHeight) * 4 * sizeof(uint8_t);
             }
@@ -134,17 +135,19 @@ void engine::TextureManager::init() {
                 1
             );
             VkImageView textureImageView = renderer->createImageView(textureImage, format);
+            bool isSMAATexture = textureName.find("smaa_") != std::string::npos;
+            VkSamplerAddressMode addressMode = isSMAATexture ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
             VkSampler textureSampler;
             textureSampler = renderer->createTextureSampler(
                 VK_FILTER_LINEAR,
                 VK_FILTER_LINEAR,
                 VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                VK_SAMPLER_ADDRESS_MODE_REPEAT,
-                VK_SAMPLER_ADDRESS_MODE_REPEAT,
-                VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                addressMode,
+                addressMode,
+                addressMode,
                 0.0f,
-                VK_TRUE,
-                16.0f,
+                isSMAATexture ? VK_FALSE : VK_TRUE,
+                isSMAATexture ? 1.0f : 16.0f,
                 VK_FALSE,
                 VK_COMPARE_OP_ALWAYS,
                 0.0f,

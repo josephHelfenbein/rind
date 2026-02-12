@@ -363,6 +363,66 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         bloomBlurPassH->images = images;
     }
 
+    // Combine Pass
+    auto combinePass = std::make_shared<PassInfo>();
+    combinePass->name = "CombinePass";
+    combinePass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "CombinedColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        combinePass->images = images;
+    }
+
+    // SMAA Edge Detection Pass
+    auto smaaEdgePass = std::make_shared<PassInfo>();
+    smaaEdgePass->name = "SMAAEdgePass";
+    smaaEdgePass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SMAAEdgesColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R8G8_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        smaaEdgePass->images = images;
+    }
+
+    // SMAA Blending Weight Pass
+    auto smaaWeightPass = std::make_shared<PassInfo>();
+    smaaWeightPass->name = "SMAAWeightPass";
+    smaaWeightPass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SMAAWeightsColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        smaaWeightPass->images = images;
+    }
+
+    // SMAA Neighborhood Blending Pass
+    auto smaaBlendPass = std::make_shared<PassInfo>();
+    smaaBlendPass->name = "SMAABlendPass";
+    smaaBlendPass->usesSwapchain = false;
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SMAABlendedColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        smaaBlendPass->images = images;
+    }
+
     auto bloomBlurPassV = std::make_shared<PassInfo>();
     bloomBlurPassV->name = "BloomBlurPassV";
     {
@@ -925,6 +985,135 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         shaders.push_back(shader);
     }
 
+    // Combine
+    {
+        GraphicsShader shader = {
+            .name = "combine",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("combine.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 5,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = combinePass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "lighting", "SceneColor" },
+                    { 1, "ssr", "SceneColor" },
+                    { 2, "ao", "AOColor" },
+                    { 3, "vblur", "BloomBlurVColor" }
+                }
+            }
+        };
+        shaders.push_back(shader);
+    }
+
+    // SMAA Edge Detection
+    {
+        GraphicsShader shader = {
+            .name = "smaaEdge",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("smaaEdge.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = {
+                    1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = smaaEdgePass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "combine", "CombinedColor" }
+                }
+            }
+        };
+        shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
+    // SMAA Blending Weight Calculation
+    {
+        GraphicsShader shader = {
+            .name = "smaaWeight",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("smaaWeight.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 4,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = smaaWeightPass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "smaaEdge", "SMAAEdgesColor" }
+                }
+            }
+        };
+        shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
+    // SMAA Neighborhood Blending
+    {
+        GraphicsShader shader = {
+            .name = "smaaBlend",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("smaaBlend.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 3,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = smaaBlendPass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "combine", "CombinedColor" },
+                    { 1, "smaaWeight", "SMAAWeightsColor" }
+                }
+            }
+        };
+        shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
     // Composite
     {
         GraphicsShader shader = {
@@ -933,13 +1122,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("composite.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 7,
+                .fragmentBitBindings = 5,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1, 1, 1
+                    1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -952,12 +1139,10 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .passInfo = mainPass,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
-                    { 0, "lighting", "SceneColor" },
+                    { 0, "combine", "CombinedColor" },
                     { 1, "ui", "UIColor" },
                     { 2, "text", "TextColor" },
-                    { 3, "ssr", "SceneColor"},
-                    { 4, "ao", "AOColor" },
-                    { 5, "vblur", "BloomBlurVColor" }
+                    { 3, "smaaBlend", "SMAABlendedColor" }
                 }
             }
         };
@@ -986,6 +1171,10 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     pushNode(true, bloomPass.get(), { "bloom" });
     pushNode(true, bloomBlurPassH.get(), { "hblur" });
     pushNode(true, bloomBlurPassV.get(), { "vblur" });
+    pushNode(true, combinePass.get(), { "combine" });
+    pushNode(true, smaaEdgePass.get(), { "smaaEdge" });
+    pushNode(true, smaaWeightPass.get(), { "smaaWeight" });
+    pushNode(true, smaaBlendPass.get(), { "smaaBlend" });
     pushNode(true, uiPass.get(), { "ui" });
     pushNode(true, textPass.get(), { "text" });
     pushNode(true, mainPass.get(), { "composite" });

@@ -4,7 +4,7 @@ struct VSOutput {
 
 struct PushConstants {
     float2 invScreenSize;
-    uint flag; // bit 0 = enable fxaa
+    uint flag; // 0 = none, 1 = fxaa, 2 = smaa
     uint pad;
 };
 
@@ -20,33 +20,19 @@ Texture2D<float4> uiTexture;
 Texture2D<float4> textTexture;
 
 [[vk::binding(3)]]
-Texture2D<float4> ssrTexture;
+Texture2D<float4> smaaTexture;
 
 [[vk::binding(4)]]
-Texture2D<float> aoTexture;
-
-[[vk::binding(5)]]
-Texture2D<float4> bloomTexture;
-
-[[vk::binding(6)]]
 SamplerState sampleSampler;
-
-float3 sampleCombined(float2 uv) {
-    float3 scene = sceneTexture.Sample(sampleSampler, uv).rgb;
-    float4 ssr = ssrTexture.Sample(sampleSampler, uv);
-    float ao = aoTexture.Sample(sampleSampler, uv);
-    float4 bloom = bloomTexture.Sample(sampleSampler, uv);
-    return scene * ao + ssr.rgb * ssr.a + bloom.rgb;
-}
 
 float3 FXAA(float2 uv) {
     const float edgeThreshold = 0.08;
     float2 texelSize = pc.invScreenSize;
-    float3 rgbNW = sampleCombined(uv + float2(-texelSize.x, -texelSize.y));
-    float3 rgbNE = sampleCombined(uv + float2(texelSize.x, -texelSize.y));
-    float3 rgbSW = sampleCombined(uv + float2(-texelSize.x, texelSize.y));
-    float3 rgbSE = sampleCombined(uv + float2(texelSize.x, texelSize.y));
-    float3 rgbM  = sampleCombined(uv);
+    float3 rgbNW = sceneTexture.Sample(sampleSampler, uv + float2(-texelSize.x, -texelSize.y)).rgb;
+    float3 rgbNE = sceneTexture.Sample(sampleSampler, uv + float2(texelSize.x, -texelSize.y)).rgb;
+    float3 rgbSW = sceneTexture.Sample(sampleSampler, uv + float2(-texelSize.x, texelSize.y)).rgb;
+    float3 rgbSE = sceneTexture.Sample(sampleSampler, uv + float2(texelSize.x, texelSize.y)).rgb;
+    float3 rgbM  = sceneTexture.Sample(sampleSampler, uv).rgb;
 
     float lumaNW = dot(rgbNW, float3(0.299, 0.587, 0.114));
     float lumaNE = dot(rgbNE, float3(0.299, 0.587, 0.114));
@@ -70,11 +56,11 @@ float3 FXAA(float2 uv) {
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
     dir = saturate(dir * rcpDirMin) * float2(texelSize.x, texelSize.y);
     float3 rgbA = 0.5 * (
-        sampleCombined(uv + dir * (1.0 / 3.0 - 0.5)) +
-        sampleCombined(uv + dir * (2.0 / 3.0 - 0.5)));
+        sceneTexture.Sample(sampleSampler, uv + dir * (1.0 / 3.0 - 0.5)).rgb +
+        sceneTexture.Sample(sampleSampler, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
     float3 rgbB = rgbA * 0.5 + 0.25 * (
-        sampleCombined(uv + dir * -0.5) +
-        sampleCombined(uv + dir * 0.5));
+        sceneTexture.Sample(sampleSampler, uv + dir * -0.5).rgb +
+        sceneTexture.Sample(sampleSampler, uv + dir * 0.5).rgb);
     float subpixelBlend = 0.75;
     if (dot(rgbB, float3(0.299, 0.587, 0.114)) < lumaMin || dot(rgbB, float3(0.299, 0.587, 0.114)) > lumaMax) {
         return lerp(rgbA, rgbB, 1.0 - subpixelBlend);
@@ -84,19 +70,18 @@ float3 FXAA(float2 uv) {
 }
 
 float4 main(VSOutput input) : SV_Target {
-    float4 sceneColor = sceneTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 uiColor = uiTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 textColor = textTexture.Sample(sampleSampler, input.fragTexCoord);
-    float4 ssrColor = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
-    float aoColor = aoTexture.Sample(sampleSampler, input.fragTexCoord);
-    float4 bloomColor = bloomTexture.Sample(sampleSampler, input.fragTexCoord);
-
-    float3 combinedScene = sceneColor.rgb * aoColor + ssrColor.rgb * ssrColor.a + bloomColor.rgb;
-
-    if ((pc.flag & 1) != 0) {
-        combinedScene = FXAA(input.fragTexCoord);
+    
+    float3 sceneColor;
+    if (pc.flag == 2) {
+        sceneColor = smaaTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
+    } else if (pc.flag == 1) {
+        sceneColor = FXAA(input.fragTexCoord);
+    } else {
+        sceneColor = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     }
    
-    float4 sceneUI = lerp(float4(combinedScene, sceneColor.a), uiColor, uiColor.a);
+    float4 sceneUI = lerp(float4(sceneColor, 1.0), uiColor, uiColor.a);
     return lerp(sceneUI, textColor, textColor.a);
 }

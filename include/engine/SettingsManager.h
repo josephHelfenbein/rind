@@ -16,10 +16,10 @@ namespace engine {
     public:
         struct Settings {
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
+            uint32_t aaMode = 1; // 0 = none, 1 = FXAA, 2 = SMAA
             float fpsLimit = 0.0f;
             float shadowQuality = 2.0f; // 0=512 4 samples, 1=1024 8 samples, 2=2048 16 samples, 3=2048 32 samples
             float masterVolume = 1.0f;
-            bool fxaaEnabled = true;
             bool ssrEnabled = true;
             bool showFPS = false;
         };
@@ -45,7 +45,7 @@ namespace engine {
 
             currentSettings->masterVolume = std::clamp(parseFloat(content, "masterVolume", 1.0f), 0.0f, 1.0f);
             currentSettings->aoMode = std::clamp(static_cast<uint32_t>(parseInt(content, "aoMode", 2)), 0u, 2u);
-            currentSettings->fxaaEnabled = parseBool(content, "fxaaEnabled", true);
+            currentSettings->aaMode = std::clamp(static_cast<uint32_t>(parseInt(content, "aaMode", 1)), 0u, 2u);
             currentSettings->ssrEnabled = parseBool(content, "ssrEnabled", true);
             currentSettings->showFPS = parseBool(content, "showFPS", false);
             currentSettings->fpsLimit = parseFloat(content, "fpsLimit", 0.0f);
@@ -72,7 +72,7 @@ namespace engine {
             file << "{\n";
             file << "    \"masterVolume\": " << currentSettings->masterVolume << ",\n";
             file << "    \"aoMode\": " << currentSettings->aoMode << ",\n";
-            file << "    \"fxaaEnabled\": " << (currentSettings->fxaaEnabled ? "true" : "false") << ",\n";
+            file << "    \"aaMode\": " << currentSettings->aaMode << ",\n";
             file << "    \"ssrEnabled\": " << (currentSettings->ssrEnabled ? "true" : "false") << ",\n";
             file << "    \"showFPS\": " << (currentSettings->showFPS ? "true" : "false") << ",\n";
             file << "    \"fpsLimit\": " << currentSettings->fpsLimit << ",\n";
@@ -146,26 +146,62 @@ namespace engine {
             // FXAA
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -1800.0f, 0.0f)),
-                "fxaaLabel",
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -1950.0f, 0.0f)),
+                "aaLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Enable FXAA:",
+                "Anti-Aliasing Mode:",
                 "Lato",
                 Corner::TopLeft
             ));
-            settingsUIObject->addChild(new CheckboxObject(
+            settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1350.0f, 0.0f)),
-                "fxaaCheckbox",
-                glm::vec4(1.0f),
-                tempSettings->fxaaEnabled,
-                tempSettings->fxaaEnabled,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-250.0f, -1700.0f, 0.0f)),
+                "aaOptionsLabel",
+                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                "Disabled   FXAA   SMAA",
+                "Lato",
                 Corner::TopRight
             ));
+            aaDisabled = (tempSettings->aaMode == 0);
+            CheckboxObject* aaDisabledCheckbox = new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1350.0f, -1550.0f, 0.0f)),
+                "aaDisabledCheckbox",
+                glm::vec4(1.0f),
+                aaDisabled,
+                aaDisabled,
+                Corner::TopRight
+            );
+            aaFXAA = (tempSettings->aaMode == 1);
+            CheckboxObject* aaFXAACheckbox = new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-850.0f, -1550.0f, 0.0f)),
+                "aaFXAACheckbox",
+                glm::vec4(1.0f),
+                aaFXAA,
+                aaFXAA,
+                Corner::TopRight
+            );
+            aaSMAA = (tempSettings->aaMode == 2);
+            CheckboxObject* aaSMAACheckbox = new CheckboxObject(
+                uiManager,
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1550.0f, 0.0f)),
+                "aaSMAACheckbox",
+                glm::vec4(1.0f),
+                aaSMAA,
+                aaSMAA,
+                Corner::TopRight
+            );
+            settingsUIObject->addChild(aaDisabledCheckbox);
+            settingsUIObject->addChild(aaFXAACheckbox);
+            settingsUIObject->addChild(aaSMAACheckbox);
+            aaDisabledCheckbox->setBoundBools({ aaFXAACheckbox, aaSMAACheckbox });
+            aaFXAACheckbox->setBoundBools({ aaDisabledCheckbox, aaSMAACheckbox });
+            aaSMAACheckbox->setBoundBools({ aaDisabledCheckbox, aaFXAACheckbox });
             // Ambient Occlusion
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -2350.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -2650.0f, 0.0f)),
                 "aoLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Ambient Occlusion",
@@ -174,7 +210,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-250.0f, -2200.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-250.0f, -2400.0f, 0.0f)),
                 "aoOptionsLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Disabled   SSAO   GTAO",
@@ -184,7 +220,7 @@ namespace engine {
             aoDisabled = (tempSettings->aoMode == 0);
             CheckboxObject* aoDisabledCheckbox = new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1350.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1350.0f, -2100.0f, 0.0f)),
                 "aoDisabledCheckbox",
                 glm::vec4(1.0f),
                 aoDisabled,
@@ -194,7 +230,7 @@ namespace engine {
             aoSSAO = (tempSettings->aoMode == 1);
             CheckboxObject* aoSSAOCheckbox = new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-850.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-850.0f, -2100.0f, 0.0f)),
                 "aoSSAOCheckbox",
                 glm::vec4(1.0f),
                 aoSSAO,
@@ -204,7 +240,7 @@ namespace engine {
             aoGTAO = (tempSettings->aoMode == 2);
             CheckboxObject* aoGTAOCheckbox = new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -2100.0f, 0.0f)),
                 "aoGTAOCheckbox",
                 glm::vec4(1.0f),
                 aoGTAO,
@@ -220,7 +256,7 @@ namespace engine {
             // Show FPS
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3000.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3200.0f, 0.0f)),
                 "showFPSLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Show FPS:",
@@ -229,7 +265,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new CheckboxObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-340.0f, -2300.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-340.0f, -2500.0f, 0.0f)),
                 "showFPSCheckbox",
                 glm::vec4(1.0f),
                 tempSettings->showFPS,
@@ -239,7 +275,7 @@ namespace engine {
             // Master Volume
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3600.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3800.0f, 0.0f)),
                 "masterVolumeLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Master Volume:",
@@ -248,7 +284,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new SliderObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -1900.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2100.0f, 0.0f)),
                 "masterVolumeSlider",
                 0.0f,
                 1.0f,
@@ -261,7 +297,7 @@ namespace engine {
             // FPS Limit
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -4200.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -4400.0f, 0.0f)),
                 "fpsLimitLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "FPS Limit (0 = VSync):",
@@ -270,7 +306,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new SliderObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2200.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2400.0f, 0.0f)),
                 "fpsLimitSlider",
                 0.0f,
                 240.0f,
@@ -283,7 +319,7 @@ namespace engine {
             // Shadow Quality
             settingsUIObject->addChild(new TextObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -4800.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -5000.0f, 0.0f)),
                 "shadowQualityLabel",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "Shadow Quality:",
@@ -292,7 +328,7 @@ namespace engine {
             ));
             settingsUIObject->addChild(new SliderObject(
                 uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2500.0f, 0.0f)),
+                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2700.0f, 0.0f)),
                 "shadowQualitySlider",
                 0.0f,
                 3.0f,
@@ -319,6 +355,13 @@ namespace engine {
                         this->tempSettings->aoMode = 1;
                     } else if (aoGTAO) {
                         this->tempSettings->aoMode = 2;
+                    }
+                    if (aaDisabled) {
+                        this->tempSettings->aaMode = 0;
+                    } else if (aaFXAA) {
+                        this->tempSettings->aaMode = 1;
+                    } else if (aaSMAA) {
+                        this->tempSettings->aaMode = 2;
                     }
                     this->tempSettings->fpsLimit = float(static_cast<int>(this->tempSettings->fpsLimit + 0.5f));
                     this->tempSettings->shadowQuality = float(static_cast<int>(std::clamp(this->tempSettings->shadowQuality, 0.0f, 3.0f) + 0.5f));
@@ -363,6 +406,9 @@ namespace engine {
         bool aoDisabled;
         bool aoSSAO;
         bool aoGTAO;
+        bool aaDisabled;
+        bool aaFXAA;
+        bool aaSMAA;
 
         static std::filesystem::path getConfigFilePath() {
             std::filesystem::path configDir;

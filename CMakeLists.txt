@@ -349,7 +349,7 @@ endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   target_compile_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -fvectorize -fslp-vectorize -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -finline-functions>
+        $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -fvectorize -fslp-vectorize -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -finline-functions -Wno-nan-infinity-disabled>
         $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
     )
   set_target_properties(${PROJECT_NAME} PROPERTIES

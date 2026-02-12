@@ -323,9 +323,16 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     entityManager->updateLightsUBO(currentFrame);
     entityManager->updateIrradianceProbesUBO(currentFrame);
 
+    const bool smaaEnabled = settingsManager->getSettings()->aaMode == 2;
+
     for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
         auto& node = renderGraph[nodeIdx];
         if (!node.passInfo) {
+            continue;
+        }
+        const std::string& passName = node.passInfo->name;
+        if (!smaaEnabled && (passName == "SMAAEdgePass" || 
+            passName == "SMAAWeightPass" || passName == "SMAABlendPass")) {
             continue;
         }
         const bool skip3DDraw = !node.is2D && !has3DContent;
@@ -752,7 +759,7 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
         } else if (type == std::type_index(typeid(CompositePC))) {
             CompositePC pc = {
                 .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
-                .flags = settings->fxaaEnabled ? 1u : 0u
+                .flags = settings->aaMode
             };
             vkCmdPushConstants(
                 commandBuffer,
@@ -2027,6 +2034,43 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                         .pBufferInfo = &bufferInfos.back()
                     });
+                }
+            } else if (shader->name == "smaaWeight") {
+                Texture* areaImage = textureManager->getTexture("smaa_area");
+                Texture* searchImage = textureManager->getTexture("smaa_search");
+                if (areaImage && searchImage) {
+                    imageInfos.push_back({
+                        .sampler = VK_NULL_HANDLE,
+                        .imageView = areaImage->imageView,
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    });
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = 1,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                        .pImageInfo = &imageInfos.back()
+                    });
+                    fragmentBindingWritten[1] = true;
+                    imageInfos.push_back({
+                        .sampler = VK_NULL_HANDLE,
+                        .imageView = searchImage->imageView,
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    });
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = 2,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                        .pImageInfo = &imageInfos.back()
+                    });
+                    fragmentBindingWritten[2] = true;
+                } else {
+                    std::cout << "Warning: SMAA area or search texture not found for SMAA weight shader.\n";
                 }
             }
             for (const auto& binding : shader->config.inputBindings) {

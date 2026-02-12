@@ -85,7 +85,7 @@ namespace engine {
 
     struct CompositePC {
         glm::vec2 inverseScreenSize;
-        uint32_t flags; // bit 0 = use fxaa
+        uint32_t flags; // bit 0-1 = AA mode (0=none, 1=FXAA, 2=SMAA)
         uint32_t pad;
     };
 
