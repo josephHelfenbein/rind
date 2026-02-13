@@ -33,6 +33,8 @@ void SMAAMovc(bool4 cond, inout float4 variable, float4 value) {
 
 void SMAANeighborhoodBlendingVS(float2 texcoord, out float4 offset) {
     offset = mad(SMAA_RT_METRICS.xyxy, float4(1.0, 0.0, 0.0, 1.0), texcoord.xyxy);
+    offset.xy = saturate(offset.xy);
+    offset.zw = saturate(offset.zw);
 }
 
 float4 SMAANeighborhoodBlendingPS(float2 texcoord, float4 offset) {
@@ -54,6 +56,8 @@ float4 SMAANeighborhoodBlendingPS(float2 texcoord, float4 offset) {
         blendingWeight /= dot(blendingWeight, float2(1.0, 1.0));
 
         float4 blendingCoord = mad(blendingOffset, float4(SMAA_RT_METRICS.xy, -SMAA_RT_METRICS.xy), texcoord.xyxy);
+        blendingCoord.xy = saturate(blendingCoord.xy);
+        blendingCoord.zw = saturate(blendingCoord.zw);
 
         float4 color = blendingWeight.x * colorTexture.SampleLevel(sampleSampler, blendingCoord.xy, 0);
         color += blendingWeight.y * colorTexture.SampleLevel(sampleSampler, blendingCoord.zw, 0);

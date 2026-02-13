@@ -13,5 +13,7 @@ namespace rind {
         void wanderTo(float deltaTime) override;
 
         void hit();
+    private:
+        uint32_t scoreWorth = 200u;
     };
 };

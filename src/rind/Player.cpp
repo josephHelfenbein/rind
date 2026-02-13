@@ -134,6 +134,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         entityManager->getRenderer()->getInputManager()->registerRecreateSwapChainCallback("playerHealthbarResize", [this]() {
             this->resizeHealthbar();
         });
+        scoreCounter = new ScoreCounter(entityManager, entityManager->getRenderer()->getUIManager());
         particleManager = entityManager->getRenderer()->getParticleManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
     }
@@ -155,8 +156,11 @@ void rind::Player::resizeHealthbar() {
     );
 }
 
+void rind::Player::addScore(uint32_t score) {
+    scoreCounter->addScore(score);
+}
+
 void rind::Player::update(float deltaTime) {
-    
     const glm::vec3& vel = getVelocity();
     float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
     float rotateSpeed = std::abs(getRotateVelocity().y);

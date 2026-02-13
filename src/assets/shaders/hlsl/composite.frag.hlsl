@@ -28,10 +28,10 @@ SamplerState sampleSampler;
 float3 FXAA(float2 uv) {
     const float edgeThreshold = 0.08;
     float2 texelSize = pc.invScreenSize;
-    float3 rgbNW = sceneTexture.Sample(sampleSampler, uv + float2(-texelSize.x, -texelSize.y)).rgb;
-    float3 rgbNE = sceneTexture.Sample(sampleSampler, uv + float2(texelSize.x, -texelSize.y)).rgb;
-    float3 rgbSW = sceneTexture.Sample(sampleSampler, uv + float2(-texelSize.x, texelSize.y)).rgb;
-    float3 rgbSE = sceneTexture.Sample(sampleSampler, uv + float2(texelSize.x, texelSize.y)).rgb;
+    float3 rgbNW = sceneTexture.Sample(sampleSampler, saturate(uv + float2(-texelSize.x, -texelSize.y))).rgb;
+    float3 rgbNE = sceneTexture.Sample(sampleSampler, saturate(uv + float2(texelSize.x, -texelSize.y))).rgb;
+    float3 rgbSW = sceneTexture.Sample(sampleSampler, saturate(uv + float2(-texelSize.x, texelSize.y))).rgb;
+    float3 rgbSE = sceneTexture.Sample(sampleSampler, saturate(uv + float2(texelSize.x, texelSize.y))).rgb;
     float3 rgbM  = sceneTexture.Sample(sampleSampler, uv).rgb;
 
     float lumaNW = dot(rgbNW, float3(0.299, 0.587, 0.114));
@@ -56,11 +56,11 @@ float3 FXAA(float2 uv) {
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
     dir = saturate(dir * rcpDirMin) * float2(texelSize.x, texelSize.y);
     float3 rgbA = 0.5 * (
-        sceneTexture.Sample(sampleSampler, uv + dir * (1.0 / 3.0 - 0.5)).rgb +
-        sceneTexture.Sample(sampleSampler, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+        sceneTexture.Sample(sampleSampler, saturate(uv + dir * (1.0 / 3.0 - 0.5))).rgb +
+        sceneTexture.Sample(sampleSampler, saturate(uv + dir * (2.0 / 3.0 - 0.5))).rgb);
     float3 rgbB = rgbA * 0.5 + 0.25 * (
-        sceneTexture.Sample(sampleSampler, uv + dir * -0.5).rgb +
-        sceneTexture.Sample(sampleSampler, uv + dir * 0.5).rgb);
+        sceneTexture.Sample(sampleSampler, saturate(uv + dir * -0.5)).rgb +
+        sceneTexture.Sample(sampleSampler, saturate(uv + dir * 0.5)).rgb);
     float subpixelBlend = 0.75;
     if (dot(rgbB, float3(0.299, 0.587, 0.114)) < lumaMin || dot(rgbB, float3(0.299, 0.587, 0.114)) > lumaMax) {
         return lerp(rgbA, rgbB, 1.0 - subpixelBlend);

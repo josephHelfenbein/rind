@@ -161,10 +161,11 @@ void rind::BashingEnemy::update(float deltaTime) {
             }
             case EnemyState::Attacking: {
                 float backToChaseDistance = 6.0f;
-                float switchToChaseChance = dist(rng) + 1.0f;
+                float switchToChaseProb = deltaTime * 3.0f;
+                float switchRoll = (dist(rng) + 1.0f) / 2.0f;
                 if (!checkVisibilityOfPlayer() 
                 || distanceToPlayer > backToChaseDistance
-                || switchToChaseChance > 1.9f) {
+                || switchRoll < switchToChaseProb) {
                     state = EnemyState::Chasing;
                     break;
                 }
@@ -252,8 +253,9 @@ void rind::BashingEnemy::wander() {
 
 void rind::BashingEnemy::wanderTo(float deltaTime) {
     if (waiting) {
-        float escapeWait = dist(rng) + 1.0f;
-        if (escapeWait > 1.95f) {
+        float escapeProb = deltaTime * 1.5f;
+        float roll = (dist(rng) + 1.0f) / 2.0f;
+        if (roll < escapeProb) {
             waiting = false;
         } else {
             return;

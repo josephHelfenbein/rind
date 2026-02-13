@@ -3,6 +3,7 @@
 #include <engine/CharacterEntity.h>
 #include <engine/InputManager.h>
 #include <engine/Camera.h>
+#include <rind/ScoreCounter.h>
 #include <chrono>
 
 namespace rind {
@@ -21,6 +22,7 @@ namespace rind {
         void damage(float amount) override;
 
         void resizeHealthbar();
+        void addScore(uint32_t score);
 
     private:
         engine::Camera* camera = nullptr;
@@ -42,6 +44,7 @@ namespace rind {
         engine::UIObject* pauseUIObject = nullptr;
         engine::UIObject* healthbarObject = nullptr;
         engine::UIObject* healthbarEmptyObject = nullptr;
+        ScoreCounter* scoreCounter = nullptr;
 
         bool isDead = false;
 

@@ -2,6 +2,7 @@
 #include <engine/ParticleManager.h>
 #include <glm/gtc/quaternion.hpp>
 #include <rind/SlowBullet.h>
+#include <cmath>
 
 #define PI 3.14159265358979323846f
 
@@ -108,7 +109,8 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 float yDiff = desiredHeight - currentHeight;
                 float targetYVel = yDiff * 10.0f;
                 float currentYVel = getVelocity().y;
-                float yVel = currentYVel + (targetYVel - currentYVel) * deltaTime * 5.0f;
+                float smoothFactor = 1.0f - std::exp(-5.0f * deltaTime);
+                float yVel = currentYVel + (targetYVel - currentYVel) * smoothFactor;
                 yVel = std::clamp(yVel, -10.0f, 10.0f);
                 if (yVel < 0.0f) {
                     float groundCheckDist = std::abs(yVel * deltaTime) + 1.5f;
@@ -147,10 +149,11 @@ void rind::FlyingEnemy::update(float deltaTime) {
             }
             case EnemyState::Attacking: {
                 float backToChaseDistance = 16.0f;
-                float switchToChaseChance = dist(rng) + 1.0f;
+                float switchToChaseProb = deltaTime * 3.0f;
+                float switchRoll = (dist(rng) + 1.0f) / 2.0f;
                 if (!checkVisibilityOfPlayer() 
                 || distanceToPlayer > backToChaseDistance
-                || switchToChaseChance > 1.9f) {
+                || switchRoll < switchToChaseProb) {
                     state = EnemyState::Chasing;
                     break;
                 }
@@ -188,7 +191,9 @@ void rind::FlyingEnemy::update(float deltaTime) {
                     shoot();
                 }
                 float randX = dist(rng);
-                if (std::abs(randX) < 0.95f && getPressed() != glm::vec3(0.0f)) {
+                float strafeChangeProb = deltaTime * 3.0f;
+                float strafeRoll = (dist(rng) + 1.0f) / 2.0f;
+                if (strafeRoll > strafeChangeProb && getPressed() != glm::vec3(0.0f)) {
                     break;
                 }
                 float strafeDir = randX > 0.0f ? 1.0f : -1.0f;
@@ -233,7 +238,7 @@ void rind::FlyingEnemy::wander() {
             tries++;
             continue;
         }
-        size_t rayHits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), goal, amount).size();
+        size_t rayHits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), goal, amount, getCollider()).size();
         if (rayHits == 0) {
             wanderTarget = worldGoal;
             wandering = true;
@@ -248,8 +253,9 @@ void rind::FlyingEnemy::wander() {
 
 void rind::FlyingEnemy::wanderTo(float deltaTime) {
     if (waiting) {
-        float escapeWait = dist(rng) + 1.0f;
-        if (escapeWait > 1.95f) {
+        float escapeProb = deltaTime * 1.5f;
+        float roll = (dist(rng) + 1.0f) / 2.0f;
+        if (roll < escapeProb) {
             waiting = false;
         } else {
             return;
@@ -281,7 +287,8 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
     float yDiff = wanderTarget.y - getWorldPosition().y;
     float targetYVel = yDiff * 10.0f;
     float currentYVel = getVelocity().y;
-    float yVel = currentYVel + (targetYVel - currentYVel) * deltaTime * 5.0f;
+    float smoothFactor = 1.0f - std::exp(-5.0f * deltaTime);
+    float yVel = currentYVel + (targetYVel - currentYVel) * smoothFactor;
     yVel = std::clamp(yVel, -10.0f, 10.0f);
     if (yVel < 0.0f) {
         float groundCheckDist = std::abs(yVel * deltaTime) + 1.5f;

@@ -128,6 +128,7 @@ bool rind::Enemy::checkVisibilityOfPlayer() {
 void rind::Enemy::damage(float amount) {
     setHealth(getHealth() - amount);
     if (getHealth() <= 0.0f) {
+        targetPlayer->addScore(scoreWorth);
         getEntityManager()->markForDeletion(this);
     }
 }

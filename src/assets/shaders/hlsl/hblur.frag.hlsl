@@ -29,9 +29,10 @@ float4 main(VSOutput input) : SV_Target {
     
     [unroll]
     for (int dx = -BLUR_RADIUS; dx <= BLUR_RADIUS; ++dx) {
+        float2 sampleUV = input.fragTexCoord + float2(float(dx) * texelSize, 0.0);
+        if (sampleUV.x < 0.0 || sampleUV.x > 1.0) continue;
         float weight = gaussian(float(dx), SIGMA);
-        float2 offset = float2(float(dx) * texelSize, 0.0);
-        float3 texSample = blurringTexture.Sample(sampleSampler, input.fragTexCoord + offset).rgb;
+        float3 texSample = blurringTexture.Sample(sampleSampler, sampleUV).rgb;
         sum += texSample * weight;
         weightSum += weight;
     }
