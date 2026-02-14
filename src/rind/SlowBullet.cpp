@@ -3,6 +3,8 @@
 #include <rind/Enemy.h>
 #include <engine/SpatialGrid.h>
 
+#define PI 3.14159265358979323846f
+
 rind::SlowBullet::SlowBullet(engine::EntityManager* entityManager, const std::string& name, glm::mat4 transform, const glm::vec3 velocity, const glm::vec4 color)
     : engine::Entity(entityManager, name, "gbuffer", transform, {"materials_slowbullet_albedo", "materials_slowbullet_metallic", "materials_slowbullet_roughness", "materials_slowbullet_normal"}, true), velocity(velocity), color(color) {
         setModel(entityManager->getRenderer()->getModelManager()->getModel("slowbullet"));
@@ -94,5 +96,22 @@ void rind::SlowBullet::update(float deltaTime) {
             1.0f,
             0.8f
         );
+        float streakRoll = dist(rng) + 1.0f;
+        if (streakRoll > 1.9f) {
+            glm::vec3 rotAxis = glm::normalize(glm::vec3(dist(rng), dist(rng), dist(rng)));
+            float rotAmount = dist(rng) * 2.0f * PI;
+            glm::mat4 rot = glm::rotate(glm::mat4(1.0f), rotAmount, rotAxis);
+            glm::vec3 offset = glm::vec3(rot * glm::vec4(0.25f, 0.0f, 0.0f, 1.0f));
+            glm::vec3 startPos = getWorldPosition() + offset;
+            glm::mat4 rot2 = glm::rotate(glm::mat4(1.0f), rotAmount + 0.25f, rotAxis);
+            glm::vec3 endOffset = glm::vec3(rot2 * glm::vec4(0.25f, 0.0f, 0.0f, 1.0f));
+            glm::vec3 endPos = getWorldPosition() + endOffset;
+            particleManager->spawnTrail(startPos, glm::normalize(endPos - startPos), color, 0.3f);
+        }
+        float audioRoll = dist(rng) + 1.0f;
+        if (streakRoll > 1.95f) {
+            std::string choice = streakRoll >= 1.97 ? "1" : "2";
+            audioManager->playSound3D("slowbullet_sound_" + choice, getWorldPosition(), 0.4f, true);
+        }
     }
 }

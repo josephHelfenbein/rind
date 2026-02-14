@@ -27,11 +27,13 @@ namespace rind {
     private:
         engine::Camera* camera = nullptr;
         engine::Entity* gunEndPosition = nullptr;
+        float cameraShakeIntensity = 0.0f;
 
         const float gunModelScale = 0.16f;
         const glm::vec3 gunModelTranslation = glm::vec3(0.55856f, -0.273792f, -0.642208f);
         engine::Entity* gunModel = nullptr;
         engine::Entity* playerModel = nullptr;
+        engine::Entity* camHolder = nullptr;
 
         glm::vec3 currentGunRotOffset = glm::vec3(0.0f);
         glm::vec3 currentGunLocOffset = glm::vec3(0.0f);
@@ -53,6 +55,9 @@ namespace rind {
         float shootingCooldown = 0.2f;
         std::chrono::steady_clock::time_point lastShotTime = std::chrono::steady_clock::now();
         
+        std::mt19937 rng{std::random_device{}()};
+        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+
         bool canDash = false;
         long long dashCooldown = 500; // ms
         std::chrono::steady_clock::time_point lastDashTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(dashCooldown);

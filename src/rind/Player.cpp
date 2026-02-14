@@ -20,6 +20,14 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         );
         addChild(head);
         setHead(head);
+        camHolder = new engine::Entity(
+            entityManager,
+            "camera",
+            "",
+            glm::mat4(1.0f),
+            {}
+        );
+        head->addChild(camHolder);
         camera = new engine::Camera(
             entityManager,
             "camera",
@@ -29,7 +37,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             1000.0f,
             true
         );
-        head->addChild(camera);
+        camHolder->addChild(camera);
         entityManager->setCamera(camera);
         std::vector<std::string> gunMaterial = {
             "materials_lasergun_albedo",
@@ -53,7 +61,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         );
         gunModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("lasergun"));
         gunModel->setCastShadow(false);
-        head->addChild(gunModel);
+        camHolder->addChild(gunModel);
         glm::vec3 cameraOffset = glm::vec3(0.4f, -0.15f, -1.0f);
         glm::vec3 offsetFromGunOrigin = cameraOffset - gunModelTranslation;
         glm::mat3 invRotation = glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
@@ -114,7 +122,14 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         inputManager->resetKeyStates();
         const float healthbarWidth = 1920.0f;
         float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;
-        float healthbarScale = healthbarDisplayWidth / healthbarWidth;
+        float contentScale = 1.0f;
+        #ifdef __APPLE__
+        float xscale = 1.0f, yscale = 1.0f;
+        glfwGetWindowContentScale(getEntityManager()->getRenderer()->getWindow(), &xscale, &yscale);
+        contentScale = std::max(xscale, yscale);
+        #endif
+        float layoutScale = std::max(getEntityManager()->getRenderer()->getUIScale() * contentScale, 0.0001f);
+        float healthbarScale = healthbarDisplayWidth / (healthbarWidth * layoutScale);
         healthbarEmptyObject = new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
@@ -147,7 +162,14 @@ rind::Player::~Player() {
 void rind::Player::resizeHealthbar() {
     const float healthbarWidth = 1920.0f;
     float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;
-    float healthbarScale = healthbarDisplayWidth / healthbarWidth;
+    float contentScale = 1.0f;
+    #ifdef __APPLE__
+    float xscale = 1.0f, yscale = 1.0f;
+    glfwGetWindowContentScale(getEntityManager()->getRenderer()->getWindow(), &xscale, &yscale);
+    contentScale = std::max(xscale, yscale);
+    #endif
+    float layoutScale = std::max(getEntityManager()->getRenderer()->getUIScale() * contentScale, 0.0001f);
+    float healthbarScale = healthbarDisplayWidth / (healthbarWidth * layoutScale);
     healthbarEmptyObject->setTransform(
         glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
     );
@@ -210,6 +232,11 @@ void rind::Player::update(float deltaTime) {
             glm::vec3(gunModelScale)
         )
     );
+    if (cameraShakeIntensity > 0.0f) {
+        glm::vec3 randomCameraLoc = glm::vec3(dist(rng), dist(rng), dist(rng)) * cameraShakeIntensity * 0.05f;
+        camHolder->setTransform(glm::translate(glm::mat4(1.0f), randomCameraLoc));
+        cameraShakeIntensity -= deltaTime;
+    }
     if (trailFramesRemaining > 0) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
         glm::vec3 velocityOffset = getVelocity() * deltaTime;
@@ -443,6 +470,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
 void rind::Player::damage(float amount) {
     setHealth(getHealth() - amount);
     healthbarObject->setUVClip(glm::vec4(0.0f, 0.0f, getHealth() / getMaxHealth(), 1.0f));
+    cameraShakeIntensity = dist(rng) * 0.5f + 1.2f;
     if (getHealth() <= 0.0f && !isDead) {
         isDead = true;
         stopMove(getPressed(), false);
