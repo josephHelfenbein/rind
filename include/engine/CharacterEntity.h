@@ -39,6 +39,8 @@ namespace engine {
         const glm::vec3& getRotateVelocity() const { return rotateVelocity; }
 
         Collider::Collision willCollide(const glm::mat4& deltaTransform);
+        bool isGrounded() const { return grounded || groundedTimer <= coyoteTime; }
+
     private:
         float health = 100.0f;
         float maxHealth = 100.0f;
@@ -54,7 +56,7 @@ namespace engine {
         const float coyoteTime = 0.10f;
         glm::vec3 rotateVelocity = glm::vec3(0.0f);
         const float groundedNormalThreshold = 0.5f; // normals with y > threshold count as ground
-        float gravity = 9.81f;
+        float gravity = 20.0f;
         bool grounded = false;
         float groundedTimer = 1.0f;
     };

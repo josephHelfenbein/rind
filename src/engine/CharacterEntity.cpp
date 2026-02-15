@@ -40,7 +40,7 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
         }
 
         glm::vec3 worldDir = right * pressed.x + glm::vec3(0.0f, 1.0f, 0.0f) * pressed.y + forward * pressed.z;
-        glm::vec3 dashDir = right * dashing.x + glm::vec3(0.0f, 1.0f, 0.0f) * dashing.y + forward * dashing.z;
+        glm::vec3 dashDir = right * dashing.x + glm::vec3(0.0f, 0.5f, 0.0f) * dashing.y + forward * dashing.z;
         float m = glm::length(worldDir);
         if (m > 1e-6f) {
             worldDir /= m;
@@ -163,6 +163,10 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
                 velocity -= n * glm::dot(velocity, n);
             }
         }
+    }
+    size_t groundHits = Collider::raycast(getEntityManager(), getWorldPosition() - glm::vec3(0.0f, collider->getHalfSize().y, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 0.2f, getCollider()).size();
+    if (groundHits > 0) {
+        touchedGround = true;
     }
     if (touchedGround) {
         grounded = true;

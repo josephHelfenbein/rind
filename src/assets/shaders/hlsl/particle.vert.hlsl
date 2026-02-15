@@ -45,7 +45,6 @@ float hash(uint seed) {
 VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
     VSOutput output;
     ParticleData p = particles[instanceID];
-    
     if (p.type > 0.5) {
         float3 startPos = p.position;
         float3 dir = p.prevPosition;
@@ -90,7 +89,7 @@ VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
     float stretchLen = trailLen * pc.streakScale;
     
     float sizeVariation = hash(instanceID) * 1.9 + 0.1; // range [0.1, 2.0]
-    float particleSize = pc.particleSize * sizeVariation;
+    float particleSize = pc.particleSize * sizeVariation * sqrt(20.0 / max(clipPos.w, 0.01));
     
     float2 localOffset = offsets[vertexID];
     float alongVel = localOffset.y * (particleSize + stretchLen);

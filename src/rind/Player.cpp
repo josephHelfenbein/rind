@@ -237,6 +237,13 @@ void rind::Player::update(float deltaTime) {
         camHolder->setTransform(glm::translate(glm::mat4(1.0f), randomCameraLoc));
         cameraShakeIntensity -= deltaTime;
     }
+    if (heartbeatOffset > 0.0f) {
+        lastHeartbeat += deltaTime;
+        if (lastHeartbeat >= heartbeatOffset) {
+            lastHeartbeat = 0.0f;
+            audioManager->playSound("player_heartbeat", 0.4f, true);
+        }
+    }
     if (trailFramesRemaining > 0) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
         glm::vec3 velocityOffset = getVelocity() * deltaTime;
@@ -404,7 +411,14 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     move(glm::vec3(0.0f, 0.0f, 1.0f));
                     break;
                 case GLFW_KEY_SPACE:
-                    jump(5.0f);
+                    if (isGrounded()) {
+                        jump(8.0f);
+                    } else if (canDoubleJump) {
+                        canDash = true;
+                        move(glm::vec3(0.0f, 3.0f, 0.0f));
+                        canDoubleJump = false;
+                        resetDoubleJump = true;
+                    }
                     break;
                 case GLFW_KEY_LEFT_SHIFT:
                     canDash = true;
@@ -426,9 +440,6 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 case GLFW_KEY_D:
                     stopMove(glm::vec3(0.0f, 0.0f, 1.0f));
                     break;
-                case GLFW_KEY_LEFT_SHIFT:
-                    canDash = false;
-                    break;
                 default:
                     break;
             }
@@ -447,6 +458,11 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             }
         }
     }
+    if (!isGrounded() && !resetDoubleJump) {
+        canDoubleJump = true;
+    } else if (isGrounded()) {
+        resetDoubleJump = false;
+    }
     const glm::vec3& currentPress = getPressed();
     if (glm::length(currentPress) > 1e-6f) {
         auto now = std::chrono::steady_clock::now();
@@ -463,15 +479,23 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             );
             audioManager->playSound3D("player_dash", getWorldPosition(), 0.5f, true);
             lastDashTime = now;
+            if (currentPress.y > 0.0f) {
+                stopMove(glm::vec3(0.0f, currentPress.y, 0.0f));
+            }
         }
     }
+    canDash = false;
 }
 
 void rind::Player::damage(float amount) {
     setHealth(getHealth() - amount);
     healthbarObject->setUVClip(glm::vec4(0.0f, 0.0f, getHealth() / getMaxHealth(), 1.0f));
     cameraShakeIntensity = dist(rng) * 0.5f + 1.2f;
+    if (getHealth() <= 0.5f * getMaxHealth()) {
+        heartbeatOffset = 0.3f + getHealth() / getMaxHealth();
+    }
     if (getHealth() <= 0.0f && !isDead) {
+        heartbeatOffset = 0.0f;
         isDead = true;
         stopMove(getPressed(), false);
         audioManager->playSound("player_death", 0.5f, true);

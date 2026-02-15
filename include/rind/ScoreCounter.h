@@ -21,24 +21,23 @@ namespace rind {
         void update(float deltaTime) override {
             if (growFrame >= 0.0f) {
                 float scaleAmount = 1.0f;
-                if (growFrame < 0.125f) {
-                    float t = growFrame * 8.0f;
+                if (growFrame < 0.1f) {
+                    float t = growFrame / 0.1f;
                     t = 1.0f - (1.0f - t) * (1.0f - t);
                     scaleAmount = std::lerp(1.0f, growGoal, t);
                 } else if (growFrame < 0.25f) {
-                    float t = (growFrame - 0.125f) * 8.0f;
-                    t = t * t;
-                    scaleAmount = std::lerp(growGoal, 1.0f, t);
-                }
-                else if (growFrame < 0.375f) {
-                    float t = (growFrame - 0.25f) * 8.0f;
+                    float t = (growFrame - 0.1f) / 0.15f;
                     t = 1.0f - (1.0f - t) * (1.0f - t);
-                    scaleAmount = std::lerp(1.0f, 1.0f + (growGoal - 1.0f) * 0.5f, t);
-                } else if (growFrame < 0.5f) {
-                    float t = (growFrame - 0.375f) * 8.0f;
-                    t = t * t;
-                    scaleAmount = std::lerp(1.0f + (growGoal - 1.0f) * 0.5f, 1.0f, t);
-                }                
+                    scaleAmount = std::lerp(growGoal, 1.0f, t);
+                } else if (growFrame < 0.35f) {
+                    float t = (growFrame - 0.25f) / 0.1f;
+                    float peak = 1.0f + (growGoal - 1.0f) * 0.2f;
+                    scaleAmount = 1.0f + (peak - 1.0f) * std::sin(t * 3.14159f);
+                } else if (growFrame < 0.4f) {
+                    float t = (growFrame - 0.35f) / 0.05f;
+                    t = 1.0f - (1.0f - t) * (1.0f - t);
+                    scaleAmount = std::lerp(1.0f + (growGoal - 1.0f) * 0.05f, 1.0f, t);
+                }
                 counter->setTransform(
                     glm::translate(
                         glm::scale(glm::mat4(1.0f), glm::vec3(0.5f * scaleAmount, 0.5f * scaleAmount, 1.0f)),
@@ -47,7 +46,7 @@ namespace rind {
                 );
                 growFrame += deltaTime;
             }
-            if (growFrame >= 0.5f) {
+            if (growFrame >= 0.4f) {
                 growFrame = -1.0f;
             }
         }

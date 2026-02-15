@@ -35,6 +35,12 @@ namespace rind {
         engine::Entity* playerModel = nullptr;
         engine::Entity* camHolder = nullptr;
 
+        bool canDoubleJump = false;
+        bool resetDoubleJump = false;
+
+        float heartbeatOffset = 0.0f;
+        float lastHeartbeat = 0.0f;
+
         glm::vec3 currentGunRotOffset = glm::vec3(0.0f);
         glm::vec3 currentGunLocOffset = glm::vec3(0.0f);
         

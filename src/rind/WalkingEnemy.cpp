@@ -85,7 +85,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     state = EnemyState::Idle;
                 } else if (firstFrame) {
                     rotateToPlayer();
-                    dash(glm::vec3(0.0f, 1.0f, 0.5f), 250.0f);
+                    dash(glm::vec3(0.0f, 1.0f, 0.25f), 500.0f);
                     move(glm::vec3(0.0f, 0.0f, 1.0f), false);
                     firstFrame = false;
                 }
