@@ -51,7 +51,7 @@ namespace rind {
         float spawnTimer = 5.0f;
         uint32_t enemyCount = 0u;
         uint32_t spawnedEnemies = 0u;
-        uint32_t maxEnemies = 10u;
+        uint32_t maxEnemies = 5u;
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
     };

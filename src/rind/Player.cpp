@@ -479,10 +479,10 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             );
             audioManager->playSound3D("player_dash", getWorldPosition(), 0.5f, true);
             lastDashTime = now;
-            if (currentPress.y > 0.0f) {
-                stopMove(glm::vec3(0.0f, currentPress.y, 0.0f));
-            }
         }
+    }
+    if (currentPress.y > 0.0f) {
+        stopMove(glm::vec3(0.0f, currentPress.y, 0.0f));
     }
     canDash = false;
 }

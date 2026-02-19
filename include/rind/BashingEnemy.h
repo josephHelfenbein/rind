@@ -14,6 +14,6 @@ namespace rind {
 
         void hit();
     private:
-        uint32_t scoreWorth = 200u;
+        uint32_t getScoreWorth() const override { return 200u; }
     };
 };

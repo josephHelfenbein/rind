@@ -9,9 +9,9 @@ rind::BashingEnemy::BashingEnemy(engine::EntityManager* entityManager, rind::Pla
     : rind::Enemy(entityManager, player, name, transform, enemyCount) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.3f, 0.0f)),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.2f, 0.25f)),
             name,
-            glm::vec3(0.9f, 0.7f, 0.9f)
+            glm::vec3(0.6f, 0.8f, 2.0f)
         );
         box->setIsDynamic(true);
         addChild(box);
@@ -34,45 +34,19 @@ rind::BashingEnemy::BashingEnemy(engine::EntityManager* entityManager, rind::Pla
             gunMaterial
         );
         addChild(enemyModel);
-        engine::Entity* face = new engine::Entity(
-            entityManager,
-            name + "Face",
-            "gbuffer",
-            glm::translate(
-                glm::mat4(1.0f),
-                glm::vec3(0.9f, 2.22f, 0.0f)
-            ),
-            gunMaterial
-        );
-        enemyModel->addChild(face);
         engine::ModelManager* modelManager = entityManager->getRenderer()->getModelManager();
-        enemyModel->setModel(modelManager->getModel("enemy"));
-        face->setModel(modelManager->getModel("enemy-head"));
-        setHead(face);
-        shootingCooldown = 0.2f;
+        enemyModel->setModel(modelManager->getModel("bashingenemy"));
     }
 
 
 void rind::BashingEnemy::update(float deltaTime) {
-    const glm::vec3& vel = getVelocity();
-    float horizontalSpeed = glm::length(glm::vec3(vel.x, 0.0f, vel.z));
-    float rotateSpeed = std::abs(getRotateVelocity().y);
-    float speed = horizontalSpeed + std::abs(rotateSpeed);
-    if (speed > 0.1f) {
-        if (enemyModel->getAnimationState().currentAnimation != "Walk") {
-            enemyModel->playAnimation("Walk", true, speed / 5.0f);
-        } else {
-            enemyModel->getAnimationState().playbackSpeed = speed / 5.0f;
-        }
-    } else {
-        if (enemyModel->getAnimationState().currentAnimation != "Idle") {
-            enemyModel->playAnimation("Idle", true, 1.0f);
-        }
-    }
     if (targetPlayer) {
         glm::vec3 toPlayer = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - getWorldPosition();
         toPlayer.y = 0.0f;
         float distanceToPlayer = glm::length(toPlayer);
+        if (distanceToPlayer < 4.0f) {
+            hit();
+        }
         switch (state) {
             case EnemyState::Spawning: {
                 size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
@@ -80,7 +54,7 @@ void rind::BashingEnemy::update(float deltaTime) {
                     state = EnemyState::Idle;
                 } else if (firstFrame) {
                     rotateToPlayer();
-                    dash(glm::vec3(0.0f, 1.0f, 0.5f), 250.0f);
+                    dash(glm::vec3(0.0f, 1.0f, 0.25f), 500.0f);
                     move(glm::vec3(0.0f, 0.0f, 1.0f), false);
                     firstFrame = false;
                 }
@@ -126,7 +100,7 @@ void rind::BashingEnemy::update(float deltaTime) {
                         hi = mid;
                     }
                 }
-                const float desiredDistance = 3.0f;
+                const float desiredDistance = 10.0f;
                 float safeDistance = glm::min(desiredDistance, distanceToPlayer + maxSafeBackup);
                 glm::vec3 targetDir = glm::normalize(glm::vec3(toPlayer.x, 0.0f, toPlayer.z));
                 float dot = glm::clamp(glm::dot(forward, targetDir), -1.0f, 1.0f);
@@ -160,65 +134,17 @@ void rind::BashingEnemy::update(float deltaTime) {
                 break;
             }
             case EnemyState::Attacking: {
-                float backToChaseDistance = 6.0f;
-                float switchToChaseProb = deltaTime * 3.0f;
-                float switchRoll = (dist(rng) + 1.0f) / 2.0f;
+                float backToChaseDistance = 12.0f;
+                float tooClose = 3.0f;
                 if (!checkVisibilityOfPlayer() 
                 || distanceToPlayer > backToChaseDistance
-                || switchRoll < switchToChaseProb) {
+                || distanceToPlayer < tooClose) {
                     state = EnemyState::Chasing;
                     break;
                 }
-                glm::mat4 t = getTransform();
-                glm::vec3 forward = -glm::vec3(t[2]);
-                forward.y = 0.0f;
-                forward = glm::length(forward) > 1e-6f ? glm::normalize(forward) : glm::vec3(0.0f, 0.0f, -1.0f);
-                glm::vec3 targetDir = glm::normalize(glm::vec3(toPlayer.x, 0.0f, toPlayer.z));
-                float dot = glm::clamp(glm::dot(forward, targetDir), -1.0f, 1.0f);
-                float angle = acos(dot);
-                glm::vec3 cross = glm::cross(forward, targetDir);
-                float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
-                float maxRotation = deltaTime * PI;
-                float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
-                glm::vec3 headWorldPos = glm::vec3(getHead()->getWorldTransform()[3]);
-                glm::vec3 toPlayerFromHead = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f) - headWorldPos;
-                glm::mat4 headParentWorldTransform = getHead()->getParent()->getWorldTransform();
-                glm::mat3 headParentRotation = glm::mat3(headParentWorldTransform);
-                glm::vec3 toPlayerLocal = glm::transpose(headParentRotation) * toPlayerFromHead;
-                float horizontalDist = glm::length(glm::vec2(toPlayerLocal.x, toPlayerLocal.z));
-                float targetPitch = atan2(toPlayerLocal.y, horizontalDist);
-                glm::mat4 headTransform = getHead()->getTransform();
-                glm::quat headRotation = glm::quat_cast(headTransform);
-                glm::vec3 headEuler = glm::eulerAngles(headRotation);
-                float currentPitch = headEuler.z;
-                float pitchDiff = targetPitch - currentPitch;
-                float headPitchAmount = glm::clamp(pitchDiff, -maxRotation, maxRotation);
-                headEuler.z = glm::clamp(headEuler.z + headPitchAmount, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
-                glm::mat4 newHeadTransform = glm::mat4_cast(glm::quat(headEuler));
-                newHeadTransform[3] = headTransform[3];
-                getHead()->setTransform(newHeadTransform);
-                rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
-                if (lastShotTime + std::chrono::duration<float>(shootingCooldown) < std::chrono::steady_clock::now()) {
-                    lastShotTime = std::chrono::steady_clock::now();
-                    hit();
-                }
-                float randX = dist(rng);
-                if (std::abs(randX) < 0.95f && getPressed() != glm::vec3(0.0f)) {
-                    break;
-                }
-                float strafeDir = randX > 0.0f ? 1.0f : -1.0f;
-                glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-                glm::vec3 testPos = getWorldPosition() + right * strafeDir * 2.0f;
-                glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
-                if (hits > 0 && hits <= 2) {
-                    if (getPressed().x != strafeDir) {
-                        stopMove(getPressed(), false);
-                        move(glm::vec3(strafeDir, 0.0f, 0.0f), false);
-                    }
-                } else {
-                    stopMove(getPressed(), false);
-                }
+                move(glm::vec3(0.0f, 0.0f, 1.0f), false);
+                dash(glm::vec3(0.0f, 0.0f, 1.0f), 50.0f);
+                stopMove(getPressed(), false);
                 break;
             }
         }
@@ -291,24 +217,25 @@ void rind::BashingEnemy::wanderTo(float deltaTime) {
 }
 
 void rind::BashingEnemy::hit() {
-    if (enemyModel->getAnimationState().currentAnimation != "Attack") {
-        enemyModel->playAnimation("Attack", false);
-    } else {
-        glm::mat4 t = getTransform();
-        glm::vec3 forward = glm::vec3(t[3]);
-        audioManager->playSound3D("enemy_hit", getWorldPosition(), 0.5f, true);
-        std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), forward, 2.0f, getCollider());
-        bool hitPlayer = false;
-        for (auto& hit : hits) {
-            if (hit.other->getParent() == targetPlayer) {
-                hitPlayer = true;
-                break;
-            }
+    if (lastShotTime + std::chrono::duration<float>(shootingCooldown) > std::chrono::steady_clock::now()) {
+        return;
+    }
+    glm::vec3 forward = -glm::normalize(glm::vec3(getTransform()[2]));
+    glm::vec3 rayOrigin = getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
+    std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
+        getEntityManager(),
+        rayOrigin,
+        forward,
+        4.0f,
+        getCollider(),
+        true
+    );
+    if (!hits.empty()) {
+        engine::Collider::Collision collision = hits[0];
+        if (rind::Player* character = dynamic_cast<rind::Player*>(hits[0].other->getParent())) {
+            audioManager->playSound3D("laser_enemy_impact", getWorldPosition(), 0.5f, true);
+            character->damage(20.0f);
+            lastShotTime = std::chrono::steady_clock::now();
         }
-        if (!hitPlayer) {
-            return;
-        }
-        audioManager->playSound3D("laset_enemy_impact", getWorldPosition(), 0.5f, true);
-        targetPlayer->damage(20.0f);
     }
 }
