@@ -24,12 +24,38 @@ namespace engine {
             bool showFPS = false;
         };
 
+        struct SettingsDefinition {
+            enum Type { Bool, Enum, Slider };
+            Type type;
+            std::string label;
+            std::string key;
+
+            bool Settings::* boolPtr = nullptr;
+
+            uint32_t Settings::* enumPtr = nullptr;
+            std::vector<std::string> enumOptions;
+
+            float Settings::* floatPtr = nullptr;
+            float minVal = 0.0f, maxVal = 1.0f;
+            std::string textSuffix;
+            bool isInt = false;
+            float textMultiplier = 1.0f;
+            bool roundOnApply = false;
+            float clampMin = 0.0f, clampMax = 0.0f; // 0,0 = no clamp
+            
+            std::function<void(Settings* prev, Settings* curr, Renderer*)> onChange = nullptr;
+        };
+
         SettingsManager(engine::Renderer* renderer) : renderer(renderer) {
             renderer->registerSettingsManager(this);
             loadSettings();
         };
 
         ~SettingsManager() {
+            for (auto& es : enumStates) {
+                for (auto* f : es.flags) delete f;
+            }
+            enumStates.clear();
             delete currentSettings;
         }
 
@@ -124,220 +150,119 @@ namespace engine {
                 },
                 Corner::TopRight
             ));
-            // SSR
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -1300.0f, 0.0f)),
-                "ssrLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Enable Screen Space Reflections:",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1000.0f, 0.0f)),
-                "ssrCheckbox",
-                glm::vec4(1.0f),
-                tempSettings->ssrEnabled,
-                tempSettings->ssrEnabled,
-                Corner::TopRight
-            ));
-            // FXAA
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -1950.0f, 0.0f)),
-                "aaLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Anti-Aliasing Mode:",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-250.0f, -1700.0f, 0.0f)),
-                "aaOptionsLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Disabled   FXAA   SMAA",
-                "Lato",
-                Corner::TopRight
-            ));
-            aaDisabled = (tempSettings->aaMode == 0);
-            CheckboxObject* aaDisabledCheckbox = new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1350.0f, -1550.0f, 0.0f)),
-                "aaDisabledCheckbox",
-                glm::vec4(1.0f),
-                aaDisabled,
-                aaDisabled,
-                Corner::TopRight
-            );
-            aaFXAA = (tempSettings->aaMode == 1);
-            CheckboxObject* aaFXAACheckbox = new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-850.0f, -1550.0f, 0.0f)),
-                "aaFXAACheckbox",
-                glm::vec4(1.0f),
-                aaFXAA,
-                aaFXAA,
-                Corner::TopRight
-            );
-            aaSMAA = (tempSettings->aaMode == 2);
-            CheckboxObject* aaSMAACheckbox = new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -1550.0f, 0.0f)),
-                "aaSMAACheckbox",
-                glm::vec4(1.0f),
-                aaSMAA,
-                aaSMAA,
-                Corner::TopRight
-            );
-            settingsUIObject->addChild(aaDisabledCheckbox);
-            settingsUIObject->addChild(aaFXAACheckbox);
-            settingsUIObject->addChild(aaSMAACheckbox);
-            aaDisabledCheckbox->setBoundBools({ aaFXAACheckbox, aaSMAACheckbox });
-            aaFXAACheckbox->setBoundBools({ aaDisabledCheckbox, aaSMAACheckbox });
-            aaSMAACheckbox->setBoundBools({ aaDisabledCheckbox, aaFXAACheckbox });
-            // Ambient Occlusion
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -2650.0f, 0.0f)),
-                "aoLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Ambient Occlusion",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(-250.0f, -2400.0f, 0.0f)),
-                "aoOptionsLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Disabled   SSAO   GTAO",
-                "Lato",
-                Corner::TopRight
-            ));
-            aoDisabled = (tempSettings->aoMode == 0);
-            CheckboxObject* aoDisabledCheckbox = new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-1350.0f, -2100.0f, 0.0f)),
-                "aoDisabledCheckbox",
-                glm::vec4(1.0f),
-                aoDisabled,
-                aoDisabled,
-                Corner::TopRight
-            );
-            aoSSAO = (tempSettings->aoMode == 1);
-            CheckboxObject* aoSSAOCheckbox = new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-850.0f, -2100.0f, 0.0f)),
-                "aoSSAOCheckbox",
-                glm::vec4(1.0f),
-                aoSSAO,
-                aoSSAO,
-                Corner::TopRight
-            );
-            aoGTAO = (tempSettings->aoMode == 2);
-            CheckboxObject* aoGTAOCheckbox = new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-350.0f, -2100.0f, 0.0f)),
-                "aoGTAOCheckbox",
-                glm::vec4(1.0f),
-                aoGTAO,
-                aoGTAO,
-                Corner::TopRight
-            );
-            settingsUIObject->addChild(aoDisabledCheckbox);
-            settingsUIObject->addChild(aoSSAOCheckbox);
-            settingsUIObject->addChild(aoGTAOCheckbox);
-            aoDisabledCheckbox->setBoundBools({ aoSSAOCheckbox, aoGTAOCheckbox });
-            aoSSAOCheckbox->setBoundBools({ aoDisabledCheckbox, aoGTAOCheckbox });
-            aoGTAOCheckbox->setBoundBools({ aoDisabledCheckbox, aoSSAOCheckbox });
-            // Show FPS
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3200.0f, 0.0f)),
-                "showFPSLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Show FPS:",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new CheckboxObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(-340.0f, -2500.0f, 0.0f)),
-                "showFPSCheckbox",
-                glm::vec4(1.0f),
-                tempSettings->showFPS,
-                tempSettings->showFPS,
-                Corner::TopRight
-            ));
-            // Master Volume
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -3800.0f, 0.0f)),
-                "masterVolumeLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Master Volume:",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new SliderObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2100.0f, 0.0f)),
-                "masterVolumeSlider",
-                0.0f,
-                1.0f,
-                tempSettings->masterVolume,
-                Corner::TopRight,
-                "%",
-                true,
-                100.0f
-            ));
-            // FPS Limit
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -4400.0f, 0.0f)),
-                "fpsLimitLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "FPS Limit (0 = VSync):",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new SliderObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2400.0f, 0.0f)),
-                "fpsLimitSlider",
-                0.0f,
-                240.0f,
-                tempSettings->fpsLimit,
-                Corner::TopRight,
-                " FPS",
-                true,
-                1.0f
-            ));
-            // Shadow Quality
-            settingsUIObject->addChild(new TextObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f, 0.075f, 1.0f)), glm::vec3(450.0f, -5000.0f, 0.0f)),
-                "shadowQualityLabel",
-                glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Shadow Quality:",
-                "Lato",
-                Corner::TopLeft
-            ));
-            settingsUIObject->addChild(new SliderObject(
-                uiManager,
-                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, -2700.0f, 0.0f)),
-                "shadowQualitySlider",
-                0.0f,
-                3.0f,
-                tempSettings->shadowQuality,
-                Corner::TopRight,
-                "",
-                true,
-                1.0f
-            ));
+            
+            const std::vector<SettingsDefinition> settingsDefs = {
+                { SettingsDefinition::Bool, "Show FPS Counter", "showFPS", &Settings::showFPS },
+                { SettingsDefinition::Bool, "Enable Screen Space Reflections", "ssrEnabled", &Settings::ssrEnabled },
+                { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"} },
+                { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"} },
+                { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
+                { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 0.0f, 240.0f, " FPS", true, 1.0f, true, 0.0f, 240.0f,
+                    [](Settings* prev, Settings* curr, Renderer* renderer) {
+                        if ((prev->fpsLimit < 1e-6f) != (curr->fpsLimit < 1e-6f)) {
+                            renderer->recreateSwapChain();
+                        }
+                    }
+                },
+                { SettingsDefinition::Slider, "Shadow Quality", "shadowQuality", nullptr, nullptr, {}, &Settings::shadowQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f,
+                    [](Settings* prev, Settings* curr, Renderer* renderer) {
+                        if (prev->shadowQuality != curr->shadowQuality) {
+                            renderer->requestShadowMapRecreation();
+                        }
+                    }
+                }
+            };
+
+            float labelY = -1300.0f;
+            for (auto& es : enumStates) {
+                for (auto* f : es.flags) delete f;
+            }
+            enumStates.clear();
+            for (const SettingsDefinition& def : settingsDefs) {
+                settingsUIObject->addChild(new TextObject(
+                    uiManager,
+                    glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f)), glm::vec3(450.0f, labelY, 0.0f)),
+                    def.key + "Label",
+                    glm::vec4(1.0f),
+                    def.label,
+                    "Lato",
+                    Corner::TopLeft
+                ));
+                switch (def.type) {
+                    case SettingsDefinition::Bool: {
+                        settingsUIObject->addChild(new CheckboxObject(
+                            uiManager,
+                            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f)), glm::vec3(-350.0f, labelY * 0.75f, 0.0f)),
+                            def.key + "Checkbox",
+                            glm::vec4(1.0f),
+                            tempSettings->*(def.boolPtr),
+                            tempSettings->*(def.boolPtr),
+                            Corner::TopRight
+                        ));
+                        break;
+                    }
+                    case SettingsDefinition::Enum: {
+                        float amountIn = def.enumOptions.size() * -500.0f - 50.0f;
+                        std::string enumOptionsLabel = "";
+                        for (const std::string& option : def.enumOptions) {
+                            enumOptionsLabel += "   " + option;
+                        }
+                        settingsUIObject->addChild(new TextObject(
+                            uiManager,
+                            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.06f)), glm::vec3(-600, labelY * 1.25 - 350.0f, 0.0f)),
+                            def.key + "EnumLabel",
+                            glm::vec4(1.0f),
+                            enumOptionsLabel,
+                            "Lato",
+                            Corner::TopRight
+                        ));
+                        std::vector<CheckboxObject*> checkboxes;
+                        EnumState state;
+                        state.field = def.enumPtr;
+                        for (size_t i = 0; i < def.enumOptions.size(); i++) {
+                            bool* flag = new bool(tempSettings->*(def.enumPtr) == i);
+                            CheckboxObject* checkbox = new CheckboxObject(
+                                uiManager,
+                                glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f)), glm::vec3(amountIn, labelY * 0.75f, 0.0f)),
+                                def.key + "Option" + std::to_string(i),
+                                glm::vec4(1.0f),
+                                *flag,
+                                *flag,
+                                Corner::TopRight
+                            );
+                            settingsUIObject->addChild(checkbox);
+                            checkboxes.push_back(checkbox);
+                            state.flags.push_back(flag);
+                            amountIn += 500.0f;
+                        }
+                        for (size_t i = 0; i < checkboxes.size(); i++) {
+                            std::vector<CheckboxObject*> otherCheckboxes = checkboxes;
+                            otherCheckboxes.erase(otherCheckboxes.begin() + i);
+                            checkboxes[i]->setBoundBools(otherCheckboxes);
+                        }
+                        enumStates.push_back(std::move(state));
+                        break;
+                    }
+                    case SettingsDefinition::Slider: {
+                        SliderObject* slider = new SliderObject(
+                            uiManager,
+                            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, labelY * 0.55f, 0.0f)),
+                            def.key + "Slider",
+                            def.minVal,
+                            def.maxVal,
+                            tempSettings->*(def.floatPtr),
+                            Corner::TopRight,
+                            def.textSuffix,
+                            def.isInt,
+                            def.textMultiplier
+                        );
+                        settingsUIObject->addChild(slider);
+                        break;
+                    }
+                };
+                labelY -= (def.type == SettingsDefinition::Enum) ? 700.0f : 600.0f;
+            }
+
             // Apply Button
             settingsUIObject->addChild(new ButtonObject(
                 uiManager,
@@ -348,35 +273,34 @@ namespace engine {
                 "ui_window",
                 "Apply",
                 "Lato",
-                [this]() {
-                    if (aoDisabled) {
-                        this->tempSettings->aoMode = 0;
-                    } else if (aoSSAO) {
-                        this->tempSettings->aoMode = 1;
-                    } else if (aoGTAO) {
-                        this->tempSettings->aoMode = 2;
+                [this, settingsDefs]() {
+                    for (const auto& enumState : this->enumStates) {
+                        for (uint32_t i = 0; i < enumState.flags.size(); ++i) {
+                            if (*enumState.flags[i]) {
+                                tempSettings->*(enumState.field) = i;
+                                break;
+                            }
+                        }
                     }
-                    if (aaDisabled) {
-                        this->tempSettings->aaMode = 0;
-                    } else if (aaFXAA) {
-                        this->tempSettings->aaMode = 1;
-                    } else if (aaSMAA) {
-                        this->tempSettings->aaMode = 2;
+                    for (const auto& def : settingsDefs) {
+                        if (def.type == SettingsDefinition::Slider) {
+                            float& value = tempSettings->*(def.floatPtr);
+                            if (def.clampMax > def.clampMin) {
+                                value = std::clamp(value, def.clampMin, def.clampMax);
+                            }
+                            if (def.roundOnApply) {
+                                value = float(static_cast<int>(value + 0.5f));
+                            }
+                        }
                     }
-                    this->tempSettings->fpsLimit = float(static_cast<int>(this->tempSettings->fpsLimit + 0.5f));
-                    this->tempSettings->shadowQuality = float(static_cast<int>(std::clamp(this->tempSettings->shadowQuality, 0.0f, 3.0f) + 0.5f));
-                    float previousFPSLimit = this->currentSettings->fpsLimit;
-                    float previousShadowQuality = this->currentSettings->shadowQuality;
-                    *(this->currentSettings) = *(this->tempSettings);
-                    if (previousFPSLimit < 1e-6f && this->tempSettings->fpsLimit > 1e-6f) {
-                        this->renderer->recreateSwapChain();
-                    } else if (previousFPSLimit > 1e-6f && this->tempSettings->fpsLimit < 1e-6f) {
-                        this->renderer->recreateSwapChain();
+                    Settings prev = *currentSettings;
+                    *currentSettings = *tempSettings;
+                    for (const auto& def : settingsDefs) {
+                        if (def.onChange) {
+                            def.onChange(&prev, currentSettings, renderer);
+                        }
                     }
-                    if (previousShadowQuality != this->tempSettings->shadowQuality) {
-                        this->renderer->requestShadowMapRecreation();
-                    }
-                    this->saveSettings();
+                    saveSettings();
                 },
                 Corner::Bottom
             ));
@@ -385,6 +309,10 @@ namespace engine {
 
         void hideSettingsUI() {
             if (!settingsUIObject) return;
+            for (auto& es : enumStates) {
+                for (auto* f : es.flags) delete f;
+            }
+            enumStates.clear();
             renderer->setHoveredObject(nullptr);
             renderer->getUIManager()->removeObject(settingsUIObject->getName());
             settingsUIObject = nullptr;
@@ -403,12 +331,11 @@ namespace engine {
 
         std::function<void()> onCloseCallback;
 
-        bool aoDisabled;
-        bool aoSSAO;
-        bool aoGTAO;
-        bool aaDisabled;
-        bool aaFXAA;
-        bool aaSMAA;
+        struct EnumState {
+            std::vector<bool*> flags;
+            uint32_t Settings::* field;
+        };
+        std::vector<EnumState> enumStates;
 
         static std::filesystem::path getConfigFilePath() {
             std::filesystem::path configDir;
