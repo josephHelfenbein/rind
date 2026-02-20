@@ -19,6 +19,9 @@ namespace rind {
         GameInstance();
         ~GameInstance() = default;
         void run();
+
+        uint32_t getDifficultyLevel() const { return difficulty; }
+
     private:
         std::unique_ptr<engine::Renderer> renderer;
         std::unique_ptr<engine::SceneManager> sceneManager;
@@ -31,5 +34,7 @@ namespace rind {
         std::unique_ptr<engine::ParticleManager> particleManager;
         std::unique_ptr<engine::AudioManager> audioManager;
         std::unique_ptr<engine::SettingsManager> settingsManager;
+
+        uint32_t difficulty = 0;
     };
 };

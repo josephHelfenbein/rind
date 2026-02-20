@@ -4,6 +4,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cstdlib>
+#include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <engine/Renderer.h>
@@ -44,19 +45,28 @@ namespace engine {
             float clampMin = 0.0f, clampMax = 0.0f; // 0,0 = no clamp
             
             std::function<void(Settings* prev, Settings* curr, Renderer*)> onChange = nullptr;
+
+            bool* extBool = nullptr;
+            uint32_t* extEnum = nullptr;
+            float* extFloat = nullptr;
+            bool defaultBool = false;
+            uint32_t defaultEnum = 0;
+            float defaultFloat = 0.0f;
         };
 
-        SettingsManager(engine::Renderer* renderer) : renderer(renderer) {
+        SettingsManager(engine::Renderer* renderer, std::vector<SettingsDefinition> newDefs = {}) : renderer(renderer) {
             renderer->registerSettingsManager(this);
+            addToDefs(std::move(newDefs));
             loadSettings();
         };
 
         ~SettingsManager() {
-            for (auto& es : enumStates) {
-                for (auto* f : es.flags) delete f;
-            }
-            enumStates.clear();
+            cleanupTempStorage();
             delete currentSettings;
+        }
+
+        void addToDefs(std::vector<SettingsDefinition> newDefs) {
+            defs.insert(defs.end(), newDefs.begin(), newDefs.end());
         }
 
         void loadSettings() {
@@ -69,17 +79,44 @@ namespace engine {
             std::vector<char> buffer = readFile(configPath.string());
             std::string content(buffer.begin(), buffer.end());
 
-            currentSettings->masterVolume = std::clamp(parseFloat(content, "masterVolume", 1.0f), 0.0f, 1.0f);
-            currentSettings->aoMode = std::clamp(static_cast<uint32_t>(parseInt(content, "aoMode", 2)), 0u, 2u);
-            currentSettings->aaMode = std::clamp(static_cast<uint32_t>(parseInt(content, "aaMode", 1)), 0u, 2u);
-            currentSettings->ssrEnabled = parseBool(content, "ssrEnabled", true);
-            currentSettings->showFPS = parseBool(content, "showFPS", false);
-            currentSettings->fpsLimit = parseFloat(content, "fpsLimit", 0.0f);
-            currentSettings->shadowQuality = static_cast<float>(static_cast<int>(std::clamp(
-                parseFloat(content, "shadowQuality", 2.0f),
-                0.0f,
-                3.0f
-            ) + 0.5f));
+            Settings defaults;
+            for (const auto& def : defs) {
+                switch (def.type) {
+                    case SettingsDefinition::Bool: {
+                        bool defaultVal = def.boolPtr ? defaults.*(def.boolPtr) : def.defaultBool;
+                        bool parsed = parseBool(content, def.key, defaultVal);
+                        if (def.boolPtr) currentSettings->*(def.boolPtr) = parsed;
+                        else if (def.extBool) *(def.extBool) = parsed;
+                        break;
+                    }
+                    case SettingsDefinition::Enum: {
+                        uint32_t maxVal = static_cast<uint32_t>(def.enumOptions.size()) - 1;
+                        uint32_t defaultVal = def.enumPtr ? defaults.*(def.enumPtr) : def.defaultEnum;
+                        uint32_t parsed = std::clamp(
+                            static_cast<uint32_t>(parseInt(content, def.key, static_cast<int>(defaultVal))),
+                            0u, maxVal
+                        );
+                        if (def.enumPtr) currentSettings->*(def.enumPtr) = parsed;
+                        else if (def.extEnum) *(def.extEnum) = parsed;
+                        break;
+                    }
+                    case SettingsDefinition::Slider: {
+                        float defaultVal = def.floatPtr ? defaults.*(def.floatPtr) : def.defaultFloat;
+                        float val = parseFloat(content, def.key, defaultVal);
+                        if (def.clampMax > def.clampMin) {
+                            val = std::clamp(val, def.clampMin, def.clampMax);
+                        } else {
+                            val = std::clamp(val, def.minVal, def.maxVal);
+                        }
+                        if (def.roundOnApply) {
+                            val = static_cast<float>(static_cast<int>(val + 0.5f));
+                        }
+                        if (def.floatPtr) currentSettings->*(def.floatPtr) = val;
+                        else if (def.extFloat) *(def.extFloat) = val;
+                        break;
+                    }
+                }
+            }
             tempSettings = new Settings(*currentSettings);
         }
 
@@ -96,15 +133,30 @@ namespace engine {
             }
 
             file << "{\n";
-            file << "    \"masterVolume\": " << currentSettings->masterVolume << ",\n";
-            file << "    \"aoMode\": " << currentSettings->aoMode << ",\n";
-            file << "    \"aaMode\": " << currentSettings->aaMode << ",\n";
-            file << "    \"ssrEnabled\": " << (currentSettings->ssrEnabled ? "true" : "false") << ",\n";
-            file << "    \"showFPS\": " << (currentSettings->showFPS ? "true" : "false") << ",\n";
-            file << "    \"fpsLimit\": " << currentSettings->fpsLimit << ",\n";
-            file << "    \"shadowQuality\": " << currentSettings->shadowQuality << "\n";
+            for (size_t i = 0; i < defs.size(); ++i) {
+                const auto& def = defs[i];
+                file << "    \"" << def.key << "\": ";
+                switch (def.type) {
+                    case SettingsDefinition::Bool: {
+                        bool val = def.boolPtr ? currentSettings->*(def.boolPtr) : (def.extBool ? *(def.extBool) : false);
+                        file << (val ? "true" : "false");
+                        break;
+                    }
+                    case SettingsDefinition::Enum: {
+                        uint32_t val = def.enumPtr ? currentSettings->*(def.enumPtr) : (def.extEnum ? *(def.extEnum) : 0);
+                        file << val;
+                        break;
+                    }
+                    case SettingsDefinition::Slider: {
+                        float val = def.floatPtr ? currentSettings->*(def.floatPtr) : (def.extFloat ? *(def.extFloat) : 0.0f);
+                        file << val;
+                        break;
+                    }
+                }
+                if (i + 1 < defs.size()) file << ",";
+                file << "\n";
+            }
             file << "}\n";
-
             file.close();
         }
 
@@ -150,35 +202,10 @@ namespace engine {
                 },
                 Corner::TopRight
             ));
-            
-            const std::vector<SettingsDefinition> settingsDefs = {
-                { SettingsDefinition::Bool, "Show FPS Counter", "showFPS", &Settings::showFPS },
-                { SettingsDefinition::Bool, "Enable Screen Space Reflections", "ssrEnabled", &Settings::ssrEnabled },
-                { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"} },
-                { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"} },
-                { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
-                { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 0.0f, 240.0f, " FPS", true, 1.0f, true, 0.0f, 240.0f,
-                    [](Settings* prev, Settings* curr, Renderer* renderer) {
-                        if ((prev->fpsLimit < 1e-6f) != (curr->fpsLimit < 1e-6f)) {
-                            renderer->recreateSwapChain();
-                        }
-                    }
-                },
-                { SettingsDefinition::Slider, "Shadow Quality", "shadowQuality", nullptr, nullptr, {}, &Settings::shadowQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f,
-                    [](Settings* prev, Settings* curr, Renderer* renderer) {
-                        if (prev->shadowQuality != curr->shadowQuality) {
-                            renderer->requestShadowMapRecreation();
-                        }
-                    }
-                }
-            };
 
             float labelY = -1300.0f;
-            for (auto& es : enumStates) {
-                for (auto* f : es.flags) delete f;
-            }
-            enumStates.clear();
-            for (const SettingsDefinition& def : settingsDefs) {
+            cleanupTempStorage();
+            for (const SettingsDefinition& def : defs) {
                 settingsUIObject->addChild(new TextObject(
                     uiManager,
                     glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.075f)), glm::vec3(450.0f, labelY, 0.0f)),
@@ -190,13 +217,20 @@ namespace engine {
                 ));
                 switch (def.type) {
                     case SettingsDefinition::Bool: {
+                        bool* tempRef;
+                        if (def.boolPtr) {
+                            tempRef = &(tempSettings->*(def.boolPtr));
+                        } else {
+                            tempRef = new bool(*(def.extBool));
+                            tempExtBools[def.key] = tempRef;
+                        }
                         settingsUIObject->addChild(new CheckboxObject(
                             uiManager,
                             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f)), glm::vec3(-350.0f, labelY * 0.75f, 0.0f)),
                             def.key + "Checkbox",
                             glm::vec4(1.0f),
-                            tempSettings->*(def.boolPtr),
-                            tempSettings->*(def.boolPtr),
+                            *tempRef,
+                            *tempRef,
                             Corner::TopRight
                         ));
                         break;
@@ -218,9 +252,11 @@ namespace engine {
                         ));
                         std::vector<CheckboxObject*> checkboxes;
                         EnumState state;
-                        state.field = def.enumPtr;
+                        state.memberField = def.enumPtr;
+                        state.extField = def.extEnum;
+                        uint32_t currentVal = def.enumPtr ? tempSettings->*(def.enumPtr) : *(def.extEnum);
                         for (size_t i = 0; i < def.enumOptions.size(); i++) {
-                            bool* flag = new bool(tempSettings->*(def.enumPtr) == i);
+                            bool* flag = new bool(currentVal == i);
                             CheckboxObject* checkbox = new CheckboxObject(
                                 uiManager,
                                 glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f)), glm::vec3(amountIn, labelY * 0.75f, 0.0f)),
@@ -244,13 +280,20 @@ namespace engine {
                         break;
                     }
                     case SettingsDefinition::Slider: {
+                        float* tempRef;
+                        if (def.floatPtr) {
+                            tempRef = &(tempSettings->*(def.floatPtr));
+                        } else {
+                            tempRef = new float(*(def.extFloat));
+                            tempExtFloats[def.key] = tempRef;
+                        }
                         SliderObject* slider = new SliderObject(
                             uiManager,
                             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.14f, 1.0f)), glm::vec3(-100.0f, labelY * 0.55f, 0.0f)),
                             def.key + "Slider",
                             def.minVal,
                             def.maxVal,
-                            tempSettings->*(def.floatPtr),
+                            *tempRef,
                             Corner::TopRight,
                             def.textSuffix,
                             def.isInt,
@@ -273,29 +316,35 @@ namespace engine {
                 "ui_window",
                 "Apply",
                 "Lato",
-                [this, settingsDefs]() {
+                [this]() {
                     for (const auto& enumState : this->enumStates) {
                         for (uint32_t i = 0; i < enumState.flags.size(); ++i) {
                             if (*enumState.flags[i]) {
-                                tempSettings->*(enumState.field) = i;
+                                if (enumState.memberField) tempSettings->*(enumState.memberField) = i;
+                                else if (enumState.extField) *(enumState.extField) = i;
                                 break;
                             }
                         }
                     }
-                    for (const auto& def : settingsDefs) {
+                    for (const auto& def : defs) {
                         if (def.type == SettingsDefinition::Slider) {
-                            float& value = tempSettings->*(def.floatPtr);
-                            if (def.clampMax > def.clampMin) {
-                                value = std::clamp(value, def.clampMin, def.clampMax);
+                            if (def.floatPtr) {
+                                float& value = tempSettings->*(def.floatPtr);
+                                if (def.clampMax > def.clampMin) value = std::clamp(value, def.clampMin, def.clampMax);
+                                if (def.roundOnApply) value = float(static_cast<int>(value + 0.5f));
+                            } else if (def.extFloat && tempExtFloats.count(def.key)) {
+                                float& value = *tempExtFloats[def.key];
+                                if (def.clampMax > def.clampMin) value = std::clamp(value, def.clampMin, def.clampMax);
+                                if (def.roundOnApply) value = float(static_cast<int>(value + 0.5f));
+                                *(def.extFloat) = value;
                             }
-                            if (def.roundOnApply) {
-                                value = float(static_cast<int>(value + 0.5f));
-                            }
+                        } else if (def.type == SettingsDefinition::Bool && def.extBool && tempExtBools.count(def.key)) {
+                            *(def.extBool) = *tempExtBools[def.key];
                         }
                     }
                     Settings prev = *currentSettings;
                     *currentSettings = *tempSettings;
-                    for (const auto& def : settingsDefs) {
+                    for (const auto& def : defs) {
                         if (def.onChange) {
                             def.onChange(&prev, currentSettings, renderer);
                         }
@@ -309,10 +358,7 @@ namespace engine {
 
         void hideSettingsUI() {
             if (!settingsUIObject) return;
-            for (auto& es : enumStates) {
-                for (auto* f : es.flags) delete f;
-            }
-            enumStates.clear();
+            cleanupTempStorage();
             renderer->setHoveredObject(nullptr);
             renderer->getUIManager()->removeObject(settingsUIObject->getName());
             settingsUIObject = nullptr;
@@ -333,9 +379,45 @@ namespace engine {
 
         struct EnumState {
             std::vector<bool*> flags;
-            uint32_t Settings::* field;
+            uint32_t Settings::* memberField = nullptr;
+            uint32_t* extField = nullptr;
         };
         std::vector<EnumState> enumStates;
+        std::unordered_map<std::string, bool*> tempExtBools;
+        std::unordered_map<std::string, float*> tempExtFloats;
+
+        void cleanupTempStorage() {
+            for (auto& es : enumStates) {
+                for (auto* f : es.flags) delete f;
+            }
+            enumStates.clear();
+            for (auto& [key, ptr] : tempExtBools) delete ptr;
+            tempExtBools.clear();
+            for (auto& [key, ptr] : tempExtFloats) delete ptr;
+            tempExtFloats.clear();
+        }
+
+        std::vector<SettingsDefinition> defs = {
+            { SettingsDefinition::Bool, "Show FPS Counter", "showFPS", &Settings::showFPS },
+            { SettingsDefinition::Bool, "Enable Screen Space Reflections", "ssrEnabled", &Settings::ssrEnabled },
+            { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"} },
+            { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"} },
+            { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
+            { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 0.0f, 240.0f, " FPS", true, 1.0f, true, 0.0f, 240.0f,
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if ((prev->fpsLimit < 1e-6f) != (curr->fpsLimit < 1e-6f)) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
+            { SettingsDefinition::Slider, "Shadow Quality", "shadowQuality", nullptr, nullptr, {}, &Settings::shadowQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f,
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if (prev->shadowQuality != curr->shadowQuality) {
+                        renderer->requestShadowMapRecreation();
+                    }
+                }
+            }
+        };
 
         static std::filesystem::path getConfigFilePath() {
             std::filesystem::path configDir;

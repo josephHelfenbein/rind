@@ -3,13 +3,14 @@
 #include <engine/EntityManager.h>
 #include <rind/Enemy.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <rind/GameInstance.h>
 
 namespace rind {
     template<typename EnemyType>
     class EnemySpawner : public engine::Entity {
     public:
-        EnemySpawner(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform)
-            : engine::Entity(entityManager, name, "", transform, {}, false), targetPlayer(player) {}
+        EnemySpawner(engine::EntityManager* entityManager, rind::GameInstance* gameInstance, rind::Player* player, const std::string& name, glm::mat4 transform)
+            : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player) {}
 
         void update(float deltaTime) override {
             spawnTimer += deltaTime;
@@ -22,6 +23,7 @@ namespace rind {
         }
     private:
         void spawnEnemy() {
+            maxEnemies = 2 + gameInstance->getDifficultyLevel() * 2;
             if (enemyCount >= maxEnemies) {
                 return;
             }
@@ -52,6 +54,7 @@ namespace rind {
         uint32_t enemyCount = 0u;
         uint32_t spawnedEnemies = 0u;
         uint32_t maxEnemies = 5u;
+        rind::GameInstance* gameInstance = nullptr;
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
     };
