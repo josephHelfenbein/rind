@@ -22,4 +22,5 @@ void engine::SceneManager::setActiveScene(int index) {
     renderer->getAudioManager()->stopAllSounds();
     scenes[index]->run(renderer);
     renderer->getEntityManager()->setIrradianceBakingPending(true);
+    renderer->refreshDescriptorSets();
 }

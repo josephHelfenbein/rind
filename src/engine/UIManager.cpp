@@ -75,6 +75,20 @@ void engine::UIObject::removeChild(TextObject* child) {
     child->setParent(nullptr);
 }
 
+void engine::UIObject::loadTexture() {
+    if (!getDescriptorSets().empty() || getTexture().empty()) return;
+    engine::Renderer* renderer = getUIManager()->getRenderer();
+    engine::Texture* texture = renderer->getTextureManager()->getTexture(getTexture());
+    if (!texture) {
+        std::cout << "Warning: Texture " << getTexture() << " for UIObject " << name << " not found.\n";
+        return;
+    }
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
+    std::vector<Texture*> textures = { texture };
+    std::vector<VkBuffer> buffers;
+    setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
+}
+
 engine::ButtonObject::ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner)
     : UIObject(uiManager, transform, name, tint, texture, anchorCorner), onClick(onClick) {
         TextObject* textObj = new TextObject(uiManager, glm::mat4(1.0f), name + "_text", textColor, text, font, Corner::Center);
@@ -82,12 +96,12 @@ engine::ButtonObject::ButtonObject(UIManager* uiManager, glm::mat4 transform, st
         setOnHover(new std::function<void()>([this]() {
             glm::vec4 currentTint = this->getTint();
             this->setTint(currentTint + glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
-            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+            this->loadTexture();
         }));
         setOnStopHover(new std::function<void()>([this]() {
             glm::vec4 currentTint = this->getTint();
             this->setTint(currentTint - glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
-            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+            this->loadTexture();
         }));
         audioManager = uiManager->getRenderer()->getAudioManager();
     }
@@ -109,12 +123,12 @@ engine::CheckboxObject::CheckboxObject(UIManager* uiManager, glm::mat4 transform
         setOnHover(new std::function<void()>([this]() {
             glm::vec4 currentTint = this->getTint();
             this->setTint(currentTint + glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+            this->loadTexture();
         }));
         setOnStopHover(new std::function<void()>([this]() {
             glm::vec4 currentTint = this->getTint();
             this->setTint(currentTint - glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-            this->getUIManager()->getRenderer()->refreshDescriptorSets();
+            this->loadTexture();
         }));
     }
 
@@ -122,7 +136,7 @@ engine::CheckboxObject::CheckboxObject(UIManager* uiManager, glm::mat4 transform
     checked = !checked;
     checkState = !checkState;
     setTexture(checkState ? checkedTexture : uncheckedTexture);
-    getUIManager()->getRenderer()->refreshDescriptorSets();
+    loadTexture();
 
     if (checkState) {
         for (auto& boundCheckbox : boundBools) {
@@ -331,16 +345,7 @@ void engine::UIManager::loadTextures() {
     for (auto& [name, found] : objects) {
         if (!std::holds_alternative<UIObject*>(found)) continue;
         UIObject* object = std::get<UIObject*>(found);
-        if (!object->getDescriptorSets().empty() || object->getTexture().empty()) continue;
-        engine::Texture* texture = renderer->getTextureManager()->getTexture(object->getTexture());
-        if (!texture) {
-            std::cout << "Warning: Texture " << object->getTexture() << " for UIObject " << name << " not found.\n";
-            continue;
-        }
-        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
-        std::vector<Texture*> textures = { texture };
-        std::vector<VkBuffer> buffers;
-        object->setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
+        object->loadTexture();
     }
 }
 
@@ -747,7 +752,7 @@ engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, do
     UIObject* hoveredObject = nullptr;
     UIObject* lastHovered = renderer->getHoveredObject();
     std::function<void(UIObject*, const LayoutRect&, bool)> traverse = [&](UIObject* node, const LayoutRect& parentRect, bool isRoot) {
-        if(!node || !node->isEnabled()) return;
+        if (!node || !node->isEnabled()) return;
         const LayoutRect& anchorRect = isRoot ? rootAnchorRect : parentRect;
         LayoutRect designRect = resolveDesignRect(node, anchorRect);
         const float invLayout = layoutScale > 0.0f ? 1.0f / layoutScale : 0.0f;
@@ -762,7 +767,9 @@ engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, do
                 if (foundHover) return;
             }
         }
-        if (isOverNode && !foundHover) {
+        if (isOverNode && !foundHover &&
+            (node->getOnHover() || dynamic_cast<ButtonObject*>(node) || dynamic_cast<CheckboxObject*>(node) || dynamic_cast<SliderObject*>(node))
+        ) {
             hoveredObject = node;
             foundHover = true;
         }

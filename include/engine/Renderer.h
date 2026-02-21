@@ -139,6 +139,7 @@ namespace engine {
         void ensureFallback2DTexture();
         void refreshDescriptorSets();
         void resetPostProcessDescriptorPools();
+        void createPostProcessDescriptorSets();
         VkImageView getPassImageView(const std::string& shaderName, const std::string& attachmentName);
 
         VkDevice getDevice() const { return device; }
@@ -262,7 +263,6 @@ namespace engine {
         void createAttachmentResources();
         void createCommandPool();
         void createMainTextureSampler();
-        void createPostProcessDescriptorSets();
         void createCommandBuffers();
         void createSyncObjects();
         void createQuadResources();

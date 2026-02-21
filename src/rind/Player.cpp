@@ -120,19 +120,21 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
             this->registerInput(events);
         });
         inputManager->resetKeyStates();
-        const float healthbarWidth = 1920.0f;
-        float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;
+        const float baseWidth = 1920.0f;
+        const float baseHeight = 1080.0f;
+        VkExtent2D displaySize = getEntityManager()->getRenderer()->getSwapChainExtent();
         float contentScale = 1.0f;
-        #ifdef __APPLE__
+    #ifdef __APPLE__
         float xscale = 1.0f, yscale = 1.0f;
         glfwGetWindowContentScale(getEntityManager()->getRenderer()->getWindow(), &xscale, &yscale);
         contentScale = std::max(xscale, yscale);
-        #endif
+    #endif
         float layoutScale = std::max(getEntityManager()->getRenderer()->getUIScale() * contentScale, 0.0001f);
-        float healthbarScale = healthbarDisplayWidth / (healthbarWidth * layoutScale);
+        float widthScale = static_cast<float>(displaySize.width) / (baseWidth * layoutScale);
+        float heightScale = static_cast<float>(displaySize.height) / (baseHeight * layoutScale);
         healthbarEmptyObject = new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
-            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
             "healthbarEmpty",
             glm::vec4(1.0f),
             "ui_healthbar_empty",
@@ -140,11 +142,18 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         );
         healthbarObject = new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
-            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f)),
             "healthbarFull",
             glm::vec4(1.0f),
             "ui_healthbar_full",
             engine::Corner::Bottom
+        );
+        damageEffectObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)),
+            "damageEffect",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+            "ui_healthbar_overlay"
         );
         entityManager->getRenderer()->getInputManager()->registerRecreateSwapChainCallback("playerHealthbarResize", [this]() {
             this->resizeHealthbar();
@@ -160,21 +169,26 @@ rind::Player::~Player() {
 }
 
 void rind::Player::resizeHealthbar() {
-    const float healthbarWidth = 1920.0f;
-    float healthbarDisplayWidth = getEntityManager()->getRenderer()->getSwapChainExtent().width;
+    const float baseWidth = 1920.0f;
+    const float baseHeight = 1080.0f;
+    VkExtent2D displaySize = getEntityManager()->getRenderer()->getSwapChainExtent();
     float contentScale = 1.0f;
-    #ifdef __APPLE__
+#ifdef __APPLE__
     float xscale = 1.0f, yscale = 1.0f;
     glfwGetWindowContentScale(getEntityManager()->getRenderer()->getWindow(), &xscale, &yscale);
     contentScale = std::max(xscale, yscale);
-    #endif
+#endif
     float layoutScale = std::max(getEntityManager()->getRenderer()->getUIScale() * contentScale, 0.0001f);
-    float healthbarScale = healthbarDisplayWidth / (healthbarWidth * layoutScale);
+    float widthScale = static_cast<float>(displaySize.width) / (baseWidth * layoutScale);
+    float heightScale = static_cast<float>(displaySize.height) / (baseHeight * layoutScale);
     healthbarEmptyObject->setTransform(
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
     );
     healthbarObject->setTransform(
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(healthbarScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
+    );
+    damageEffectObject->setTransform(
+        glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f))
     );
 }
 
@@ -235,6 +249,9 @@ void rind::Player::update(float deltaTime) {
     if (cameraShakeIntensity > 0.0f) {
         glm::vec3 randomCameraLoc = glm::vec3(dist(rng), dist(rng), dist(rng)) * cameraShakeIntensity * 0.05f;
         camHolder->setTransform(glm::translate(glm::mat4(1.0f), randomCameraLoc));
+        float overlayAlpha = std::clamp(cameraShakeIntensity * 2.0f, std::min(1.0f - (getHealth() / getMaxHealth()), 0.8f), 0.8f);
+        damageEffectObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, overlayAlpha));
+        damageEffectObject->loadTexture();
         cameraShakeIntensity -= deltaTime;
     }
     if (heartbeatOffset > 0.0f) {

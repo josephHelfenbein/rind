@@ -92,6 +92,8 @@ namespace engine {
         UIObject* getParent() const { return parent; }
         void setParent(UIObject* parent) { this->parent = parent; }
 
+        void loadTexture();
+
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
         glm::vec4 getTint() const { return tint; }

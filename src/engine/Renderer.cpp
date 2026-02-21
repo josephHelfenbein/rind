@@ -190,7 +190,8 @@ void engine::Renderer::drawFrame() {
     entityManager->processPendingAdditions();
     if (shadowMapRecreationPending) {
         entityManager->createAllShadowMaps();
-        refreshDescriptorSets();
+        vkDeviceWaitIdle(device);
+        createPostProcessDescriptorSets();
         shadowMapRecreationPending = false;
     }
     if (entityManager->needsIrradianceBaking()) {
@@ -204,7 +205,8 @@ void engine::Renderer::drawFrame() {
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             entityManager->updateIrradianceProbesUBO(i);
         }
-        refreshDescriptorSets();
+        vkDeviceWaitIdle(device);
+        createPostProcessDescriptorSets();
     }
     if (settingsManager->getSettings()->fpsLimit > 1e-6f) {
         double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);

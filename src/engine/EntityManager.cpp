@@ -462,7 +462,8 @@ void engine::EntityManager::processPendingAdditions() {
     pendingAdditions.clear();
     if (resetShadows) {
         createAllShadowMaps();
-        renderer->refreshDescriptorSets();
+        vkDeviceWaitIdle(renderer->getDevice());
+        renderer->createPostProcessDescriptorSets();
     }
 }
 

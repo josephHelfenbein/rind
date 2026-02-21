@@ -52,6 +52,7 @@ namespace rind {
         engine::UIObject* pauseUIObject = nullptr;
         engine::UIObject* healthbarObject = nullptr;
         engine::UIObject* healthbarEmptyObject = nullptr;
+        engine::UIObject* damageEffectObject = nullptr;
         ScoreCounter* scoreCounter = nullptr;
 
         bool isDead = false;
