@@ -164,7 +164,15 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
             }
         }
     }
-    size_t groundHits = Collider::raycast(getEntityManager(), getWorldPosition() - glm::vec3(0.0f, collider->getHalfSize().y, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 0.2f, getCollider()).size();
+    size_t groundHits = Collider::raycast(
+        getEntityManager(),
+        getCollider()->getWorldPosition() + glm::vec3(0.0f, -collider->getHalfSize().y + 0.1f, 0.0f),
+        glm::vec3(0.0f, -1.0f, 0.0f),
+        0.1f,
+        getCollider(),
+        false,
+        0.0f
+    ).size();
     if (groundHits > 0) {
         touchedGround = true;
     }

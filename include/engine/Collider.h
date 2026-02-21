@@ -36,7 +36,7 @@ namespace engine {
             return glm::vec3(0.0f);
         }
         static bool aabbIntersects(const AABB& a, const AABB& b, float margin = 0.0f);
-        static std::vector<Collision> raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance = FLT_MAX, Collider* ignoreCollider = nullptr, bool returnFirstHit = false);
+        static std::vector<Collision> raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance = FLT_MAX, Collider* ignoreCollider = nullptr, bool returnFirstHit = false, float margin = 0.1f);
         static AABB aabbFromCorners(const std::array<glm::vec3, 8>& corners);
         static std::array<glm::vec3, 8> getCornersFromAABB(const AABB& aabb);
         bool getIsTrigger() const { return isTrigger; }

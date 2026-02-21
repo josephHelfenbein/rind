@@ -12,11 +12,10 @@ engine::Collider::~Collider() {
     }
 }
 
-std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit) {
+std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit, float margin) {
     std::vector<Collision> results;
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
 
-    const float margin = 0.1f;
     AABB rayAABB = {
         .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
