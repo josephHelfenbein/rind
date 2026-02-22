@@ -1197,7 +1197,7 @@ std::vector<engine::ComputeShader> engine::ShaderManager::createDefaultComputeSh
             .name = "sh",
             .compute = { shaderPath("sh.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
             .config = {
-                .poolMultiplier = 32,
+                .poolMultiplier = 64,
                 .computeBitBindings = 1,
                 .storageImageCount = 0,
                 .storageBufferCount = 1
@@ -1250,22 +1250,22 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
     if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate descriptor sets!");
     }
-    const int vertexBindings = std::max(config.vertexBitBindings, 0);
-    const int fragmentBindings = std::max(config.fragmentBitBindings, 0);
-    auto getVertexType = [&](int index) {
-        if (!config.vertexDescriptorTypes.empty() && static_cast<size_t>(index) < config.vertexDescriptorTypes.size()) {
-            return config.vertexDescriptorTypes[static_cast<size_t>(index)];
+    const size_t vertexBindings = static_cast<size_t>(std::max(config.vertexBitBindings, 0));
+    const size_t fragmentBindings = static_cast<size_t>(std::max(config.fragmentBitBindings, 0));
+    auto getVertexType = [&](size_t index) {
+        if (!config.vertexDescriptorTypes.empty() && index < config.vertexDescriptorTypes.size()) {
+            return config.vertexDescriptorTypes[index];
         }
         return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     };
-    auto getVertexCount = [&](int index) {
-        if (!config.vertexDescriptorCounts.empty() && config.vertexDescriptorCounts.size() == static_cast<size_t>(vertexBindings)) {
-            return std::max(config.vertexDescriptorCounts[static_cast<size_t>(index)], 1u);
+    auto getVertexCount = [&](size_t index) {
+        if (!config.vertexDescriptorCounts.empty() && config.vertexDescriptorCounts.size() == vertexBindings) {
+            return std::max(config.vertexDescriptorCounts[index], 1u);
         }
         return 1u;
     };
     size_t expectedBuffers = 0;
-    for (int i = 0; i < vertexBindings; ++i) {
+    for (size_t i = 0; i < vertexBindings; ++i) {
         VkDescriptorType type = getVertexType(i);
         if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
             expectedBuffers += getVertexCount(i);
@@ -1282,9 +1282,9 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
         }
         return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     };
-    auto getFragmentCount = [&](int index) {
-        if (!config.fragmentDescriptorCounts.empty() && config.fragmentDescriptorCounts.size() == static_cast<size_t>(fragmentBindings)) {
-            return std::max(config.fragmentDescriptorCounts[static_cast<size_t>(index)], 1u);
+    auto getFragmentCount = [&](size_t index) {
+        if (!config.fragmentDescriptorCounts.empty() && config.fragmentDescriptorCounts.size() == fragmentBindings) {
+            return std::max(config.fragmentDescriptorCounts[index], 1u);
         }
         return 1u;
     };
@@ -1296,7 +1296,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
     };
 
     size_t requiredTextureBindings = 0;
-    for (int i = 0; i < fragmentBindings; ++i) {
+    for (size_t i = 0; i < fragmentBindings; ++i) {
         const uint32_t actualBinding = static_cast<uint32_t>(vertexBindings + i);
         if (isInputBinding(actualBinding)) continue;
         const VkDescriptorType type = getFragmentType(i);
@@ -1318,7 +1318,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
         descriptorWrites.reserve(static_cast<size_t>(vertexBindings + fragmentBindings));
         
         size_t bufferIndex = 0;
-        for (int binding = 0; binding < vertexBindings; ++binding) {
+        for (size_t binding = 0; binding < vertexBindings; ++binding) {
             const VkDescriptorType type = getVertexType(binding);
             const uint32_t descriptorCount = getVertexCount(binding);
             if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
@@ -1347,7 +1347,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
         }
 
         size_t textureIndex = 0;
-        for (int frag = 0; frag < fragmentBindings; ++frag) {
+        for (size_t frag = 0; frag < fragmentBindings; ++frag) {
             const VkDescriptorType type = getFragmentType(frag);
             const uint32_t descriptorCount = getFragmentCount(frag);
             const uint32_t bindingIndex = static_cast<uint32_t>(vertexBindings + frag);

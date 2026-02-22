@@ -445,13 +445,13 @@ rind::GameInstance::GameInstance() {
             glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, -25.0f, 0.0f))
         );
 
-        for (int i = -2; i <= 2; i++) {
-            for (int j = -2; j <= 2; j++) {
+        for (int i = -3; i <= 3; ++i) {
+            for (int j = -3; j <= 3; ++j) {
                 engine::IrradianceProbe* probe = new engine::IrradianceProbe(
                     entityManager,
                     "gameProbe" + std::to_string(i) + std::to_string(j),
-                    glm::translate(glm::mat4(1.0f), glm::vec3(i * 9.0f, 5.0f, j * 9.0f)),
-                    10.0f
+                    glm::translate(glm::mat4(1.0f), glm::vec3(i * 8.0f, 5.0f, j * 8.0f)),
+                    8.0f
                 );
             }
         }

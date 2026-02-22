@@ -169,7 +169,7 @@ void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
 
 void engine::Entity::playAnimation(const std::string& animationName, bool loop, float speed) {
     if (!model || !model->hasAnimations()) return;
-    const auto* clip = model->getAnimation(animationName);
+    const engine::Model::AnimationClip* clip = model->getAnimation(animationName);
     if (!clip) {
         std::cerr << "Animation '" << animationName << "' not found on model\n";
         return;
@@ -182,7 +182,7 @@ void engine::Entity::playAnimation(const std::string& animationName, bool loop, 
     animState.currentTime = 0.0f;
     animState.looping = loop;
     animState.playbackSpeed = speed;
-    const auto& skeleton = model->getSkeleton();
+    const std::vector<engine::Model::Joint>& skeleton = model->getSkeleton();
     if (jointMatrices.size() != skeleton.size()) {
         jointMatrices.resize(skeleton.size(), glm::mat4(1.0f));
     }
@@ -190,9 +190,9 @@ void engine::Entity::playAnimation(const std::string& animationName, bool loop, 
 
 void engine::Entity::updateAnimation(float deltaTime) {
     if (!model || !model->hasAnimations() || animState.currentAnimation.empty()) return;
-    const auto* clip = model->getAnimation(animState.currentAnimation);
+    const engine::Model::AnimationClip* clip = model->getAnimation(animState.currentAnimation);
     if (!clip) return;
-    const auto& skeleton = model->getSkeleton();
+    const std::vector<engine::Model::Joint>& skeleton = model->getSkeleton();
     if (skeleton.empty()) return;
     
     const float blendSpeed = 8.0f;
@@ -216,7 +216,7 @@ void engine::Entity::updateAnimation(float deltaTime) {
     std::vector<glm::vec3> localScales(skeleton.size());
     
     for (size_t i = 0; i < skeleton.size(); ++i) {
-        const auto& joint = skeleton[i];
+        const engine::Model::Joint& joint = skeleton[i];
         glm::vec3 skew;
         glm::vec4 perspective;
         glm::decompose(joint.localTransform, localScales[i], localRotations[i], localTranslations[i], skew, perspective);
@@ -234,9 +234,9 @@ void engine::Entity::updateAnimation(float deltaTime) {
             prevScales = localScales;
             float prevTime = fmod(animState.currentTime, prevClip->duration);
             
-            for (const auto& channel : prevClip->channels) {
+            for (const engine::Model::AnimationChannel& channel : prevClip->channels) {
                 if (channel.targetNode >= skeleton.size()) continue;        
-                const auto& sampler = prevClip->samplers[channel.samplerIndex];
+                const engine::Model::AnimationSampler& sampler = prevClip->samplers[channel.samplerIndex];
                 if (sampler.inputTimes.empty()) continue;
                 float t = prevTime;
                 size_t keyIndex = 0;
@@ -286,9 +286,9 @@ void engine::Entity::updateAnimation(float deltaTime) {
             }
         }
     }
-    for (const auto& channel : clip->channels) {
-        if (channel.targetNode >= skeleton.size()) continue;        
-        const auto& sampler = clip->samplers[channel.samplerIndex];
+    for (const engine::Model::AnimationChannel& channel : clip->channels) {
+        if (channel.targetNode >= skeleton.size()) continue;
+        const engine::Model::AnimationSampler& sampler = clip->samplers[channel.samplerIndex];
         if (sampler.inputTimes.empty()) continue;
         float t = animState.currentTime;
         size_t keyIndex = 0;
@@ -521,8 +521,8 @@ void engine::EntityManager::loadTextures() {
     }
     for (auto& [name, entity] : entities) {
         if (!entity->getDescriptorSets().empty()) continue;
-        std::vector<std::string> textures = entity->getTextures();
-        auto textureManager = renderer->getTextureManager();
+        const std::vector<std::string>& textures = entity->getTextures();
+        TextureManager* textureManager = renderer->getTextureManager();
         if (!textureManager) throw std::runtime_error("TextureManager not registered in Renderer");
         std::vector<engine::Texture*> texturePtrs;
         engine::GraphicsShader *shader = renderer->getShaderManager()->getGraphicsShader(entity->getShader());
@@ -639,7 +639,7 @@ void engine::EntityManager::updateLightsUBO(uint32_t frameIndex) {
         return;
     }
     LightsUBO lightsUBO{};
-    auto lights = getLights();
+    const std::vector<Light*>& lights = getLights();
     size_t count = std::min(lights.size(), static_cast<size_t>(64));
     for (size_t i = 0; i < count; ++i) {
         lightsUBO.pointLights[i] = lights[i]->getPointLightData();
@@ -657,7 +657,7 @@ void engine::EntityManager::updateIrradianceProbesUBO(uint32_t frameIndex) {
         return;
     }
     IrradianceProbesUBO irradianceProbesUBO{};
-    auto probes = getIrradianceProbes();
+    const std::vector<IrradianceProbe*>& probes = getIrradianceProbes();
     size_t count = std::min(probes.size(), static_cast<size_t>(32));
     for (size_t i = 0; i < count; ++i) {
         irradianceProbesUBO.probes[i] = probes[i]->getProbeData();
@@ -668,7 +668,7 @@ void engine::EntityManager::updateIrradianceProbesUBO(uint32_t frameIndex) {
 
 void engine::EntityManager::createAllShadowMaps() {
     vkDeviceWaitIdle(renderer->getDevice());
-    auto& lights = getLights();
+    const std::vector<Light*>& lights = getLights();
     for (auto& light : lights) {
         light->createShadowMaps(renderer, true);
     }
@@ -676,21 +676,21 @@ void engine::EntityManager::createAllShadowMaps() {
 
 void engine::EntityManager::createAllIrradianceMaps() {
     vkDeviceWaitIdle(renderer->getDevice());
-    auto& probes = getIrradianceProbes();
+    const std::vector<IrradianceProbe*>& probes = getIrradianceProbes();
     for (auto& probe : probes) {
         probe->createCubemaps(renderer);
     }
 }
 
 void engine::EntityManager::renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
-    auto& lights = getLights();
+    const std::vector<Light*>& lights = getLights();
     for (auto& light : lights) {
         light->renderShadowMap(renderer, commandBuffer, currentFrame);
     }
 }
 
 void engine::EntityManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer) {
-    auto& probes = getIrradianceProbes();
+    const std::vector<IrradianceProbe*>& probes = getIrradianceProbes();
     for (auto& probe : probes) {
         probe->bakeCubemap(renderer, commandBuffer);
     }
@@ -704,12 +704,15 @@ void engine::EntityManager::recordIrradianceReadback(VkCommandBuffer commandBuff
 }
 
 void engine::EntityManager::renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    if (!camera) return;
     for (auto& probe : getIrradianceProbes()) {
         probe->processSHProjection(renderer);
     }
     for (auto& probe : getIrradianceProbes()) {
-        probe->renderDynamicCubemap(renderer, commandBuffer, currentFrame);
-        probe->dispatchSHCompute(renderer, commandBuffer);
+        if (camera->isSphereInFrustum(probe->getWorldPosition(), probe->getRadius())) {
+            probe->renderDynamicCubemap(renderer, commandBuffer, currentFrame);
+            probe->dispatchSHCompute(renderer, commandBuffer);
+        }
     }
 }
 
@@ -765,9 +768,13 @@ void engine::EntityManager::processPendingDeletions() {
 }
 
 void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {
-    std::vector<Entity*> rootEntities = getRootEntities();
+    std::vector<Entity*>& rootEntities = getRootEntities();
     std::set<GraphicsShader*>& shaders = node.shaders;
     Camera* camera = getCamera();
+    if (!camera) {
+        std::cout << "Warning: No camera set in EntityManager. Skipping entity rendering.\n";
+        return;
+    }
 
     auto updateJointMatricesUBO = [&](Entity* entity) {
         if (!entity->isAnimated()) return;
@@ -789,7 +796,9 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
         ShaderManager* shaderManager = renderer->getShaderManager();
         Model* model = entity->getModel();
         GraphicsShader* shader = shaderManager->getGraphicsShader(entity->getShader());
-        if (model && shader && shaders.find(shader) != shaders.end()) {
+        if (model && shader && shaders.find(shader) != shaders.end()
+            && camera->isAABBInFrustum(model->getAABB(), entity->getWorldTransform())
+        ) {
             updateJointMatricesUBO(entity);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
             VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
@@ -833,7 +842,7 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, Render
                 };
                 vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(UIPC), &pc);
             }
-            std::vector<VkDescriptorSet> descriptorSets = entity->getDescriptorSets();
+            const std::vector<VkDescriptorSet>& descriptorSets = entity->getDescriptorSets();
             if (!descriptorSets.empty()) {
                 const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(descriptorSets.size() - 1));
                 if (DEBUG_RENDER_LOGS) {

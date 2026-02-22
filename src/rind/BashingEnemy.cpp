@@ -87,12 +87,12 @@ void rind::BashingEnemy::update(float deltaTime) {
                 float lo = 0.0f;
                 float hi = maxBackupDist;
                 float maxSafeBackup = 0.0f;
-                const int binarySearchIterations = 8;
-                for (int i = 0; i < binarySearchIterations; ++i) {
+                const uint32_t binarySearchIterations = 8u;
+                for (uint32_t i = 0u; i < binarySearchIterations; ++i) {
                     float mid = (lo + hi) * 0.5f;
                     glm::vec3 testPos = getWorldPosition() + backward * mid;
                     glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                    size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
+                    size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, getCollider()).size();
                     if (hits > 0 && hits <= 2) {
                         maxSafeBackup = mid;
                         lo = mid;
