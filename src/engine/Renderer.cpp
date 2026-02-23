@@ -2105,6 +2105,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     std::cout << "Warning: SMAA area or search texture not found for SMAA weight shader.\n";
                 }
             }
+            VkSampler samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
             for (const auto& binding : shader->config.inputBindings) {
                 auto sourceShader = shaderManager->getGraphicsShader(binding.sourceShaderName);
                 if (!sourceShader) {
@@ -2151,7 +2152,6 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         break;
                     }
                     case VK_DESCRIPTOR_TYPE_SAMPLER: {
-                        VkSampler samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
                         for (uint32_t c = 0; c < descriptorCount; ++c) {
                             imageInfos.push_back({ .sampler = samplerToUse });
                             samplerToUse = mainTextureSampler;
@@ -2192,6 +2192,7 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 }
             }
             auto& lights = entityManager->getLights();
+            samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
             for (int frag = 0; frag < fragmentBindings; ++frag) {
                 if (fragmentBindingWritten[static_cast<size_t>(frag)]) continue;
                 VkDescriptorType type = getFragmentType(frag);
@@ -2199,7 +2200,6 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 const size_t startIndex = imageInfos.size();
 
                 if (type == VK_DESCRIPTOR_TYPE_SAMPLER) {
-                    VkSampler samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
                     for (uint32_t c = 0; c < descriptorCount; ++c) {
                         imageInfos.push_back({ .sampler = samplerToUse });
                         samplerToUse = mainTextureSampler;

@@ -1059,22 +1059,20 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("smaaWeight.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 5,
+                .fragmentBitBindings = 4,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1
+                    1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLER,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
                 .enableDepth = false,
                 .passInfo = smaaWeightPass,
-                .sampler = renderer->getNearestSampler(),
                 .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
