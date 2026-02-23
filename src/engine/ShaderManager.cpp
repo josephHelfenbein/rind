@@ -1040,6 +1040,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .depthWrite = false,
                 .enableDepth = false,
                 .passInfo = smaaEdgePass,
+                .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 0, "combine", "CombinedColor" }
@@ -1058,20 +1059,23 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .fragment = { shaderPath("smaaWeight.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 4,
+                .fragmentBitBindings = 5,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1
+                    1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
                 .enableDepth = false,
                 .passInfo = smaaWeightPass,
+                .sampler = renderer->getNearestSampler(),
+                .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 0, "smaaEdge", "SMAAEdgesColor" }
@@ -1103,6 +1107,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .depthWrite = false,
                 .enableDepth = false,
                 .passInfo = smaaBlendPass,
+                .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .inputBindings = {
                     { 0, "combine", "CombinedColor" },
@@ -1182,6 +1187,41 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     return shaders;
 }
 
+void engine::ShaderManager::loadSMAATextures() {
+    auto createSMAATexture = [&](const std::string& name, const unsigned char* data, int width, int height, VkDeviceSize pixelSize, VkFormat format) {
+        unsigned char* pixels = const_cast<unsigned char*>(data);
+        VkImage image;
+        VkDeviceMemory memory;
+        std::tie(image, memory) = renderer->createImageFromPixels(
+            (void*) pixels,
+            pixelSize,
+            width, height,
+            1, VK_SAMPLE_COUNT_1_BIT, format,
+            VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 1, 0
+        );
+        renderer->transitionImageLayout(
+            image,
+            format,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            1, 1
+        );
+        VkImageView imageView = renderer->createImageView(image, format);
+        Texture texture = {
+            .image = image,
+            .imageView = imageView,
+            .imageMemory = memory,
+            .format = format,
+            .width = width,
+            .height = height
+        };
+        renderer->getTextureManager()->registerTexture(name, texture);
+    };
+    createSMAATexture("smaa_area", areaTexBytes, AREATEX_WIDTH, AREATEX_HEIGHT, AREATEX_SIZE, VK_FORMAT_R8G8_UNORM);
+    createSMAATexture("smaa_search", searchTexBytes, SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, SEARCHTEX_SIZE, VK_FORMAT_R8_UNORM);
+}
+
 std::vector<engine::ComputeShader> engine::ShaderManager::createDefaultComputeShaders() {
     std::vector<ComputeShader> shaders;
 
@@ -1232,6 +1272,111 @@ void engine::ShaderManager::resolveRenderGraphShaders() {
                 std::cout << "Warning: Render graph shader '" << shaderName << "' not found.\n";
             }
         }
+    }
+}
+
+void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers) {
+    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    VkDevice device = renderer->getDevice();
+    const size_t vertexBindings = static_cast<size_t>(std::max(config.vertexBitBindings, 0));
+    const size_t fragmentBindings = static_cast<size_t>(std::max(config.fragmentBitBindings, 0));
+    auto getVertexType = [&](size_t index) {
+        if (!config.vertexDescriptorTypes.empty() && index < config.vertexDescriptorTypes.size()) {
+            return config.vertexDescriptorTypes[index];
+        }
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    };
+    auto getVertexCount = [&](size_t index) {
+        if (!config.vertexDescriptorCounts.empty() && config.vertexDescriptorCounts.size() == vertexBindings) {
+            return std::max(config.vertexDescriptorCounts[index], 1u);
+        }
+        return 1u;
+    };
+    auto getFragmentType = [&](int index) {
+        if (!config.fragmentDescriptorTypes.empty() && static_cast<size_t>(index) < config.fragmentDescriptorTypes.size()) {
+            return config.fragmentDescriptorTypes[static_cast<size_t>(index)];
+        }
+        return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    };
+    auto getFragmentCount = [&](size_t index) {
+        if (!config.fragmentDescriptorCounts.empty() && config.fragmentDescriptorCounts.size() == fragmentBindings) {
+            return std::max(config.fragmentDescriptorCounts[index], 1u);
+        }
+        return 1u;
+    };
+    auto isInputBinding = [&](uint32_t bindingIndex) {
+        for (const auto& ib : config.inputBindings) {
+            if (ib.binding == bindingIndex) return true;
+        }
+        return false;
+    };
+    for (int frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+        std::vector<VkDescriptorImageInfo> imageInfos;
+        std::vector<VkDescriptorBufferInfo> bufferInfos;
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
+        imageInfos.reserve(fragmentBindings + config.inputBindings.size());
+        bufferInfos.reserve(vertexBindings);
+        descriptorWrites.reserve(vertexBindings + fragmentBindings);
+        
+        size_t bufferIndex = 0;
+        for (size_t binding = 0; binding < vertexBindings; ++binding) {
+            const VkDescriptorType type = getVertexType(binding);
+            const uint32_t descriptorCount = getVertexCount(binding);
+            if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+                for (uint32_t c = 0; c < descriptorCount; ++c) {
+                    const size_t idx = static_cast<size_t>(frame) * (buffers.size() / static_cast<size_t>(MAX_FRAMES_IN_FLIGHT)) + bufferIndex++;
+                    VkBuffer bufferHandle = buffers[idx];
+                    if (bufferHandle == VK_NULL_HANDLE) {
+                        throw std::runtime_error("Invalid buffer handle provided for descriptor set update!");
+                    }
+                    bufferInfos.push_back({
+                        .buffer = bufferHandle,
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    });
+                }
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[frame],
+                    .dstBinding = static_cast<uint32_t>(binding),
+                    .dstArrayElement = 0,
+                    .descriptorCount = descriptorCount,
+                    .descriptorType = type,
+                    .pBufferInfo = &bufferInfos[bufferInfos.size() - descriptorCount]
+                });
+            }
+        }
+
+        size_t textureIndex = 0;
+        for (size_t binding = 0; binding < fragmentBindings; ++binding) {
+            const uint32_t actualBinding = static_cast<uint32_t>(vertexBindings + binding);
+            if (isInputBinding(actualBinding)) continue;
+            const VkDescriptorType type = getFragmentType(binding);
+            const uint32_t descriptorCount = getFragmentCount(binding);
+            if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+                for (uint32_t c = 0; c < descriptorCount; ++c) {
+                    Texture* texture = textures[textureIndex++];
+                    if (!texture) {
+                        throw std::runtime_error("Invalid texture provided for descriptor set update!");
+                    }
+                    imageInfos.push_back({
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .imageView = texture->imageView,
+                        .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? renderer->getMainTextureSampler() : VK_NULL_HANDLE
+                    });
+                }
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = descriptorSets[frame],
+                    .dstBinding = actualBinding,
+                    .dstArrayElement = 0,
+                    .descriptorCount = descriptorCount,
+                    .descriptorType = type,
+                    .pImageInfo = &imageInfos[imageInfos.size() - descriptorCount]
+                });
+            }
+        }
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
 }
 
@@ -1680,7 +1825,7 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
         .alphaToOneEnable = VK_FALSE
     };
     VkPipelineColorBlendAttachmentState colorBlendAttachment = {
-        .blendEnable = VK_TRUE,
+        .blendEnable = config.blendEnable ? VK_TRUE : VK_FALSE,
         .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
         .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
         .colorBlendOp = VK_BLEND_OP_ADD,

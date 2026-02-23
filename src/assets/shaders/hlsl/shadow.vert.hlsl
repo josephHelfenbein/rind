@@ -32,11 +32,10 @@ VSOutput main(VSInput input) {
     float3 skinnedPos = input.inPosition;
     
     if ((pc.flags & 1) != 0) {
-        float4x4 skinMatrix = 
-            input.inWeights.x * joints.jointMatrices[uint(input.inJoints.x)] +
-            input.inWeights.y * joints.jointMatrices[uint(input.inJoints.y)] +
-            input.inWeights.z * joints.jointMatrices[uint(input.inJoints.z)] +
-            input.inWeights.w * joints.jointMatrices[uint(input.inJoints.w)];
+        float4x4 skinMatrix = mul(input.inWeights.x, joints.jointMatrices[uint(input.inJoints.x)]) +
+                            mul(input.inWeights.y, joints.jointMatrices[uint(input.inJoints.y)]) +
+                            mul(input.inWeights.z, joints.jointMatrices[uint(input.inJoints.z)]) +
+                            mul(input.inWeights.w, joints.jointMatrices[uint(input.inJoints.w)]);
         skinnedPos = mul(float4(input.inPosition, 1.0), skinMatrix).xyz;
     }
     

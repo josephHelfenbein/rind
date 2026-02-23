@@ -79,7 +79,7 @@ namespace engine {
         void setTransform(const glm::mat4& transform) { this->transform = transform; }
 
         const std::string& getTexture() const { return texture; }
-        void setTexture(const std::string& texture) { this->texture = texture; descriptorSets.clear(); }
+        void setTexture(const std::string& texture) { this->texture = texture; }
 
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         void setDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets) { this->descriptorSets = descriptorSets; }

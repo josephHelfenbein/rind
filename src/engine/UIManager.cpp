@@ -76,17 +76,23 @@ void engine::UIObject::removeChild(TextObject* child) {
 }
 
 void engine::UIObject::loadTexture() {
-    if (!getDescriptorSets().empty() || getTexture().empty()) return;
+    if (texture.empty()) {
+        return;
+    }
     engine::Renderer* renderer = getUIManager()->getRenderer();
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
     engine::Texture* texture = renderer->getTextureManager()->getTexture(getTexture());
     if (!texture) {
         std::cout << "Warning: Texture " << getTexture() << " for UIObject " << name << " not found.\n";
         return;
     }
-    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
     std::vector<Texture*> textures = { texture };
     std::vector<VkBuffer> buffers;
-    setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
+    if (!descriptorSets.empty()) {
+        shader->updateDescriptorSets(renderer, descriptorSets, textures, buffers);
+    } else {
+        setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
+    }
 }
 
 engine::ButtonObject::ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner)

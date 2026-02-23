@@ -151,6 +151,7 @@ namespace engine {
         UIObject* getHoveredObject() const { return hoveredObject; }
         int getMaxFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
         VkSampler getMainTextureSampler() const { return mainTextureSampler; }
+        VkSampler getNearestSampler() const { return nearestSampler; }
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
@@ -224,6 +225,7 @@ namespace engine {
         std::vector<std::shared_ptr<PassInfo>> managedRenderPasses;
         VkCommandPool commandPool;
         VkSampler mainTextureSampler;
+        VkSampler nearestSampler;
         class TextObject* fpsCounter = nullptr;
         std::chrono::steady_clock::time_point lastFPSUpdateTime = std::chrono::steady_clock::now();
         uint32_t fpsFrameCount = 0;
@@ -263,6 +265,7 @@ namespace engine {
         void createAttachmentResources();
         void createCommandPool();
         void createMainTextureSampler();
+        void createNearestSampler();
         void createCommandBuffers();
         void createSyncObjects();
         void createQuadResources();

@@ -16,3 +16,6 @@
 [submodule "include/external/miniaudio"]
 	path = include/external/miniaudio
 	url = https://github.com/mackron/miniaudio
+[submodule "include/external/smaa"]
+	path = include/external/smaa
+	url = https://github.com/iryoku/smaa

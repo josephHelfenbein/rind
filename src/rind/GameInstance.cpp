@@ -442,7 +442,7 @@ rind::GameInstance::GameInstance() {
             this,
             player,
             "bashingEnemySpawner",
-            glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, -25.0f, 0.0f))
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f))
         );
 
         for (int i = -3; i <= 3; ++i) {

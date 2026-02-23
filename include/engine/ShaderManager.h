@@ -9,6 +9,8 @@
 #include <optional>
 #include <set>
 #include <functional>
+#include <smaa/Textures/AreaTex.h>
+#include <smaa/Textures/SearchTex.h>
 
 namespace engine {
 
@@ -73,6 +75,8 @@ namespace engine {
             VkCompareOp depthCompare = VK_COMPARE_OP_LESS;
             bool enableDepth = true;
             std::shared_ptr<PassInfo> passInfo = nullptr;
+            VkSampler sampler = VK_NULL_HANDLE;
+            bool blendEnable = true;
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
             std::type_index pushConstantType = std::type_index(typeid(void));
@@ -106,6 +110,7 @@ namespace engine {
         void createDescriptorSetLayout(engine::Renderer* renderer);
         void createPipeline(engine::Renderer* renderer);
         void createDescriptorPool(engine::Renderer* renderer);
+        void updateDescriptorSets(engine::Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers);
     };
 
     struct ComputeShader {
@@ -172,6 +177,7 @@ namespace engine {
 
         std::string getShaderFilePath(const std::string& name);
 
+        void loadSMAATextures();
         std::vector<GraphicsShader> createDefaultShaders();
         std::vector<ComputeShader> createDefaultComputeShaders();
         std::vector<RenderNode>& getRenderGraph();

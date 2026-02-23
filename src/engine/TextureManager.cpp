@@ -135,19 +135,17 @@ void engine::TextureManager::init() {
                 1
             );
             VkImageView textureImageView = renderer->createImageView(textureImage, format);
-            bool isSMAATexture = textureName.find("smaa_") != std::string::npos;
-            VkSamplerAddressMode addressMode = isSMAATexture ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
             VkSampler textureSampler;
             textureSampler = renderer->createTextureSampler(
                 VK_FILTER_LINEAR,
                 VK_FILTER_LINEAR,
                 VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                addressMode,
-                addressMode,
-                addressMode,
+                VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                VK_SAMPLER_ADDRESS_MODE_REPEAT,
                 0.0f,
-                isSMAATexture ? VK_FALSE : VK_TRUE,
-                isSMAATexture ? 1.0f : 16.0f,
+                VK_TRUE,
+                16.0f,
                 VK_FALSE,
                 VK_COMPARE_OP_ALWAYS,
                 0.0f,

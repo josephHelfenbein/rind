@@ -99,6 +99,10 @@ void engine::Renderer::cleanup() {
             vkDestroySampler(device, mainTextureSampler, nullptr);
             mainTextureSampler = VK_NULL_HANDLE;
         }
+        if (nearestSampler != VK_NULL_HANDLE) {
+            vkDestroySampler(device, nearestSampler, nullptr);
+            nearestSampler = VK_NULL_HANDLE;
+        }
         if (commandPool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(device, commandPool, nullptr);
             commandPool = VK_NULL_HANDLE;
@@ -145,6 +149,10 @@ void engine::Renderer::initVulkan() {
     createLogicalDevice();
     createSwapChain(VK_NULL_HANDLE);
     createImageViews();
+    createMainTextureSampler();
+    createNearestSampler();
+    createCommandPool();
+    shaderManager->loadSMAATextures();
     std::vector<GraphicsShader> defaultShaders = shaderManager->createDefaultShaders();
     for (auto& shader : defaultShaders) {
         shaderManager->addGraphicsShader(std::move(shader));
@@ -155,8 +163,6 @@ void engine::Renderer::initVulkan() {
     }
     shaderManager->resolveRenderGraphShaders();
     createAttachmentResources();
-    createCommandPool();
-    createMainTextureSampler();
     shaderManager->loadAllShaders();
     entityManager->createLightsUBO();
     textureManager->init();
@@ -1763,6 +1769,30 @@ void engine::Renderer::createMainTextureSampler() {
     }
 }
 
+void engine::Renderer::createNearestSampler() {
+    VkSamplerCreateInfo samplerInfo = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_NEAREST,
+        .minFilter = VK_FILTER_NEAREST,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = VK_FALSE,
+        .maxAnisotropy = 0.0f,
+        .compareEnable = VK_FALSE,
+        .compareOp = VK_COMPARE_OP_ALWAYS,
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = VK_FALSE
+    };
+    if (vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture sampler!");
+    }
+}
+
 void engine::Renderer::ensureFallbackShadowCubeTexture() {
     if (!textureManager) return;
     if (textureManager->getTexture("fallback_shadow_cube")) {
@@ -2121,8 +2151,10 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         break;
                     }
                     case VK_DESCRIPTOR_TYPE_SAMPLER: {
+                        VkSampler samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
                         for (uint32_t c = 0; c < descriptorCount; ++c) {
-                            imageInfos.push_back({ .sampler = mainTextureSampler });
+                            imageInfos.push_back({ .sampler = samplerToUse });
+                            samplerToUse = mainTextureSampler;
                         }
                         break;
                     }
@@ -2167,8 +2199,10 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 const size_t startIndex = imageInfos.size();
 
                 if (type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+                    VkSampler samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
                     for (uint32_t c = 0; c < descriptorCount; ++c) {
-                        imageInfos.push_back({ .sampler = mainTextureSampler });
+                        imageInfos.push_back({ .sampler = samplerToUse });
+                        samplerToUse = mainTextureSampler;
                     }
                     descriptorWrites.push_back({
                         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
