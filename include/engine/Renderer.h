@@ -37,6 +37,7 @@ namespace engine {
         void registerParticleManager(class ParticleManager* particleManager) { this->particleManager = particleManager; }
         void registerAudioManager(class AudioManager* audioManager) { this->audioManager = audioManager; }
         void registerSettingsManager(class SettingsManager* settingsManager) { this->settingsManager = settingsManager; }
+        void registerVolumetricManager(class VolumetricManager* volumetricManager) { this->volumetricManager = volumetricManager; }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -47,6 +48,7 @@ namespace engine {
         class ParticleManager* getParticleManager() { return particleManager; }
         class AudioManager* getAudioManager() { return audioManager; }
         class SettingsManager* getSettingsManager() { return settingsManager; }
+        class VolumetricManager* getVolumetricManager() { return volumetricManager; }
 
         void toggleLockCursor(bool lock);
         bool isPaused() const { return paused; }
@@ -251,6 +253,7 @@ namespace engine {
         class ParticleManager* particleManager;
         class AudioManager* audioManager;
         class SettingsManager* settingsManager;
+        class VolumetricManager* volumetricManager;
 
         UIObject* hoveredObject = nullptr;
         bool clicking = false;

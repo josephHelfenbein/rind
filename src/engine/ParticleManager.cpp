@@ -163,11 +163,11 @@ engine::ParticleManager::ParticleManager(Renderer* renderer)
 
 void engine::ParticleManager::init() {
     VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
-    uint32_t frames = renderer->getMaxFramesInFlight();
+    size_t frames = static_cast<size_t>(renderer->getMaxFramesInFlight());
     particleBuffers.resize(frames);
     particleBufferMemory.resize(frames);
     particleBuffersMapped.resize(frames);
-    for (uint32_t i = 0; i < frames; ++i) {
+    for (size_t i = 0; i < frames; ++i) {
         std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
             bufferSize,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -208,7 +208,7 @@ void engine::ParticleManager::clear() {
 void engine::ParticleManager::createParticleDescriptorSets() {
     GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
     VkDevice device = renderer->getDevice();
-    int frames = renderer->getMaxFramesInFlight();
+    size_t frames = static_cast<size_t>(renderer->getMaxFramesInFlight());
     
     VkImageView depthImageView = renderer->getPassImageView("gbuffer", "Depth");
     if (depthImageView == VK_NULL_HANDLE) {
@@ -227,7 +227,7 @@ void engine::ParticleManager::createParticleDescriptorSets() {
         throw std::runtime_error("Failed to allocate particle descriptor sets!");
     }
     
-    for (int i = 0; i < frames; ++i) {
+    for (size_t i = 0; i < frames; ++i) {
         VkDescriptorBufferInfo bufferInfo = {
             .buffer = particleBuffers[i],
             .offset = 0,
@@ -375,7 +375,7 @@ void engine::ParticleManager::updateAll(float deltaTime) {
         particles[i]->update(deltaTime);
     }
 #else
-    for (auto particle : particles) {
+    for (auto& particle : particles) {
         particle->update(deltaTime);
     }
 #endif
