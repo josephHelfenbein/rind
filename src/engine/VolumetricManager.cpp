@@ -215,6 +215,9 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
 void engine::VolumetricManager::updateAll(float deltaTime) {
     for (auto& volumetric : volumetrics) {
         volumetric->setAge(volumetric->getAge() + deltaTime);
+        if (volumetric->getAge() >= volumetric->getLifetime()) {
+            volumetric->markForDeletion();
+        }
     }
     auto it = std::remove_if(volumetrics.begin(), volumetrics.end(), [](Volumetric* v) {
         if (v->isMarkedForDeletion()) {

@@ -1,3 +1,5 @@
+#pragma pack_matrix(row_major)
+
 struct VSOutput {
     float4 gl_Position : SV_Position;
     [[vk::location(0)]] float3 worldPos : TEXCOORD0;
