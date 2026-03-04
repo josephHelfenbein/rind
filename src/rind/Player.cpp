@@ -292,7 +292,7 @@ void rind::Player::update(float deltaTime) {
                     glm::vec3(1.3f, 1.3f, 1.3f)
                 ),
                 glm::vec4(1.0f, 0.2f, 0.2f, 12.0f),
-                0.15f
+                0.1f
             );
             getEntityManager()->getRenderer()->getVolumetricManager()->createVolumetric(
                 glm::scale(

@@ -117,8 +117,8 @@ void engine::VolumetricManager::createVolumetricDescriptorSets() {
                 .dstSet = descriptorSets[i],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .pBufferInfo = &bufferInfo
             },
             {
@@ -126,8 +126,8 @@ void engine::VolumetricManager::createVolumetricDescriptorSets() {
                 .dstSet = descriptorSets[i],
                 .dstBinding = 1,
                 .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                 .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                 .pImageInfo = &depthImageInfo
             },
             {
@@ -135,8 +135,8 @@ void engine::VolumetricManager::createVolumetricDescriptorSets() {
                 .dstSet = descriptorSets[i],
                 .dstBinding = 2,
                 .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                 .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                 .pImageInfo = &samplerInfo
             }
         }};

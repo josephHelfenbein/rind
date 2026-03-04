@@ -498,9 +498,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     };
                     attributes.resize(3);
                     attributes = {
-                        { .binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
-                        { .binding = 1, .location = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, joints) },
-                        { .binding = 1, .location = 2, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, weights) }
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
+                        { .location = 1, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, joints) },
+                        { .location = 2, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, weights) }
                     };
                 }
             }
@@ -551,9 +551,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     };
                     attributes.resize(3);
                     attributes = {
-                        { .binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
-                        { .binding = 0, .location = 1, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
-                        { .binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, texCoord) }
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
+                        { .location = 2, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, texCoord) },
+                        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
                     };
                 }
             }
@@ -616,12 +616,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     };
                     attributes.resize(6);
                     attributes = {
-                        { .binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
-                        { .binding = 0, .location = 1, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
-                        { .binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, texCoord) },
-                        { .binding = 0, .location = 3, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(Vertex, tangent) },
-                        { .binding = 1, .location = 4, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, joints) },
-                        { .binding = 1, .location = 5, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, weights) }
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
+                        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
+                        { .location = 2, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, texCoord) },
+                        { .location = 3, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(Vertex, tangent) },
+                        { .location = 4, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, joints) },
+                        { .location = 5, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, weights) }
                     };
                 }
             }
@@ -803,9 +803,9 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
                 .enableDepth = false,
+                .passInfo = volumetricPass,
                 .blendEnable = true,
                 .blendAdditive = true,
-                .passInfo = volumetricPass,
                 .colorAttachmentCount = 1,
                 .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     bindings.resize(1);
@@ -939,8 +939,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     };
                     attributes.resize(2);
                     attributes = {
-                        { .binding = 0, .location = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, pos) },
-                        { .binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, texCoord) }
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, pos) },
+                        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, texCoord) }
                     };
                 }
             }
@@ -978,8 +978,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     };
                     attributes.resize(2);
                     attributes = {
-                        { .binding = 0, .location = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, pos) },
-                        { .binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, texCoord) }
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, pos) },
+                        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(UIVertex, texCoord) }
                     };
                 }
             }
@@ -1362,9 +1362,9 @@ void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vecto
                         throw std::runtime_error("Invalid texture provided for descriptor set update!");
                     }
                     imageInfos.push_back({
-                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? renderer->getMainTextureSampler() : VK_NULL_HANDLE,
                         .imageView = texture->imageView,
-                        .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? renderer->getMainTextureSampler() : VK_NULL_HANDLE
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                     });
                 }
                 descriptorWrites.push_back({
