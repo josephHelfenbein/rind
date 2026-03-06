@@ -158,7 +158,7 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     auto drawStaticEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj) -> void {
         if (!entity->getIsMovable()
          && entity->getModel()
-         && (entity->getShader() == "gbuffer" || entity->getShader() == "shadow")
+         && entity->getType() == Entity::EntityType::Static
          && entity->getCastShadow()) {
             Model* model = entity->getModel();
             VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
@@ -223,6 +223,14 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     bakedImageReady = true;
     shadowBaked = true;
 }
+
+static std::unordered_set<engine::Entity::EntityType> notShadowTypes = {
+    engine::Entity::EntityType::Camera,
+    engine::Entity::EntityType::Light,
+    engine::Entity::EntityType::IrradianceProbe,
+    engine::Entity::EntityType::Collider,
+    engine::Entity::EntityType::Empty
+};
 
 void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame) {
     if (!hasShadowMap) {
@@ -319,7 +327,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
         auto drawMovableEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj) -> void {
             if (entity->getModel() 
-             && (entity->getShader() == "gbuffer" || entity->getShader() == "shadow")
+             && !notShadowTypes.contains(entity->getType())
              && entity->getCastShadow()) {
                 Model* model = entity->getModel();
                 updateJointMatricesUBO(entity);

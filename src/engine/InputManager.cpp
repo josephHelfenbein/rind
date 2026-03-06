@@ -8,7 +8,8 @@ engine::InputManager::InputManager(Renderer* renderer) {
 
 void engine::InputManager::processInput(GLFWwindow* window) {
     if (!window) return;
-    std::vector<InputEvent> events;
+    static thread_local std::vector<InputEvent> events;
+    events.clear();
     for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
         int state = glfwGetKey(window, key);
         if (state == GLFW_PRESS && keyStates[key] != GLFW_PRESS) {

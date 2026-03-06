@@ -207,6 +207,8 @@ namespace engine {
         }
         void addCollider(Collider* collider);
         void removeCollider(Collider* collider);
+        void addDynamicCollider(Collider* collider);
+        void removeDynamicCollider(Collider* collider);
         const std::vector<Light*>& getLights() const { return lights; }
         const std::vector<IrradianceProbe*>& getIrradianceProbes() const { return irradianceProbes; }
         void createLightsUBO();
@@ -216,6 +218,7 @@ namespace engine {
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
         std::vector<VkBuffer>& getIrradianceProbesBuffers() { return irradianceBuffers; }
         std::vector<Collider*>& getColliders() { return colliders; }
+        std::vector<Collider*>& getDynamicColliders() { return dynamicColliders; }
         SpatialGrid& getSpatialGrid() { return spatialGrid; }
         void rebuildSpatialGrid();
         void updateDynamicColliders();
@@ -249,6 +252,7 @@ namespace engine {
         std::vector<Entity*> rootEntities;
         std::vector<Entity*> movableEntities;
         std::vector<Collider*> colliders;
+        std::vector<Collider*> dynamicColliders;
         std::vector<Light*> lights;
         std::vector<IrradianceProbe*> irradianceProbes;
         std::vector<Entity*> pendingDeletions;

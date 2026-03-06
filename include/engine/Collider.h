@@ -4,6 +4,7 @@
 #include <engine/ModelManager.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <span>
 
 namespace engine {
     class Collider : public Entity {
@@ -47,15 +48,22 @@ namespace engine {
         bool getIsTrigger() const { return isTrigger; }
         void setIsTrigger(bool trigger) { isTrigger = trigger; }
         bool getIsDynamic() const { return isDynamic; }
-        void setIsDynamic(bool dynamic) { isDynamic = dynamic; }
+        void setIsDynamic(bool dynamic) {
+            if (dynamic && !isDynamic) {
+                getEntityManager()->addDynamicCollider(this);
+            } else if (!dynamic && isDynamic) {
+                getEntityManager()->removeDynamicCollider(this);
+            }
+            isDynamic = dynamic;
+        }
     protected:
         static std::array<glm::vec3, 8> buildOBBCorners(const glm::mat4& transform, const glm::vec3& half);
         static std::pair<float, float> projectOntoAxis(const std::array<glm::vec3, 8>& corners, const glm::vec3& axis); // min, max
         static bool aabbOverlapMTV(const AABB& a, const AABB& b, CollisionMTV& out);
         static glm::vec3 normalizeOrZero(const glm::vec3& v);
         static void addAxisUnique(std::vector<glm::vec3>& axes, const glm::vec3& axis);
-        static std::pair<float, float> projectVertsOntoAxis(const std::vector<glm::vec3>& verts, const glm::vec3& axis, const glm::vec3& offset = glm::vec3(0.0f)); // min, max
-        static bool satMTV(const std::vector<glm::vec3>& vertsA, const std::vector<glm::vec3>& vertsB, const std::vector<glm::vec3>& edgesA, const std::vector<glm::vec3>& edgesB, const std::vector<glm::vec3>& axesA, const std::vector<glm::vec3>& axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f));
+        static std::pair<float, float> projectVertsOntoAxis(std::span<const glm::vec3> verts, const glm::vec3& axis, const glm::vec3& offset = glm::vec3(0.0f)); // min, max
+        static bool satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f));
     private:
         bool isTrigger = false;
         bool isDynamic = false;

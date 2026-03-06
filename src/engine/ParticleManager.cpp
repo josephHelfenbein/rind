@@ -208,7 +208,7 @@ engine::ParticleManager::~ParticleManager() {
 }
 
 void engine::ParticleManager::clear() {
-    for (auto& particle : particles) {
+    for (const auto& particle : particles) {
         particle->markForDeletion();
     }
 }

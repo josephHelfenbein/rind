@@ -294,7 +294,7 @@ void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer co
     auto drawStaticEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj) -> void {
         if (!entity->getIsMovable()
          && entity->getModel()
-         && entity->getShader() == "gbuffer"
+         && entity->getType() == Entity::EntityType::Static
          && !entity->getDescriptorSets().empty()
         ) {
             Model* model = entity->getModel();

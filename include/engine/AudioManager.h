@@ -3,7 +3,7 @@
 #include <engine/Renderer.h>
 #include <engine/SettingsManager.h>
 #include <string>
-#include <map>
+#include <unordered_map>
 #include <vector>
 #include <memory>
 #include <miniaudio/miniaudio.h>
@@ -11,7 +11,6 @@
 #include <glm/glm.hpp>
 
 namespace engine {
-
     struct SoundData {
         ma_sound sound;
         bool isLoaded = false;
@@ -41,8 +40,8 @@ namespace engine {
         ma_engine m_engine;
         Renderer* renderer;
         std::string audioDirectory;
-        std::map<std::string, std::string> m_soundPaths;
-        std::map<std::string, std::unique_ptr<SoundData>> m_sounds;
+        std::unordered_map<std::string, std::string> m_soundPaths;
+        std::unordered_map<std::string, std::unique_ptr<SoundData>> m_sounds;
         std::vector<std::unique_ptr<SoundData>> m_oneShots;
         std::vector<std::unique_ptr<SoundData>> m_persistentSounds;
         bool m_initialized = false;

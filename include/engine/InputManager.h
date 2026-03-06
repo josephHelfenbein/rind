@@ -7,7 +7,7 @@
 
 #include <vector>
 #include <functional>
-#include <map>
+#include <unordered_map>
 
 namespace engine {
     struct InputEvent {
@@ -50,8 +50,8 @@ namespace engine {
         }
 
     private:
-        std::map<std::string, std::function<void(const std::vector<InputEvent>&)>> callbacks;
-        std::map<std::string, std::function<void()>> recreateSwapChainCallbacks;
+        std::unordered_map<std::string, std::function<void(const std::vector<InputEvent>&)>> callbacks;
+        std::unordered_map<std::string, std::function<void()>> recreateSwapChainCallbacks;
         std::vector<std::string> unregisterQueue;
         int keyStates[GLFW_KEY_LAST + 1] = {0};
         int mouseButtonStates[GLFW_MOUSE_BUTTON_LAST + 1] = {0};

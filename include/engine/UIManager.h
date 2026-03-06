@@ -16,7 +16,7 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include <map>
+#include <unordered_map>
 
 namespace engine {
     class UIManager;
@@ -310,7 +310,7 @@ namespace engine {
         int descent = 0;
         int lineHeight = 0;
         int maxGlyphHeight = 0;
-        std::map<char, Character> characters;
+        std::unordered_map<char, Character> characters;
     };
 
     struct LayoutRect {
@@ -330,7 +330,7 @@ namespace engine {
         void processPendingRemovals();
         UIObject* getObject(const std::string& name);
         TextObject* getTextObject(const std::string& name);
-        std::map<std::string, std::variant<UIObject*, TextObject*>>& getObjects() { return objects; }
+        std::unordered_map<std::string, std::variant<UIObject*, TextObject*>>& getObjects() { return objects; }
         void renderUI(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t frameIndex);
         void clear();
         void loadTextures();
@@ -344,8 +344,8 @@ namespace engine {
 
     private:
         Renderer* renderer;
-        std::map<std::string, std::variant<UIObject*, TextObject*>> objects;
-        std::map<std::string, Font> fonts;
+        std::unordered_map<std::string, std::variant<UIObject*, TextObject*>> objects;
+        std::unordered_map<std::string, Font> fonts;
         std::string fontDirectory = "";
         std::vector<std::string> pendingRemovals;
     };

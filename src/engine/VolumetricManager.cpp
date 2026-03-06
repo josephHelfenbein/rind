@@ -74,7 +74,7 @@ void engine::VolumetricManager::init() {
 }
 
 void engine::VolumetricManager::clear() {
-    for (auto* v : volumetrics) {
+    for (const auto& v : volumetrics) {
         v->markForDeletion();
     }
 }

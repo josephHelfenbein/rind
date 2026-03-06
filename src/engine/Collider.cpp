@@ -286,7 +286,7 @@ void engine::Collider::addAxisUnique(std::vector<glm::vec3>& axes, const glm::ve
     axes.push_back(normAxis);
 }
 
-std::pair<float, float> engine::Collider::projectVertsOntoAxis(const std::vector<glm::vec3>& verts, const glm::vec3& axis, const glm::vec3& offset) {
+std::pair<float, float> engine::Collider::projectVertsOntoAxis(std::span<const glm::vec3> verts, const glm::vec3& axis, const glm::vec3& offset) {
     if (verts.empty()) {
         return { 0.0f, 0.0f };
     }
@@ -301,7 +301,7 @@ std::pair<float, float> engine::Collider::projectVertsOntoAxis(const std::vector
     return { min, max };
 }
 
-bool engine::Collider::satMTV(const std::vector<glm::vec3>& vertsA, const std::vector<glm::vec3>& vertsB, const std::vector<glm::vec3>& edgesA, const std::vector<glm::vec3>& edgesB, const std::vector<glm::vec3>& axesA, const std::vector<glm::vec3>& axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB) {
+bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB) {
     std::vector<glm::vec3> axes;
     axes.reserve(axesA.size() + axesB.size() + 36);
     for (const auto& axis : axesA) {
@@ -602,51 +602,49 @@ bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, con
     if (!Collider::aabbIntersects(thisAABB, otherAABB, 0.001f)) {
         return false;
     }
-    static thread_local std::vector<glm::vec3> vertsA;
-    vertsA.assign(cornersA.begin(), cornersA.end());
-    std::vector<glm::vec3> faceAxesA = {
+    std::array<glm::vec3, 3> faceAxesA = {
         Collider::normalizeOrZero(glm::vec3(transform[0])),
         Collider::normalizeOrZero(glm::vec3(transform[1])),
         Collider::normalizeOrZero(glm::vec3(transform[2]))
     };
-    static thread_local std::vector<glm::vec3> edgeAxesA;
-    edgeAxesA = faceAxesA;
     glm::vec3 centerA = glm::vec3(transform[3]);
-    glm::mat4 otherTransform = other.getWorldTransform();
-    static thread_local std::vector<glm::vec3> vertsB;
-    static thread_local std::vector<glm::vec3> faceAxesB;
-    static thread_local std::vector<glm::vec3> edgeAxesB;
+    std::array<glm::vec3, 8> cornersB;
+    std::array<glm::vec3, 3> axesBArr;
+    static const std::array<glm::vec3, 3> cardinalAxes = {
+        glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
+    };
+    std::span<const glm::vec3> vertsB;
+    std::span<const glm::vec3> faceAxesB;
+    std::span<const glm::vec3> edgeAxesB;
     glm::vec3 centerB(0.0f);
     switch (other.getType()) {
         case ColliderType::OBB: {
-            auto cornersB = Collider::buildOBBCorners(otherTransform, static_cast<const engine::OBBCollider&>(other).getHalfSize());
-            vertsB.assign(cornersB.begin(), cornersB.end());
-            faceAxesB = {
+            const glm::mat4& otherTransform = other.getWorldTransform();
+            cornersB = Collider::buildOBBCorners(otherTransform, static_cast<const engine::OBBCollider&>(other).getHalfSize());
+            axesBArr = {
                 Collider::normalizeOrZero(glm::vec3(otherTransform[0])),
                 Collider::normalizeOrZero(glm::vec3(otherTransform[1])),
                 Collider::normalizeOrZero(glm::vec3(otherTransform[2]))
             };
-            edgeAxesB = faceAxesB;
+            vertsB = cornersB;
+            faceAxesB = axesBArr;
+            edgeAxesB = axesBArr;
             centerB = glm::vec3(otherTransform[3]);
             break;
         }
         case ColliderType::ConvexHull: {
             const auto& cvx = static_cast<const ConvexHullCollider&>(other);
-            const auto& oVerts = const_cast<std::vector<glm::vec3>&>(cvx.getWorldVerts());
+            const auto& oVerts = cvx.getWorldVerts();
             if (!oVerts.empty()) {
                 vertsB = oVerts;
                 faceAxesB = cvx.getFaceAxesCached();
                 edgeAxesB = cvx.getEdgeAxesCached();
                 centerB = cvx.getWorldCenter();
             } else {
-                auto corners = getCornersFromAABB(otherAABB);
-                vertsB.assign(corners.begin(), corners.end());
-                faceAxesB = {
-                    glm::vec3(1.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 1.0f, 0.0f),
-                    glm::vec3(0.0f, 0.0f, 1.0f)
-                };
-                edgeAxesB = faceAxesB;
+                cornersB = getCornersFromAABB(otherAABB);
+                vertsB = cornersB;
+                faceAxesB = cardinalAxes;
+                edgeAxesB = cardinalAxes;
                 centerB = 0.5f * (otherAABB.min + otherAABB.max);
             }
             break;
@@ -654,70 +652,66 @@ bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, con
         default:
             return false;
     }
-    return Collider::satMTV(vertsA, vertsB, edgeAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB);
+    return Collider::satMTV(cornersA, vertsB, faceAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB);
 }
 
 bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
     bool hasDelta = glm::length(glm::vec3(deltaTransform[3])) > 1e-6f;
-    std::array<glm::vec3, 8> cornersA;
-    std::array<glm::vec3, 3> faceAxesALocal;
+    std::array<glm::vec3, 8> cornersAStorage;
+    std::array<glm::vec3, 3> axesAStorage;
+    const std::array<glm::vec3, 8>* cornersAPtr;
+    const std::array<glm::vec3, 3>* axesAPtr;
     glm::vec3 centerA;
-    
+
     if (hasDelta) {
         glm::mat4 transform = getWorldTransform() * deltaTransform;
-        cornersA = Collider::buildOBBCorners(transform, halfSize);
-        faceAxesALocal = {
+        cornersAStorage = Collider::buildOBBCorners(transform, halfSize);
+        axesAStorage = {
             Collider::normalizeOrZero(glm::vec3(transform[0])),
             Collider::normalizeOrZero(glm::vec3(transform[1])),
             Collider::normalizeOrZero(glm::vec3(transform[2]))
         };
+        cornersAPtr = &cornersAStorage;
+        axesAPtr = &axesAStorage;
         centerA = glm::vec3(transform[3]);
     } else {
         ensureCached();
-        cornersA = cornersCache;
-        faceAxesALocal = axesCache;
+        cornersAPtr = &cornersCache;
+        axesAPtr = &axesCache;
         centerA = centerCache;
     }
-    
-    AABB movedAABB = Collider::aabbFromCorners(cornersA);
+
+    AABB movedAABB = Collider::aabbFromCorners(*cornersAPtr);
     AABB otherAABB = other.getWorldAABB();
     if (!Collider::aabbIntersects(movedAABB, otherAABB, 0.001f)) {
         return false;
     }
-    
-    static thread_local std::vector<glm::vec3> vertsA;
-    vertsA.assign(cornersA.begin(), cornersA.end());
-    static thread_local std::vector<glm::vec3> faceAxesA;
-    faceAxesA.assign(faceAxesALocal.begin(), faceAxesALocal.end());
-    static thread_local std::vector<glm::vec3> edgeAxesA;
-    edgeAxesA = faceAxesA;
-    
-    static thread_local std::vector<glm::vec3> vertsB;
-    static thread_local std::vector<glm::vec3> faceAxesB;
-    static thread_local std::vector<glm::vec3> edgeAxesB;
+
+    std::array<glm::vec3, 8> cornersB;
+    std::array<glm::vec3, 3> axesBArr;
+    static const std::array<glm::vec3, 3> cardinalAxes = {
+        glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
+    };
+    std::span<const glm::vec3> vertsB;
+    std::span<const glm::vec3> faceAxesB;
+    std::span<const glm::vec3> edgeAxesB;
     glm::vec3 centerB(0.0f);
 
     switch (other.getType()) {
         case ColliderType::AABB: {
-            auto corners = getCornersFromAABB(otherAABB);
-            vertsB.assign(corners.begin(), corners.end());
-            faceAxesB = {
-                glm::vec3(1.0f, 0.0f, 0.0f),
-                glm::vec3(0.0f, 1.0f, 0.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f)
-            };
-            edgeAxesB = faceAxesB;
+            cornersB = getCornersFromAABB(otherAABB);
+            vertsB = cornersB;
+            faceAxesB = cardinalAxes;
+            edgeAxesB = cardinalAxes;
             centerB = 0.5f * (otherAABB.min + otherAABB.max);
             break;
         }
         case ColliderType::OBB: {
             OBBCollider& otherOBB = static_cast<OBBCollider&>(other);
             otherOBB.ensureCached();
-            const auto& cornersB = otherOBB.getCornersCache();
-            const auto& otherAxes = otherOBB.getAxesCache();
-            vertsB.assign(cornersB.begin(), cornersB.end());
-            faceAxesB.assign(otherAxes.begin(), otherAxes.end());
-            edgeAxesB = faceAxesB;
+            vertsB = otherOBB.getCornersCache();
+            faceAxesB = otherOBB.getAxesCache();
+            edgeAxesB = otherOBB.getAxesCache();
             centerB = otherOBB.getCenterCache();
             break;
         }
@@ -730,20 +724,16 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
                 edgeAxesB = cvx.getEdgeAxesCached();
                 centerB = cvx.getWorldCenter();
             } else {
-                auto corners = getCornersFromAABB(otherAABB);
-                vertsB.assign(corners.begin(), corners.end());
-                faceAxesB = {
-                    glm::vec3(1.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 1.0f, 0.0f),
-                    glm::vec3(0.0f, 0.0f, 1.0f)
-                };
-                edgeAxesB = faceAxesB;
+                cornersB = getCornersFromAABB(otherAABB);
+                vertsB = cornersB;
+                faceAxesB = cardinalAxes;
+                edgeAxesB = cardinalAxes;
                 centerB = 0.5f * (otherAABB.min + otherAABB.max);
             }
             break;
         }
     }
-    return Collider::satMTV(vertsA, vertsB, edgeAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB);
+    return Collider::satMTV(*cornersAPtr, vertsB, *axesAPtr, edgeAxesB, *axesAPtr, faceAxesB, out, centerA - centerB);
 }
 
 bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
@@ -753,36 +743,35 @@ bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& ou
         return false;
     }
     ensureCached();
-    const std::vector<glm::vec3>& vertsA = worldVerts;
-    const std::vector<glm::vec3>& faceAxesA = faceAxesCached;
-    const std::vector<glm::vec3>& edgeAxesA = edgeAxesCached;
-    static thread_local std::vector<glm::vec3> vertsB;
-    static thread_local std::vector<glm::vec3> faceAxesB;
-    static thread_local std::vector<glm::vec3> edgeAxesB;
-    glm::vec3 centerB(0.0f);
     glm::vec3 centerA = worldCenter + glm::vec3(deltaTransform[3]);
-    glm::mat4 otherTransform = other.getWorldTransform();
+    std::array<glm::vec3, 8> cornersB;
+    std::array<glm::vec3, 3> axesBArr;
+    static const std::array<glm::vec3, 3> cardinalAxes = {
+        glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
+    };
+    std::span<const glm::vec3> vertsB;
+    std::span<const glm::vec3> faceAxesB;
+    std::span<const glm::vec3> edgeAxesB;
+    glm::vec3 centerB(0.0f);
+    const glm::mat4& otherTransform = other.getWorldTransform();
     switch (other.getType()) {
         case ColliderType::AABB: {
-            auto corners = getCornersFromAABB(otherAABB);
-            vertsB.assign(corners.begin(), corners.end());
-            faceAxesB = {
-                glm::vec3(1.0f, 0.0f, 0.0f),
-                glm::vec3(0.0f, 1.0f, 0.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f)
-            };
-            edgeAxesB = faceAxesB;
+            cornersB = getCornersFromAABB(otherAABB);
+            vertsB = cornersB;
+            faceAxesB = cardinalAxes;
+            edgeAxesB = cardinalAxes;
             break;
         }
         case ColliderType::OBB: {
-            auto cornersB = Collider::buildOBBCorners(otherTransform, static_cast<const engine::OBBCollider&>(other).getHalfSize());
-            vertsB.assign(cornersB.begin(), cornersB.end());
-            faceAxesB = {
+            cornersB = Collider::buildOBBCorners(otherTransform, static_cast<const engine::OBBCollider&>(other).getHalfSize());
+            axesBArr = {
                 Collider::normalizeOrZero(glm::vec3(otherTransform[0])),
                 Collider::normalizeOrZero(glm::vec3(otherTransform[1])),
                 Collider::normalizeOrZero(glm::vec3(otherTransform[2]))
             };
-            edgeAxesB = faceAxesB;
+            vertsB = cornersB;
+            faceAxesB = axesBArr;
+            edgeAxesB = axesBArr;
             break;
         }
         case ColliderType::ConvexHull: {
@@ -794,19 +783,15 @@ bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& ou
                 edgeAxesB = cvx.edgeAxesCached;
                 centerB = cvx.worldCenter;
             } else {
-                auto corners = getCornersFromAABB(otherAABB);
-                vertsB.assign(corners.begin(), corners.end());
-                faceAxesB = {
-                    glm::vec3(1.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 1.0f, 0.0f),
-                    glm::vec3(0.0f, 0.0f, 1.0f)
-                };
-                edgeAxesB = faceAxesB;
+                cornersB = getCornersFromAABB(otherAABB);
+                vertsB = cornersB;
+                faceAxesB = cardinalAxes;
+                edgeAxesB = cardinalAxes;
             }
             break;
         }
     }
-    return Collider::satMTV(vertsA, vertsB, edgeAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB, deltaTransform[3], glm::vec3(otherTransform[3]));
+    return Collider::satMTV(worldVerts, vertsB, edgeAxesCached, edgeAxesB, faceAxesCached, faceAxesB, out, centerA - centerB, deltaTransform[3], glm::vec3(otherTransform[3]));
 }
 
 void engine::ConvexHullCollider::ensureCached() {

@@ -16,6 +16,15 @@ void engine::EntityManager::addCollider(Collider* collider) {
 void engine::EntityManager::removeCollider(Collider* collider) {
     spatialGrid.remove(collider);
     colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
+    dynamicColliders.erase(std::remove(dynamicColliders.begin(), dynamicColliders.end(), collider), dynamicColliders.end());
+}
+
+void engine::EntityManager::addDynamicCollider(Collider* collider) {
+    dynamicColliders.push_back(collider);
+}
+
+void engine::EntityManager::removeDynamicCollider(Collider* collider) {
+    dynamicColliders.erase(std::remove(dynamicColliders.begin(), dynamicColliders.end(), collider), dynamicColliders.end());
 }
 
 void engine::EntityManager::rebuildSpatialGrid() {
@@ -23,10 +32,8 @@ void engine::EntityManager::rebuildSpatialGrid() {
 }
 
 void engine::EntityManager::updateDynamicColliders() {
-    for (Collider* c : colliders) {
-        if (c->getIsDynamic()) {
-            spatialGrid.update(c, c->getWorldAABB());
-        }
+    for (Collider* c : dynamicColliders) {
+        spatialGrid.update(c, c->getWorldAABB());
     }
 }
 
@@ -126,7 +133,7 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
     constexpr size_t MAX_JOINTS = 128;
     constexpr size_t JOINT_MATRIX_UBO_SIZE = MAX_JOINTS * sizeof(glm::mat4);
     
-    std::vector<glm::mat4> identityMatrices(MAX_JOINTS, glm::mat4(1.0f));
+    static const thread_local std::vector<glm::mat4> identityMatrices(MAX_JOINTS, glm::mat4(1.0f));
     
     for (size_t frame = 0; frame < frames; ++frame) {
         for (size_t binding = 0; binding < requiredStride; ++binding) {
@@ -427,6 +434,13 @@ void engine::EntityManager::addEntity(const std::string& name, Entity* entity) {
     pendingAdditions.push_back(std::make_pair(name, entity));
 }
 
+static std::unordered_set<engine::Entity::EntityType> wontResetShadows = {
+    engine::Entity::EntityType::Camera,
+    engine::Entity::EntityType::IrradianceProbe,
+    engine::Entity::EntityType::Collider,
+    engine::Entity::EntityType::Empty
+};
+
 void engine::EntityManager::processPendingAdditions() {
     bool resetShadows = false;
     if (!pendingAdditions.empty()) {
@@ -440,7 +454,7 @@ void engine::EntityManager::processPendingAdditions() {
         if (entities[name]->getParent() == nullptr) {
             addRootEntry(entity);
         }
-        if (!entity->getIsMovable() && entity->getShader() == "gbuffer") {
+        if (!entity->getIsMovable() && !wontResetShadows.contains(entity->getType())) {
             bool hasMovableParent = false;
             Entity* current = entity->getParent();
             while (current) {

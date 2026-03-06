@@ -8,7 +8,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <engine/io.h>
-#include <map>
+#include <unordered_map>
 #include <string>
 
 namespace engine {
@@ -63,7 +63,7 @@ namespace engine {
         bool hasSkinning() const { return skinningBuffer != VK_NULL_HANDLE; }
         bool hasAnimations() const { return !animationsMap.empty(); }
         const std::vector<Joint>& getSkeleton() const { return skeleton; }
-        const std::map<std::string, AnimationClip>& getAnimations() const { return animationsMap; }
+        const std::unordered_map<std::string, AnimationClip>& getAnimations() const { return animationsMap; }
         const AnimationClip* getAnimation(const std::string& name) const {
             auto it = animationsMap.find(name);
             return it != animationsMap.end() ? &it->second : nullptr;
@@ -78,7 +78,7 @@ namespace engine {
         VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
         uint32_t indexCount = 0;
         AABB aabb; // min, max
-        std::map<std::string, AnimationClip> animationsMap;
+        std::unordered_map<std::string, AnimationClip> animationsMap;
         std::vector<Joint> skeleton;
         VkBuffer skinningBuffer = VK_NULL_HANDLE;
         VkDeviceMemory skinningBufferMemory = VK_NULL_HANDLE;
@@ -98,6 +98,6 @@ namespace engine {
     private:
         Renderer* renderer;
         std::string modelDirectory;
-        std::map<std::string, Model*> models;
+        std::unordered_map<std::string, Model*> models;
     };
 };
