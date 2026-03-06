@@ -101,7 +101,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     cachedMaxSafeBackup = 0.0f;
                     backupSearchLo = 0.0f;
                     backupSearchHi = 15.0f;
-                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, 0.2F);
                 }
                 break;
             }
@@ -109,7 +109,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 if (!checkVisibilityOfPlayer()) {
                     state = EnemyState::Idle;
                     stopMove(getPressed(), false);
-                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, 0.2F);
                     break;
                 }
                 glm::mat4 t = getTransform();

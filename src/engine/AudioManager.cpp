@@ -108,7 +108,7 @@ bool engine::AudioManager::loadSound(const std::string& name, const std::string&
     return true;
 }
 
-void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3& position, float volume, bool varyPitch) {
+void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3& position, float volume, float pitchVariation) {
     if (!m_initialized) return;
     auto it = m_soundPaths.find(name);
     if (it == m_soundPaths.end()) {
@@ -129,16 +129,16 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
     ma_sound_set_min_distance(&data->sound, 5.0f);
     ma_sound_set_rolloff(&data->sound, 0.5f);
     
-    if (varyPitch) {
-        float pitchVariation = dist(rng) * 0.1f;
-        ma_sound_set_pitch(&data->sound, 1.0f + pitchVariation);
+    if (pitchVariation != 0.0f) {
+        float vary = dist(rng) * pitchVariation;
+        ma_sound_set_pitch(&data->sound, 1.0f + vary);
     }
 
     ma_sound_start(&data->sound);
     m_oneShots.push_back(std::move(data));
 }
 
-void engine::AudioManager::playSound(const std::string& name, float volume, bool varyPitch, bool persistent) {
+void engine::AudioManager::playSound(const std::string& name, float volume, float pitchVariation, bool persistent) {
     if (!m_initialized) return;
     auto it = m_soundPaths.find(name);
     if (it == m_soundPaths.end()) {
@@ -157,9 +157,9 @@ void engine::AudioManager::playSound(const std::string& name, float volume, bool
     ma_sound_set_spatialization_enabled(&data->sound, MA_FALSE);
     ma_sound_set_volume(&data->sound, volume);
 
-    if (varyPitch) {
-        float pitchVariation = dist(rng) * 0.1f;
-        ma_sound_set_pitch(&data->sound, 1.0f + pitchVariation);
+    if (pitchVariation != 0.0f) {
+        float vary = dist(rng) * pitchVariation;
+        ma_sound_set_pitch(&data->sound, 1.0f + vary);
     }
 
     ma_sound_start(&data->sound);

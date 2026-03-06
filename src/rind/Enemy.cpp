@@ -71,15 +71,15 @@ void rind::Enemy::shoot() {
         );
         if (rind::Player* character = dynamic_cast<rind::Player*>(collision.other->getParent())) {
             character->damage(5.0f);
-            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, 0.2f);
         } else if (rind::Enemy* character = dynamic_cast<rind::Enemy*>(collision.other->getParent())) {
             character->damage(5.0f);
-            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, 0.2f);
         } else {
-            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, 0.2f);
         }
     }
-    audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
+    audioManager->playSound3D("laser_shot", gunPos, 0.5f, 0.2f);
     trailFramesRemaining = maxTrailFrames;
     trailEndPos = endPos;
 }
@@ -148,6 +148,11 @@ void rind::Enemy::update(float deltaTime) {
             glm::vec4(0.1f, 0.1f, 0.1f, 0.6f),
             2.0f
         );
+        audioManager->playSound3D("enemy_smoke", getWorldPosition(), 0.8f, 0.5F);
+    }
+    float playTalk = dist(rng) + 1.0f;
+    if (playTalk > 1.999f) {
+        audioManager->playSound3D("enemy_talk", getWorldPosition(), 0.5f, 0.5F);
     }
 }
 
@@ -239,6 +244,7 @@ void rind::Enemy::damage(float amount) {
             1.0f,
             1.0f
         );
+        audioManager->playSound3D("enemy_death", getWorldPosition(), 1.2f, 0.15F);
         getEntityManager()->markForDeletion(this);
     }
 }

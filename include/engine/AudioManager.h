@@ -29,8 +29,8 @@ namespace engine {
 
         bool loadSound(const std::string& name, const std::string& filePath);
         
-        void playSound(const std::string& name, float volume = 1.0f, bool varyPitch = false, bool persistent = false);
-        void playSound3D(const std::string& name, const glm::vec3& position, float volume = 1.0f, bool varyPitch = false);
+        void playSound(const std::string& name, float volume = 1.0f, float pitchVariation = 0.0f, bool persistent = false);
+        void playSound3D(const std::string& name, const glm::vec3& position, float volume = 1.0f, float pitchVariation = 0.0f);
         
         void stopSound(const std::string& name);
         void stopAllSounds();

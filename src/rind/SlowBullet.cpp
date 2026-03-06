@@ -55,12 +55,12 @@ void rind::SlowBullet::update(float deltaTime) {
         glm::vec3 reflectedDir = glm::reflect(velocity, normal);
         if (rind::Player* player = dynamic_cast<rind::Player*>(hitCollider->getParent())) {
             player->damage(10.0f);
-            audioManager->playSound3D("laser_enemy_impact", hitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_enemy_impact", hitPoint, 0.5f, 0.2F);
         } else if (rind::Enemy* enemy = dynamic_cast<rind::Enemy*>(hitCollider->getParent())) {
             enemy->damage(10.0f);
-            audioManager->playSound3D("laser_enemy_impact", hitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_enemy_impact", hitPoint, 0.5f, 0.2F);
         } else {
-            audioManager->playSound3D("laser_ground_impact", hitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_ground_impact", hitPoint, 0.5f, 0.2F);
         }
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
@@ -68,7 +68,8 @@ void rind::SlowBullet::update(float deltaTime) {
             reflectedDir * 40.0f,
             50,
             4.0f,
-            0.5f
+            0.5f,
+            0.3f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
@@ -76,7 +77,8 @@ void rind::SlowBullet::update(float deltaTime) {
             reflectedDir * 25.0f,
             30,
             4.0f,
-            0.4f
+            0.4f,
+            1.0f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
@@ -84,17 +86,20 @@ void rind::SlowBullet::update(float deltaTime) {
             reflectedDir * 10.0f,
             50,
             2.0f,
-            0.8f
+            0.8f,
+            0.7f
         );
         getEntityManager()->markForDeletion(this);
     } else {
+        float sizeFactor = dist(rng) * 0.375 + 0.625f; // 0.25 to 1.0
         particleManager->burstParticles(
             getWorldTransform(),
             color,
             -velocity * 0.5f,
             2,
             1.0f,
-            0.8f
+            0.8f,
+            sizeFactor
         );
         float streakRoll = dist(rng) + 1.0f;
         if (streakRoll > 1.9f) {
@@ -111,7 +116,7 @@ void rind::SlowBullet::update(float deltaTime) {
         float audioRoll = dist(rng) + 1.0f;
         if (streakRoll > 1.95f) {
             std::string choice = streakRoll >= 1.97 ? "1" : "2";
-            audioManager->playSound3D("slowbullet_sound_" + choice, getWorldPosition(), 0.4f, true);
+            audioManager->playSound3D("slowbullet_sound_" + choice, getWorldPosition(), 0.4f, 0.5F);
         }
     }
 }

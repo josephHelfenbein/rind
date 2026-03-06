@@ -67,7 +67,7 @@ void rind::BashingEnemy::update(float deltaTime) {
                     wandering = false;
                     waiting = false;
                     stopMove(getPressed(), false);
-                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, 0.2f);
                 }
                 break;
             }
@@ -75,7 +75,7 @@ void rind::BashingEnemy::update(float deltaTime) {
                 if (!checkVisibilityOfPlayer()) {
                     state = EnemyState::Idle;
                     stopMove(getPressed(), false);
-                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, 0.2f);
                     break;
                 }
                 glm::mat4 t = getTransform();
@@ -142,6 +142,7 @@ void rind::BashingEnemy::update(float deltaTime) {
                     state = EnemyState::Chasing;
                     break;
                 }
+                audioManager->playSound3D("bashing_enemy_hit", getWorldPosition(), 0.4f, 0.7f);
                 move(glm::vec3(0.0f, 0.0f, 1.0f), false);
                 dash(glm::vec3(0.0f, 0.0f, 1.0f), 50.0f);
                 stopMove(getPressed(), false);
@@ -233,7 +234,7 @@ void rind::BashingEnemy::hit() {
     if (!hits.empty()) {
         engine::Collider::Collision collision = hits[0];
         if (rind::Player* character = dynamic_cast<rind::Player*>(hits[0].other->getParent())) {
-            audioManager->playSound3D("laser_enemy_impact", getWorldPosition(), 0.5f, true);
+            audioManager->playSound3D("laser_enemy_impact", getWorldPosition(), 0.5f, 0.2f);
             character->damage(20.0f);
             lastShotTime = std::chrono::steady_clock::now();
         }

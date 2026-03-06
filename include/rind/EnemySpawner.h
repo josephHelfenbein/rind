@@ -23,7 +23,11 @@ namespace rind {
         }
     private:
         void spawnEnemy() {
-            maxEnemies = 2 + gameInstance->getDifficultyLevel() * 2;
+            if (gameInstance->getDifficultyLevel() != assumedDifficulty) {
+                assumedDifficulty = gameInstance->getDifficultyLevel();
+                maxEnemies = 2 + assumedDifficulty;
+                spawnInterval = std::max(1.0f, 10.0f - assumedDifficulty * 3.0f);
+            }
             if (enemyCount >= maxEnemies) {
                 return;
             }
@@ -49,11 +53,12 @@ namespace rind {
         }
 
         rind::Player* targetPlayer = nullptr;
-        float spawnInterval = 8.0f;
+        float spawnInterval = 10.0f;
         float spawnTimer = 5.0f;
         uint32_t enemyCount = 0u;
         uint32_t spawnedEnemies = 0u;
-        uint32_t maxEnemies = 5u;
+        uint32_t maxEnemies = 2u;
+        uint32_t assumedDifficulty = 0u;
         rind::GameInstance* gameInstance = nullptr;
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};

@@ -114,7 +114,7 @@ engine::ButtonObject::ButtonObject(UIManager* uiManager, glm::mat4 transform, st
 
 void engine::ButtonObject::click() {
     if (onClick) {
-        audioManager->playSound("ui_press", 0.5f, false, true);
+        audioManager->playSound("ui_press", 0.5f, 0.0f, true);
         onClick();
     }
 }

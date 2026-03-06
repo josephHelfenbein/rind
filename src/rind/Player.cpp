@@ -260,7 +260,7 @@ void rind::Player::update(float deltaTime) {
         lastHeartbeat += deltaTime;
         if (lastHeartbeat >= heartbeatOffset) {
             lastHeartbeat = 0.0f;
-            audioManager->playSound("player_heartbeat", 0.4f, true);
+            audioManager->playSound("player_heartbeat", 0.3f, 0.1f);
         }
     }
     if (trailFramesRemaining > 0) {
@@ -541,7 +541,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 2.0f,
                 0.5f
             );
-            audioManager->playSound3D("player_dash", getWorldPosition(), 0.5f, true);
+            audioManager->playSound3D("player_dash", getWorldPosition(), 0.5f, 0.15f);
             lastDashTime = now;
         }
     }
@@ -562,7 +562,7 @@ void rind::Player::damage(float amount) {
         heartbeatOffset = 0.0f;
         isDead = true;
         stopMove(getPressed(), false);
-        audioManager->playSound("player_death", 0.5f, true);
+        audioManager->playSound("player_death", 0.5f, 0.2f);
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
         if (getEntityManager()->getRenderer()->isPaused()) {
             hidePauseMenu();
@@ -703,15 +703,15 @@ void rind::Player::shoot() {
                 if (!character->checkVisibilityOfPlayer()) {
                     character->setWanderTarget(getWorldPosition());
                     character->wanderTo(getEntityManager()->getRenderer()->getDeltaTime());
-                    audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, 0.2F);
                 }
             }
-            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, 0.2F);
         } else {
-            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, true);
+            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, 0.2F);
         }
     }
-    audioManager->playSound3D("laser_shot", gunPos, 0.5f, true);
+    audioManager->playSound3D("laser_shot", gunPos, 0.5f, 0.2F);
     trailFramesRemaining = maxTrailFrames;
     trailEndPos = endPos;
 }

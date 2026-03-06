@@ -83,7 +83,7 @@ void rind::FlyingEnemy::update(float deltaTime) {
                     wandering = false;
                     waiting = false;
                     stopMove(getPressed(), false);
-                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_see", getWorldPosition(), 0.5f, 0.2F);
                 }
                 break;
             }
@@ -91,7 +91,7 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 if (!checkVisibilityOfPlayer()) {
                     state = EnemyState::Idle;
                     stopMove(getPressed(), false);
-                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, true);
+                    audioManager->playSound3D("enemy_lose", getWorldPosition(), 0.5f, 0.2F);
                     break;
                 }
                 glm::mat4 t = getTransform();
@@ -346,7 +346,7 @@ void rind::FlyingEnemy::shoot() {
         glm::vec4(0.1f, 0.1f, 0.1f, 0.5f),
         5.0f
     );
-    audioManager->playSound3D("slowbullet_shot", gunPos, 0.5f, true);
+    audioManager->playSound3D("slowbullet_shot", gunPos, 0.5f, 0.15F);
     rind::SlowBullet* slowBullet = new rind::SlowBullet(
         getEntityManager(),
         "slowBullet" + getName() + std::to_string(spawnedBullets++),
