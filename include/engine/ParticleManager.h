@@ -15,7 +15,16 @@ namespace engine {
     };
     class Particle {
     public:
-        Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec3& color, const glm::vec3& velocity, float lifetime, float type = 0.0f, float size = 1.0f);
+        Particle(
+            ParticleManager* particleManager,
+            EntityManager* entityManager,
+            const glm::mat4& transform,
+            const glm::vec3& color,
+            const glm::vec3& velocity,
+            float lifetime,
+            float type = 0.0f,
+            float size = 1.0f
+        );
         ~Particle();
         void update(float deltaTime);
 

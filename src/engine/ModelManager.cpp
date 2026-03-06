@@ -6,7 +6,11 @@
 #include <glm/gtc/quaternion.hpp>
 #include <unordered_map>
 
-engine::Model::Model(std::string name, std::string filepath, Renderer* renderer) : name(name), filepath(filepath), renderer(renderer) {}
+engine::Model::Model(
+    const std::string& name,
+    const std::string& filepath,
+    Renderer* renderer
+) : name(name), filepath(filepath), renderer(renderer) {}
 
 engine::Model::~Model() {
     VkDevice device = renderer->getDevice();
@@ -446,7 +450,7 @@ std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> engine::Model::loadVert
     return {vertices, indices};
 }
 
-engine::ModelManager::ModelManager(Renderer* renderer, std::string modelDirectory) : renderer(renderer), modelDirectory(modelDirectory) {
+engine::ModelManager::ModelManager(Renderer* renderer, const std::string& modelDirectory) : renderer(renderer), modelDirectory(modelDirectory) {
     renderer->registerModelManager(this);
 }
 

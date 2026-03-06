@@ -19,7 +19,7 @@ namespace engine {
 
     class AudioManager {
     public:
-        AudioManager(Renderer* renderer, std::string audioDirectory);
+        AudioManager(Renderer* renderer, const std::string& audioDirectory);
         ~AudioManager();
 
         void update();

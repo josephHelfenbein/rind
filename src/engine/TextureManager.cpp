@@ -8,7 +8,7 @@
 #include <functional>
 #include <format>
 
-static uint16_t floatToHalf(float value) {
+static inline uint16_t floatToHalf(float value) {
     union { float f; uint32_t i; } v;
     v.f = value;
     uint32_t i = v.i;
@@ -26,8 +26,10 @@ static uint16_t floatToHalf(float value) {
     return static_cast<uint16_t>(sign | (exponent << 10) | (mantissa >> 13));
 }
 
-engine::TextureManager::TextureManager(engine::Renderer* renderer, std::string textureDirectory)
-    : renderer(renderer), textureDirectory(textureDirectory) {
+engine::TextureManager::TextureManager(
+    engine::Renderer* renderer,
+    const std::string& textureDirectory
+) : renderer(renderer), textureDirectory(textureDirectory) {
         renderer->registerTextureManager(this);
     }
 
@@ -154,6 +156,7 @@ void engine::TextureManager::init() {
                 VK_FALSE
             );
             Texture texture = {
+                .name = textureName,
                 .path = filePath,
                 .image = textureImage,
                 .imageView = textureImageView,
@@ -163,7 +166,7 @@ void engine::TextureManager::init() {
                 .width = texWidth,
                 .height = texHeight
             };
-            textures[textureName] = texture;
+            textures[textureName] = std::move(texture);
         }
     };
     scanAndLoadTextures(scanAndLoadTextures, textureDirectory, "");

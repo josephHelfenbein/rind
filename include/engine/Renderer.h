@@ -23,7 +23,7 @@ namespace engine {
 
     class Renderer {
     public:
-        Renderer(std::string windowTitle);
+        Renderer(const std::string& windowTitle);
         ~Renderer();
         void run();
 

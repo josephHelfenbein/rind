@@ -5,8 +5,13 @@
 
 #define PI 3.14159265358979323846f
 
-rind::SlowBullet::SlowBullet(engine::EntityManager* entityManager, const std::string& name, glm::mat4 transform, const glm::vec3 velocity, const glm::vec3 color)
-    : engine::Entity(entityManager, name, "gbuffer", transform, {"materials_slowbullet_albedo", "materials_slowbullet_metallic", "materials_slowbullet_roughness", "materials_slowbullet_normal"}, true), velocity(velocity), color(color) {
+rind::SlowBullet::SlowBullet(
+    engine::EntityManager* entityManager,
+    const std::string& name,
+    const glm::mat4& transform,
+    const glm::vec3& velocity,
+    const glm::vec3& color
+) : engine::Entity(entityManager, name, "gbuffer", transform, {"materials_slowbullet_albedo", "materials_slowbullet_metallic", "materials_slowbullet_roughness", "materials_slowbullet_normal"}, true), velocity(velocity), color(color) {
         setModel(entityManager->getRenderer()->getModelManager()->getModel("slowbullet"));
         setCastShadow(false);
         collider = new engine::OBBCollider(

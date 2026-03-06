@@ -38,7 +38,15 @@ namespace engine {
             std::string prevAnimation = "";
             float blendFactor = 1.0f; // 0.0 - 1.0
         };
-        Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, bool isMovable = false, EntityType type = EntityType::Generic);
+        Entity(
+            EntityManager* entityManager,
+            const std::string& name,
+            const std::string& shader,
+            const glm::mat4& transform,
+            std::vector<std::string> textures = {},
+            bool isMovable = false,
+            const EntityType& type = EntityType::Generic
+        );
 
         virtual ~Entity();
 
@@ -52,7 +60,7 @@ namespace engine {
         void setModel(Model* model);
         Model* getModel() const;
 
-        EntityType getType() const { return type; }
+        const EntityType& getType() const { return type; }
 
         bool getIsMovable() const { return isMovable; }
         void setIsMovable(bool isMovable);
@@ -104,7 +112,7 @@ namespace engine {
 
     private:
         std::string name;
-        EntityType type = EntityType::Generic;
+        EntityType type;
         std::string shader;
         glm::mat4 transform;
         glm::mat4 worldTransform;
@@ -179,7 +187,7 @@ namespace engine {
             rootEntities.erase(std::remove(rootEntities.begin(), rootEntities.end(), entity), rootEntities.end());
         }
 
-        Entity* getEntity(const std::string& name) {
+        Entity* getEntity(const std::string& name) const {
             auto it = entities.find(name);
             if (it != entities.end()) {
                 return it->second;

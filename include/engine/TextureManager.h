@@ -3,10 +3,11 @@
 #include <engine/Renderer.h>
 #include <stb/stb_image.h>
 #include <string>
-#include <map>
+#include <unordered_map>
 
 namespace engine {
     struct Texture {
+        std::string name;
         std::string path;
         VkImage image = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
@@ -15,11 +16,15 @@ namespace engine {
         VkFormat format = VK_FORMAT_UNDEFINED;
         int width = 0;
         int height = 0;
+
+        bool operator==(const Texture& other) const {
+            return name == other.name;
+        }
     };
 
     class TextureManager {
     public:
-        TextureManager(engine::Renderer* renderer, std::string textureDirectory);
+        TextureManager(engine::Renderer* renderer, const std::string& textureDirectory);
         ~TextureManager();
 
         void init();
@@ -28,7 +33,7 @@ namespace engine {
         void registerTexture(const std::string& name, const Texture& texture);
 
     private:
-        std::map<std::string, Texture> textures;
+        std::unordered_map<std::string, Texture> textures;
         engine::Renderer* renderer;
         std::string textureDirectory;
     };

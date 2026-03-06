@@ -7,8 +7,15 @@
 namespace engine {
     class Light : public Entity {
     public:
-        Light(EntityManager* entityManager, const std::string& name, glm::mat4 transform, glm::vec3 color, float intensity, float radius, bool isMovable = false)
-            : Entity(entityManager, name, "", transform, {}, isMovable, EntityType::Light), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)) {
+        Light(
+            EntityManager* entityManager,
+            const std::string& name,
+            const glm::mat4& transform,
+            const glm::vec3& color,
+            float intensity,
+            float radius,
+            bool isMovable = false
+        ) : Entity(entityManager, name, "", transform, {}, isMovable, EntityType::Light), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)) {
                 entityManager->addLight(this);
                 lightIdx = entityManager->getLights().size() - 1;
                 createShadowMaps(entityManager->getRenderer());

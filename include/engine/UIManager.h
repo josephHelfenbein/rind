@@ -44,7 +44,15 @@ namespace engine {
 
     class TextObject {
     public:
-        TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string text, std::string font, Corner anchorCorner = Corner::Center);
+        TextObject(
+            UIManager* uiManager,
+            const glm::mat4& transform,
+            const std::string& name,
+            const glm::vec4& tint,
+            const std::string& text,
+            const std::string& font,
+            const Corner& anchorCorner = Corner::Center
+        );
         ~TextObject();
 
         const std::string& getText() const { return text; }
@@ -80,7 +88,17 @@ namespace engine {
 
     class UIObject {
     public:
-        UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string texture, Corner anchorCorner = Corner::Center, std::function<void()>* onHover = nullptr, std::function<void()>* onStopHover = nullptr, UIType type = UIType::Generic);
+        UIObject(
+            UIManager* uiManager,
+            const glm::mat4& transform,
+            const std::string& name,
+            const glm::vec4& tint,
+            const std::string& texture,
+            const Corner& anchorCorner = Corner::Center,
+            std::function<void()>* onHover = nullptr,
+            std::function<void()>* onStopHover = nullptr,
+            const UIType& type = UIType::Generic
+        );
         virtual ~UIObject();
 
         const std::string& getName() const { return name; }
@@ -147,7 +165,18 @@ namespace engine {
 
     class ButtonObject : public UIObject {
     public:
-        ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner = Corner::Center);
+        ButtonObject(
+            UIManager* uiManager,
+            const glm::mat4& transform,
+            const std::string& name,
+            const glm::vec4& tint,
+            const glm::vec4& textColor,
+            const std::string& texture,
+            const std::string& text,
+            const std::string& font,
+            std::function<void()> onClick,
+            const Corner& anchorCorner = Corner::Center
+        );
 
         void click();
 
@@ -158,7 +187,16 @@ namespace engine {
 
     class CheckboxObject : public UIObject {
     public:
-        CheckboxObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, bool initialState, bool& toggleBool, Corner anchorCorner = Corner::Center, std::vector<CheckboxObject*> boundBools = {}); 
+        CheckboxObject(
+            UIManager* uiManager,
+            const glm::mat4& transform,
+            const std::string& name,
+            const glm::vec4& tint,
+            bool initialState,
+            bool& toggleBool,
+            const Corner& anchorCorner = Corner::Center,
+            std::vector<CheckboxObject*> boundBools = {}
+        ); 
 
         bool isChecked() const { return checked; }
 
@@ -178,8 +216,18 @@ namespace engine {
 
     class SliderObject : public UIObject {
     public:
-        SliderObject(UIManager* uiManager, glm::mat4 transform, std::string name, float minValue, float maxValue, float& boundValue, Corner anchorCorner = Corner::Center, std::string textSuffix = "", bool isInteger = false, float textMultiplier = 1.0f)
-            : UIObject(uiManager, transform, name, glm::vec4(1.0f), "ui_slider_background", anchorCorner, nullptr, nullptr, UIType::Slider), minValue(minValue), maxValue(maxValue), boundValue(boundValue), isInteger(isInteger), textSuffix(textSuffix), textMultiplier(textMultiplier) {
+        SliderObject(
+            UIManager* uiManager,
+            const glm::mat4& transform,
+            const std::string& name,
+            float minValue,
+            float maxValue,
+            float& boundValue,
+            const Corner& anchorCorner = Corner::Center,
+            std::string textSuffix = "",
+            bool isInteger = false,
+            float textMultiplier = 1.0f
+        ) : UIObject(uiManager, transform, name, glm::vec4(1.0f), "ui_slider_background", anchorCorner, nullptr, nullptr, UIType::Slider), minValue(minValue), maxValue(maxValue), boundValue(boundValue), isInteger(isInteger), textSuffix(textSuffix), textMultiplier(textMultiplier) {
                 knobObject = new UIObject(
                     uiManager,
                     glm::scale(glm::mat4(1.0f), glm::vec3(0.04f, 0.04f, 1.0f)),
@@ -272,7 +320,7 @@ namespace engine {
 
     class UIManager {
     public:
-        UIManager(Renderer* renderer, std::string fontDirectory);
+        UIManager(Renderer* renderer, const std::string& fontDirectory);
         ~UIManager();
 
         void addObject(UIObject* object);

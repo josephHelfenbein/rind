@@ -5,13 +5,29 @@
 #include <engine/Renderer.h>
 #include <engine/AudioManager.h>
 
-engine::UIObject::UIObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string texture, Corner anchorCorner, std::function<void()>* onHover, std::function<void()>* onStopHover, UIType type)
-    : uiManager(uiManager), name(std::move(name)), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(std::move(texture)), onHover(onHover), onStopHover(onStopHover), type(type) {
+engine::UIObject::UIObject(
+    UIManager* uiManager,
+    const glm::mat4& transform,
+    const std::string& name,
+    const glm::vec4& tint,
+    const std::string& texture,
+    const Corner& anchorCorner,
+    std::function<void()>* onHover,
+    std::function<void()>* onStopHover,
+    const UIType& type
+) : uiManager(uiManager), name(name), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(texture), onHover(onHover), onStopHover(onStopHover), type(type) {
         uiManager->addObject(this);
     }
 
-engine::TextObject::TextObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, std::string text, std::string font, Corner anchorCorner)
-    : uiManager(uiManager), name(std::move(name)), tint(tint), text(std::move(text)), font(std::move(font)), transform(transform), anchorCorner(anchorCorner) {
+engine::TextObject::TextObject(
+    UIManager* uiManager,
+    const glm::mat4& transform,
+    const std::string& name,
+    const glm::vec4& tint,
+    const std::string& text,
+    const std::string& font,
+    const Corner& anchorCorner
+) : uiManager(uiManager), name(name), tint(tint), text(text), font(font), transform(transform), anchorCorner(anchorCorner) {
         uiManager->addObject(this);
     }
 
@@ -95,8 +111,18 @@ void engine::UIObject::loadTexture() {
     }
 }
 
-engine::ButtonObject::ButtonObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, glm::vec4 textColor, std::string texture, std::string text, std::string font, std::function<void()> onClick, Corner anchorCorner)
-    : UIObject(uiManager, transform, name, tint, texture, anchorCorner, nullptr, nullptr, UIType::Button), onClick(onClick) {
+engine::ButtonObject::ButtonObject(
+    UIManager* uiManager,
+    const glm::mat4& transform,
+    const std::string& name,
+    const glm::vec4& tint,
+    const glm::vec4& textColor,
+    const std::string& texture,
+    const std::string& text,
+    const std::string& font,
+    std::function<void()> onClick,
+    const Corner& anchorCorner
+) : UIObject(uiManager, transform, name, tint, texture, anchorCorner, nullptr, nullptr, UIType::Button), onClick(onClick) {
         TextObject* textObj = new TextObject(uiManager, glm::mat4(1.0f), name + "_text", textColor, text, font, Corner::Center);
         this->addChild(textObj);
         setOnHover(new std::function<void()>([this]() {
@@ -119,8 +145,16 @@ void engine::ButtonObject::click() {
     }
 }
 
-engine::CheckboxObject::CheckboxObject(UIManager* uiManager, glm::mat4 transform, std::string name, glm::vec4 tint, bool initialState, bool& toggleBool, Corner anchorCorner, std::vector<CheckboxObject*> boundBools)
-    : UIObject(uiManager, transform, name, tint, "", anchorCorner, nullptr, nullptr, UIType::Checkbox), checkState(initialState), checked(toggleBool), boundBools(boundBools) {
+engine::CheckboxObject::CheckboxObject(
+    UIManager* uiManager,
+    const glm::mat4& transform,
+    const std::string& name,
+    const glm::vec4& tint,
+    bool initialState,
+    bool& toggleBool,
+    const Corner& anchorCorner,
+    std::vector<CheckboxObject*> boundBools
+) : UIObject(uiManager, transform, name, tint, "", anchorCorner, nullptr, nullptr, UIType::Checkbox), checkState(initialState), checked(toggleBool), boundBools(boundBools) {
         if (initialState) {
             setTexture(checkedTexture);
         } else {
@@ -211,8 +245,8 @@ float engine::SliderObject::getSliderValueFromMouse(GLFWwindow* window) {
     return minValue + ratio * (maxValue - minValue);
 }
 
-engine::UIManager::UIManager(Renderer* renderer, std::string fontDirectory)
-    : renderer(renderer), fontDirectory(std::move(fontDirectory)) {
+engine::UIManager::UIManager(Renderer* renderer, const std::string& fontDirectory)
+    : renderer(renderer), fontDirectory(fontDirectory) {
         renderer->registerUIManager(this);
     }
 
@@ -399,7 +433,7 @@ void engine::UIManager::loadFonts() {
                     continue;
                 }
                 Character character;
-                character.texture = new Texture();
+                character.texture = new Texture({ .name = fontName + std::to_string(c) });
                 character.size = glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows);
                 character.bearing = glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top);
                 const FT_Pos rawAdvance = std::max<FT_Pos>(face->glyph->advance.x, static_cast<FT_Pos>(0));

@@ -3,8 +3,12 @@
 #include <algorithm>
 #include <atomic>
 
-engine::Collider::Collider(EntityManager* entityManager, const std::string& name, glm::mat4 transform, ColliderType type)
-    : Entity(entityManager, name, "", transform, {}, false, EntityType::Collider), type(type) {
+engine::Collider::Collider(
+    EntityManager* entityManager,
+    const std::string& name,
+    const glm::mat4& transform,
+    const ColliderType& type
+) : Entity(entityManager, name, "", transform, {}, false, EntityType::Collider), type(type) {
         entityManager->addCollider(this);
     }
 

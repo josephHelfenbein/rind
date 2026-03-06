@@ -2,12 +2,13 @@
 
 #include <engine/Renderer.h>
 #include <string>
-#include <map>
 #include <vector>
 #include <memory>
 #include <typeindex>
 #include <optional>
 #include <unordered_set>
+#include <unordered_map>
+#include <map>
 #include <functional>
 #include <smaa/Textures/AreaTex.h>
 #include <smaa/Textures/SearchTex.h>
@@ -129,17 +130,7 @@ namespace engine {
             return name == other.name;
         }
     };
-};
 
-// add hash specialization for GraphicsShader to allow usage in unordered_set for RenderNode
-template <>
-struct std::hash<engine::GraphicsShader> {
-std::size_t operator()(const engine::GraphicsShader& shader) const {
-        return std::hash<std::string>()(shader.name);
-    }
-};
-
-namespace engine {
     struct ComputeShader {
         std::string name;
         ShaderStageInfo compute;
@@ -169,8 +160,28 @@ namespace engine {
         void createDescriptorSetLayout(engine::Renderer* renderer);
         void createPipeline(engine::Renderer* renderer);
         void createDescriptorPool(engine::Renderer* renderer);
-    };
 
+        bool operator==(const ComputeShader& other) const {
+            return name == other.name;
+        }
+    };
+};
+
+// add hash specialization to allow usage in unordered_set and unordered_map
+template <>
+struct std::hash<engine::GraphicsShader> {
+    std::size_t operator()(const engine::GraphicsShader& shader) const {
+        return std::hash<std::string>()(shader.name);
+    }
+};
+template <>
+struct std::hash<engine::ComputeShader> {
+    std::size_t operator()(const engine::ComputeShader& shader) const {
+        return std::hash<std::string>()(shader.name);
+    }
+};
+
+namespace engine {
     struct RenderNode {
         bool is2D = false;
         PassInfo* passInfo = nullptr;
@@ -183,14 +194,14 @@ namespace engine {
     
     class ShaderManager {
     public:
-        ShaderManager(engine::Renderer* renderer, std::string shaderDirectory = "src/assets/shaders/compiled/");
+        ShaderManager(engine::Renderer* renderer, const std::string& shaderDirectory = "src/assets/shaders/compiled/");
         ~ShaderManager();
 
         void addGraphicsShader(GraphicsShader shader);
         void addComputeShader(ComputeShader shader);
 
-        std::vector<GraphicsShader> getGraphicsShaders();
-        std::vector<ComputeShader> getComputeShaders();
+        std::vector<GraphicsShader> getGraphicsShaders() const;
+        std::vector<ComputeShader> getComputeShaders() const;
 
         void loadAllShaders();
         void loadGraphicsShader(const std::string& name);
@@ -199,10 +210,10 @@ namespace engine {
         void editGraphicsShader(const std::string& name, const ShaderStageInfo& newVertex, const ShaderStageInfo& newFragment);
         void editComputeShader(const std::string& name, const ShaderStageInfo& newCompute);
 
-        GraphicsShader* getGraphicsShader(const std::string& name);
-        ComputeShader* getComputeShader(const std::string& name);
+        GraphicsShader* getGraphicsShader(const std::string& name) const;
+        ComputeShader* getComputeShader(const std::string& name) const;
 
-        std::string getShaderFilePath(const std::string& name);
+        std::string getShaderFilePath(const std::string& name) const;
 
         void loadSMAATextures();
         std::vector<GraphicsShader> createDefaultShaders();
@@ -217,10 +228,10 @@ namespace engine {
         std::vector<std::unique_ptr<GraphicsShader>> graphicsShaders;
         std::vector<std::unique_ptr<ComputeShader>> computeShaders;
 
-        std::map<std::string, GraphicsShader*> graphicsShaderMap;
-        std::map<std::string, ComputeShader*> computeShaderMap;
+        std::unordered_map<std::string, GraphicsShader*> graphicsShaderMap;
+        std::unordered_map<std::string, ComputeShader*> computeShaderMap;
 
-        std::map<std::string, std::string> foundShaderFiles;
+        std::unordered_map<std::string, std::string> foundShaderFiles;
 
         std::string shaderDirectory;
 

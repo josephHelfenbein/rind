@@ -8,8 +8,10 @@
 #include <utility>
 #include <unordered_set>
 
-engine::ShaderManager::ShaderManager(engine::Renderer* renderer, std::string shaderDirectory)
-    : renderer(renderer), shaderDirectory(std::move(shaderDirectory)) {
+engine::ShaderManager::ShaderManager(
+    engine::Renderer* renderer,
+    const std::string& shaderDirectory
+) : renderer(renderer), shaderDirectory(shaderDirectory) {
         renderer->registerShaderManager(this);
         std::vector<std::string> shaderFiles = engine::scanDirectory(this->shaderDirectory);
         for (const auto& filePath : shaderFiles) {
@@ -166,7 +168,7 @@ void engine::ShaderManager::editComputeShader(const std::string& name, const Sha
     }
 }
 
-engine::GraphicsShader* engine::ShaderManager::getGraphicsShader(const std::string& name) {
+engine::GraphicsShader* engine::ShaderManager::getGraphicsShader(const std::string& name) const {
     auto it = graphicsShaderMap.find(name);
     if (it != graphicsShaderMap.end()) {
         return it->second;
@@ -174,7 +176,7 @@ engine::GraphicsShader* engine::ShaderManager::getGraphicsShader(const std::stri
     return nullptr;
 }
 
-engine::ComputeShader* engine::ShaderManager::getComputeShader(const std::string& name) {
+engine::ComputeShader* engine::ShaderManager::getComputeShader(const std::string& name) const {
     auto it = computeShaderMap.find(name);
     if (it != computeShaderMap.end()) {
         return it->second;
@@ -182,7 +184,7 @@ engine::ComputeShader* engine::ShaderManager::getComputeShader(const std::string
     return nullptr;
 }
 
-std::string engine::ShaderManager::getShaderFilePath(const std::string& name) {
+std::string engine::ShaderManager::getShaderFilePath(const std::string& name) const {
     auto it = foundShaderFiles.find(name);
     if (it != foundShaderFiles.end()) {
         return it->second;
@@ -190,7 +192,7 @@ std::string engine::ShaderManager::getShaderFilePath(const std::string& name) {
     return "";
 }
 
-std::vector<engine::GraphicsShader> engine::ShaderManager::getGraphicsShaders() {
+std::vector<engine::GraphicsShader> engine::ShaderManager::getGraphicsShaders() const {
     std::vector<GraphicsShader> shaders;
     for (const auto& shaderPtr : graphicsShaders) {
         shaders.push_back(*shaderPtr);
@@ -198,7 +200,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::getGraphicsShaders() 
     return shaders;
 }
 
-std::vector<engine::ComputeShader> engine::ShaderManager::getComputeShaders() {
+std::vector<engine::ComputeShader> engine::ShaderManager::getComputeShaders() const {
     std::vector<ComputeShader> shaders;
     for (const auto& shaderPtr : computeShaders) {
         shaders.push_back(*shaderPtr);

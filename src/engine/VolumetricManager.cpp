@@ -3,8 +3,13 @@
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
 
-engine::Volumetric::Volumetric(VolumetricManager* volumetricManager, const glm::mat4& initialTransform, const glm::mat4& finalTransform, const glm::vec4& color, float lifetime)
-    : volumetricManager(volumetricManager), initialTransform(initialTransform), finalTransform(finalTransform), color(color), lifetime(lifetime) {
+engine::Volumetric::Volumetric(
+    VolumetricManager* volumetricManager,
+    const glm::mat4& initialTransform,
+    const glm::mat4& finalTransform,
+    const glm::vec4& color,
+    float lifetime
+) : volumetricManager(volumetricManager), initialTransform(initialTransform), finalTransform(finalTransform), color(color), lifetime(lifetime) {
         volumetricManager->registerVolumetric(this);
     }
 

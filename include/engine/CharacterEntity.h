@@ -7,7 +7,7 @@
 namespace engine {
     class CharacterEntity : public Entity {
     public:
-        CharacterEntity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures = {}, Entity::EntityType type = Entity::EntityType::Character)
+        CharacterEntity(EntityManager* entityManager, const std::string& name, std::string shader, const glm::mat4& transform, std::vector<std::string> textures = {}, Entity::EntityType type = Entity::EntityType::Character)
             : Entity(entityManager, name, shader, transform, textures, true, type) {}
         
         void update(float deltaTime) override;

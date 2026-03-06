@@ -26,7 +26,7 @@
 #include <thread>
 #include <chrono>
 
-engine::Renderer::Renderer(std::string windowTitle) : windowTitle(windowTitle) {}
+engine::Renderer::Renderer(const std::string& windowTitle) : windowTitle(windowTitle) {}
 
 engine::Renderer::~Renderer() {
     cleanup();

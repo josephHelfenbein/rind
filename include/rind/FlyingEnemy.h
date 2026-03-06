@@ -5,7 +5,13 @@
 namespace rind {
     class FlyingEnemy : public rind::Enemy {
     public:
-        FlyingEnemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform, uint32_t& enemyCount);
+        FlyingEnemy(
+            engine::EntityManager* entityManager,
+            rind::Player* player,
+            const std::string& name,
+            const glm::mat4& transform,
+            uint32_t& enemyCount
+        );
  
         void update(float deltaTime) override;
         

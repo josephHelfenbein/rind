@@ -7,7 +7,13 @@
 namespace rind {
     class SlowBullet : public engine::Entity {
     public:
-        SlowBullet(engine::EntityManager* entityManager, const std::string& name, glm::mat4 transform, const glm::vec3 velocity, const glm::vec3 color);
+        SlowBullet(
+            engine::EntityManager* entityManager,
+            const std::string& name,
+            const glm::mat4& transform,
+            const glm::vec3& velocity,
+            const glm::vec3& color
+        );
         void update(float deltaTime) override;
 
     private:

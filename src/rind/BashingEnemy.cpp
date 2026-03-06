@@ -5,8 +5,13 @@
 
 #define PI 3.14159265358979323846f
 
-rind::BashingEnemy::BashingEnemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform, uint32_t& enemyCount)
-    : rind::Enemy(entityManager, player, name, transform, enemyCount) {
+rind::BashingEnemy::BashingEnemy(
+    engine::EntityManager* entityManager,
+    rind::Player* player,
+    const std::string& name,
+    const glm::mat4& transform,
+    uint32_t& enemyCount
+) : rind::Enemy(entityManager, player, name, transform, enemyCount) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.2f, 0.25f)),

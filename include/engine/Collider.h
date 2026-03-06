@@ -23,7 +23,12 @@ namespace engine {
             CollisionMTV mtv;
             glm::vec3 worldHitPoint{0.0f};
         };
-        Collider(EntityManager* entityManager, const std::string& name, glm::mat4 transform, ColliderType type);
+        Collider(
+            EntityManager* entityManager,
+            const std::string& name,
+            const glm::mat4& transform,
+            const ColliderType& type
+        );
         virtual ~Collider();
         const ColliderType& getType() const { return type; }
         virtual AABB getWorldAABB() = 0;
@@ -62,7 +67,7 @@ namespace engine {
 
     class AABBCollider : public Collider {
     public:
-        AABBCollider(EntityManager* entityManager, const glm::mat4 transform, const std::string& parentName, const glm::vec3 halfSize = glm::vec3(0.5f))
+        AABBCollider(EntityManager* entityManager, const glm::mat4& transform, const std::string& parentName, const glm::vec3 halfSize = glm::vec3(0.5f))
             : Collider(entityManager, "collision_" + parentName, transform, ColliderType::AABB), halfSize(halfSize) {}
         AABB getWorldAABB() override;
         bool intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform = glm::mat4(1.0f)) override;
@@ -71,7 +76,7 @@ namespace engine {
     };
     class OBBCollider : public Collider {
     public:
-        OBBCollider(EntityManager* entityManager, const glm::mat4 transform, const std::string& parentName, const glm::vec3 halfSize = glm::vec3(0.5f))
+        OBBCollider(EntityManager* entityManager, const glm::mat4& transform, const std::string& parentName, const glm::vec3 halfSize = glm::vec3(0.5f))
             : Collider(entityManager, "collision_" + parentName, transform, ColliderType::OBB), halfSize(halfSize) {}
         AABB getWorldAABB() override;
         bool intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform = glm::mat4(1.0f)) override;
@@ -93,7 +98,7 @@ namespace engine {
     };
     class ConvexHullCollider : public Collider {
     public:
-        ConvexHullCollider(EntityManager* entityManager, const glm::mat4 transform, const std::string& parentName)
+        ConvexHullCollider(EntityManager* entityManager, const glm::mat4& transform, const std::string& parentName)
             : Collider(entityManager, "collision_" + parentName, transform, ColliderType::ConvexHull) {}
         
         AABB getWorldAABB() override;

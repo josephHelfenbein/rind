@@ -9,8 +9,13 @@ namespace rind {
     template<typename EnemyType>
     class EnemySpawner : public engine::Entity {
     public:
-        EnemySpawner(engine::EntityManager* entityManager, rind::GameInstance* gameInstance, rind::Player* player, const std::string& name, glm::mat4 transform)
-            : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player) {}
+        EnemySpawner(
+            engine::EntityManager* entityManager,
+            rind::GameInstance* gameInstance,
+            rind::Player* player,
+            const std::string& name,
+            const glm::mat4& transform
+        ) : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player) {}
 
         void update(float deltaTime) override {
             spawnTimer += deltaTime;

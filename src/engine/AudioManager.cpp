@@ -4,7 +4,7 @@
 #include <iostream>
 #include <filesystem>
 
-engine::AudioManager::AudioManager(Renderer* renderer, std::string audioDirectory) : renderer(renderer), audioDirectory(std::move(audioDirectory)) {
+engine::AudioManager::AudioManager(Renderer* renderer, const std::string& audioDirectory) : renderer(renderer), audioDirectory(std::move(audioDirectory)) {
     renderer->registerAudioManager(this);
     ma_result result = ma_engine_init(NULL, &m_engine);
     if (result != MA_SUCCESS) {

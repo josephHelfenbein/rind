@@ -16,7 +16,13 @@ namespace rind {
     };
     class Enemy : public engine::CharacterEntity {
     public:
-        Enemy(engine::EntityManager* entityManager, rind::Player* player, const std::string& name, glm::mat4 transform, uint32_t& enemyCount);
+        Enemy(
+            engine::EntityManager* entityManager,
+            rind::Player* player,
+            const std::string& name,
+            const glm::mat4& transform,
+            uint32_t& enemyCount
+        );
 
         ~Enemy() {
             enemyCount--;

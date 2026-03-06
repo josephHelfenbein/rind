@@ -51,7 +51,7 @@ namespace engine {
             std::vector<AnimationSampler> samplers;
             std::vector<AnimationChannel> channels;
         };
-        Model(std::string name, std::string filepath, Renderer* renderer);
+        Model(const std::string& name, const std::string& filepath, Renderer* renderer);
         ~Model();
         void loadFromFile();
         std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> loadVertsForModel();
@@ -85,7 +85,7 @@ namespace engine {
     };
     class ModelManager {
     public:
-        ModelManager(Renderer* renderer, std::string modelDirectory);
+        ModelManager(Renderer* renderer, const std::string& modelDirectory);
         ~ModelManager();
 
         void init();

@@ -6,7 +6,7 @@
 namespace engine {
     class IrradianceProbe : public Entity {
     public:
-        IrradianceProbe(EntityManager* entityManager, const std::string& name, glm::mat4 transform, float radius = 10.0f);
+        IrradianceProbe(EntityManager* entityManager, const std::string& name, const glm::mat4& transform, float radius = 10.0f);
         ~IrradianceProbe();
 
         float getRadius() const { return radius; }

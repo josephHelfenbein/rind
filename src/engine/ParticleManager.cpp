@@ -4,8 +4,16 @@
 #include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
 
-engine::Particle::Particle(ParticleManager* particleManager, EntityManager* entityManager, const glm::mat4& transform, const glm::vec3& color, const glm::vec3& velocity, float lifetime, float type, float size)
-   : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime), type(type), size(size) {
+engine::Particle::Particle(
+    ParticleManager* particleManager,
+    EntityManager* entityManager,
+    const glm::mat4& transform,
+    const glm::vec3& color,
+    const glm::vec3& velocity,
+    float lifetime,
+    float type,
+    float size
+) : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime), type(type), size(size) {
         particleManager->registerParticle(this);
         prevPosition = glm::vec3(transform[3]);
         prevPrevPosition = prevPosition;

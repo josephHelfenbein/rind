@@ -30,8 +30,15 @@ void engine::EntityManager::updateDynamicColliders() {
     }
 }
 
-engine::Entity::Entity(EntityManager* entityManager, const std::string& name, std::string shader, glm::mat4 transform, std::vector<std::string> textures, bool isMovable, EntityType type) 
-    : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable), type(type) {
+engine::Entity::Entity(
+    EntityManager* entityManager,
+    const std::string& name,
+    const std::string& shader,
+    const glm::mat4& transform,
+    std::vector<std::string> textures,
+    bool isMovable,
+    const EntityType& type
+) : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable), type(type) {
         entityManager->addEntity(name, this);
     }
 
