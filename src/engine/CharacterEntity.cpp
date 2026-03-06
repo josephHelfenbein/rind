@@ -22,8 +22,7 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
     const float MAX_DELTA_TIME = 0.05f; // clamp deltaTime to avoid large jumps
     deltaTime = glm::min(deltaTime, MAX_DELTA_TIME);
     glm::vec3 desiredVel(0.0f);
-    bool shouldDash = glm::length(dashing) > 1e-6f;
-    if (glm::length(pressed) > 1e-6f || glm::length(dashing) > 1e-6f) {
+    if (glm::dot(pressed, pressed) > 1e-6f || glm::dot(dashing, dashing) > 1e-6f) {
         glm::mat4 t = getTransform();
         glm::vec3 forward = -glm::vec3(t[2]);
         forward.y = 0.0f;
@@ -171,7 +170,8 @@ void engine::CharacterEntity::updateMovement(float deltaTime) {
         0.1f,
         getCollider(),
         false,
-        0.0f
+        0.0f,
+        true // getAny early exits on first hit
     ).size();
     if (groundHits > 0) {
         touchedGround = true;
@@ -281,7 +281,7 @@ engine::Collider::Collision engine::CharacterEntity::willCollide(const glm::mat4
         myAABB.min - glm::vec3(margin),
         myAABB.max + glm::vec3(margin)
     };
-    std::vector<Collider*> candidates;
+    static thread_local std::vector<Collider*> candidates;
     getEntityManager()->getSpatialGrid().query(queryAABB, candidates);
     
     Collider::Collision bestCollision;

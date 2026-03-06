@@ -58,7 +58,7 @@ engine::Collider::Collision engine::Particle::checkCollision(const glm::vec3& po
         .min = position - glm::vec3(particleRadius),
         .max = position + glm::vec3(particleRadius)
     };
-    std::vector<engine::Collider*> candidates;
+    static thread_local std::vector<engine::Collider*> candidates;
     entityManager->getSpatialGrid().query(particleAABB, candidates);
     for (const auto& collider : candidates) {
         engine::AABB otherAABB = collider->getWorldAABB();
@@ -194,13 +194,13 @@ engine::ParticleManager::~ParticleManager() {
     particleBuffersMapped.clear();
     std::vector<Particle*> particlesCopy = particles;
     particles.clear();
-    for (auto particle : particlesCopy) {
+    for (auto& particle : particlesCopy) {
         delete particle;
     }
 }
 
 void engine::ParticleManager::clear() {
-    for (auto particle : particles) {
+    for (auto& particle : particles) {
         particle->markForDeletion();
     }
 }
@@ -278,7 +278,7 @@ void engine::ParticleManager::createParticleDescriptorSets() {
 
 void engine::ParticleManager::burstParticles(const glm::mat4& transform, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size) {
     float velLength = glm::length(velocity) + dist(rng) * 0.1f * glm::length(velocity);
-    for (int i = 0; i < count; ++i) {
+    for (size_t i = 0; i < static_cast<size_t>(count); ++i) {
         float offsetX = dist(rng) * spread * velLength;
         float offsetY = dist(rng) * spread * velLength;
         float offsetZ = dist(rng) * spread * velLength;
@@ -340,13 +340,10 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
         vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
         createParticleDescriptorSets();
     }
-    std::vector<ParticleGPU> gpuData;
-    gpuData.reserve(particles.size());
-    for (const auto& particle : particles) {
-        gpuData.push_back(particle->getGPUData());
+    ParticleGPU* gpuData = static_cast<ParticleGPU*>(particleBuffersMapped[currentFrame]);
+    for (size_t i = 0; i < particles.size(); ++i) {
+        gpuData[i] = particles[i]->getGPUData();
     }
-    if (gpuData.empty()) return;
-    memcpy(particleBuffersMapped[currentFrame], gpuData.data(), gpuData.size() * sizeof(ParticleGPU));
 }
 
 void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame) {

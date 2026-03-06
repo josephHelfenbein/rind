@@ -12,8 +12,11 @@ engine::Collider::~Collider() {
     }
 }
 
-std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit, float margin) {
-    std::vector<Collision> results;
+std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit, float margin, bool getAny) {
+    static thread_local std::vector<engine::Collider::Collision> results;
+    static thread_local std::vector<engine::Collider*> candidates;
+    results.clear();
+    candidates.clear();
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
 
     AABB rayAABB = {
@@ -21,7 +24,6 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
     
-    std::vector<Collider*> candidates;
     entityManager->getSpatialGrid().query(rayAABB, candidates);
     
     for (Collider* collider : candidates) {
@@ -58,6 +60,9 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
                         .worldHitPoint = hitPoint
                     };
                     results.push_back(collision);
+                    if (getAny) {
+                        return results;
+                    }
                 }
                 break;
             }
@@ -105,6 +110,9 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
                         .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
                     };
                     results.push_back(collision);
+                    if (getAny) {
+                        return results;
+                    }
                 }
                 break;
             }
@@ -152,6 +160,9 @@ std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager
                         .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
                     };
                     results.push_back(collision);
+                    if (getAny) {
+                        return results;
+                    }
                 }
                 break;
             }
@@ -275,26 +286,14 @@ std::pair<float, float> engine::Collider::projectVertsOntoAxis(const std::vector
     if (verts.empty()) {
         return { 0.0f, 0.0f };
     }
-#if defined(USE_OPENMP)
-    float mnLocal = std::numeric_limits<float>::max();
-    float mxLocal = std::numeric_limits<float>::lowest();
-    #pragma omp parallel for reduction(min:mnLocal) reduction(max:mxLocal)
-    for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
-        float projection = glm::dot(verts[i] + offset, axis);
-        if (projection < mnLocal) mnLocal = projection;
-        if (projection > mxLocal) mxLocal = projection;
-    }
-    return { mnLocal, mxLocal };
-#else
     float min = glm::dot(verts[0] + offset, axis);
     float max = min;
-    for (size_t i = 1; i < verts.size(); ++i) {
-        float projection = glm::dot(verts[i] + offset, axis);
+    for (const auto& vert : verts) {
+        float projection = glm::dot(vert + offset, axis);
         min = glm::min(min, projection);
         max = glm::max(max, projection);
     }
     return { min, max };
-#endif
 }
 
 bool engine::Collider::satMTV(const std::vector<glm::vec3>& vertsA, const std::vector<glm::vec3>& vertsB, const std::vector<glm::vec3>& edgesA, const std::vector<glm::vec3>& edgesB, const std::vector<glm::vec3>& axesA, const std::vector<glm::vec3>& axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB) {
@@ -316,48 +315,83 @@ bool engine::Collider::satMTV(const std::vector<glm::vec3>& vertsA, const std::v
     }
     float minPenetration = std::numeric_limits<float>::max();
     glm::vec3 bestAxis(0.0f);
+
 #if defined(USE_OPENMP)
     const int m = static_cast<int>(axes.size());
     if (m == 0) return false;
-    std::vector<float> overlaps(static_cast<size_t>(m), 0.0f);
-    #pragma omp parallel for
-    for (int i = 0; i < m; ++i) {
-        float aMin, aMax, bMin, bMax;
-        const glm::vec3& axis = axes[static_cast<size_t>(i)];
-        std::tie(aMin, aMax) = projectVertsOntoAxis(vertsA, axis, offsetA);
-        std::tie(bMin, bMax) = projectVertsOntoAxis(vertsB, axis, offsetB);
-        overlaps[static_cast<size_t>(i)] = glm::min(aMax, bMax) - glm::max(aMin, bMin);
-    }
-    for (size_t i = 0; i < static_cast<size_t>(m); ++i) {
-        if (overlaps[i] <= 1e-6f) {
+    const int totalWork = m * (static_cast<int>(vertsA.size()) + static_cast<int>(vertsB.size()));
+    if (totalWork < 512) { // avoid parallel overhead for small cases
+        for (const auto& axis : axes) {
+            float aMin, aMax, bMin, bMax;
+            std::tie(aMin, aMax) = projectVertsOntoAxis(vertsA, axis, offsetA);
+            std::tie(bMin, bMax) = projectVertsOntoAxis(vertsB, axis, offsetB);
+            float overlap = glm::min(aMax, bMax) - glm::max(aMin, bMin);
+            if (overlap <= 1e-6f) {
+                return false;
+            }
+            if (overlap < minPenetration) {
+                minPenetration = overlap;
+                bestAxis = axis;
+            }
+        }
+        if (minPenetration <= 1e-6f) {
             return false;
         }
-    }
-    int bestIdx = -1;
-    #pragma omp parallel
-    {
-        float localMin = std::numeric_limits<float>::max();
-        int localIdx = -1;
-        #pragma omp for nowait
-        for (int i = 0; i < m; ++i) {
-            float overlap = overlaps[static_cast<size_t>(i)];
-            if (overlap < localMin) {
-                localMin = overlap;
-                localIdx = i;
-            }
-        }
-        #pragma omp critical
+    } else {
+        std::atomic<bool> separated{false};
+        std::vector<float> overlaps(static_cast<size_t>(m), 0.0f);
+        #pragma omp parallel
         {
-            if (localMin < minPenetration) {
-                minPenetration = localMin;
-                bestIdx = localIdx;
+            float localMin = std::numeric_limits<float>::max();
+            int localIdx = -1;
+            const int vA = static_cast<int>(vertsA.size());
+            const int vB = static_cast<int>(vertsB.size());
+
+            #pragma omp for schedule(dynamic, 1) nowait
+            for (int i = 0; i < m; ++i) {
+                if (separated.load(std::memory_order_relaxed)) continue;
+                const glm::vec3& axis = axes[static_cast<size_t>(i)];
+                float aMin = std::numeric_limits<float>::max();
+                float aMax = std::numeric_limits<float>::lowest();
+                for (int j = 0; j < vA; ++j) {
+                    float p = glm::dot(vertsA[static_cast<size_t>(j)] + offsetA, axis);
+                    if (p < aMin) {
+                        aMin = p;
+                    }
+                    if (p > aMax) {
+                        aMax = p;
+                    }
+                }
+                float bMin = std::numeric_limits<float>::max();
+                float bMax = std::numeric_limits<float>::lowest();
+                for (int j = 0; j < vB; ++j) {
+                    float p = glm::dot(vertsB[static_cast<size_t>(j)] + offsetB, axis);
+                    if (p < bMin) {
+                        bMin = p;
+                    }
+                    if (p > bMax) {
+                        bMax = p;
+                    }
+                }
+                float overlap = glm::min(aMax, bMax) - glm::max(aMin, bMin);
+                overlaps[static_cast<size_t>(i)] = overlap;
+                if (overlap <= 1e-6f) {
+                    separated.store(true, std::memory_order_relaxed);
+                } else if (overlap < localMin) {
+                    localMin = overlap;
+                    localIdx = i;
+                }
+            }
+            #pragma omp critical
+            {
+                if (localMin < minPenetration) {
+                    minPenetration = localMin;
+                    bestAxis = axes[static_cast<size_t>(localIdx)];
+                }
             }
         }
+        if (separated.load() || minPenetration <= 1e-6f) return false;
     }
-    if (minPenetration <= 1e-6f || bestIdx == -1) {
-        return false;
-    }
-    bestAxis = axes[static_cast<size_t>(bestIdx)];
 #else
     int axisIdx = 0;
     for (const auto& axis : axes) {
@@ -433,12 +467,8 @@ void engine::ConvexHullCollider::buildConvexData(const std::vector<glm::vec3>& v
         outEdgeAxes = outFaceAxes;
     }
     float centerX = 0.0f, centerY = 0.0f, centerZ = 0.0f;
-#if defined(USE_OPENMP)
-    #pragma omp parallel for reduction(+:centerX, centerY, centerZ)
-#endif
-    for (int i = 0; i < static_cast<int>(outVerts.size()); ++i) {
-        const auto& v = outVerts[static_cast<size_t>(i)];
-        centerX += v.x; centerY += v.y; centerZ += v.z;
+    for (const auto& vert : outVerts) {
+        centerX += vert.x; centerY += vert.y; centerZ += vert.z;
     }
     outCenter = glm::vec3(centerX, centerY, centerZ) / static_cast<float>(outVerts.size());
 }

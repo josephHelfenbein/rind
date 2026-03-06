@@ -289,7 +289,7 @@ float4 main(VSOutput input) : SV_Target {
     if (depth >= 0.9999) {
         float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
         float4 volumetricColor = volumetricTexture.Sample(sampleSampler, input.fragTexCoord);
-        float3 result = albedoSample + particleColor.rgb * particleColor.a + volumetricColor.rgb * volumetricColor.a;
+        float3 result = albedoSample + particleColor.rgb * particleColor.a + volumetricColor.rgb;
         return float4(ACESFilm(result), particleColor.a + volumetricColor.a);
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
@@ -385,7 +385,7 @@ float4 main(VSOutput input) : SV_Target {
     }
     float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 volumetricColor = volumetricTexture.Sample(sampleSampler, input.fragTexCoord);
-    Lo += particleColor.rgb * particleColor.a + volumetricColor.rgb * volumetricColor.a;
+    Lo += particleColor.rgb * particleColor.a + volumetricColor.rgb;
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, alpha));
     return float4(ACESFilm(Lo), alphaOut);
 }

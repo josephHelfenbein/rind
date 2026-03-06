@@ -80,8 +80,17 @@ void rind::WalkingEnemy::update(float deltaTime) {
         float distanceToPlayer = glm::length(toPlayer);
         switch (state) {
             case EnemyState::Spawning: {
-                size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
-                if (hits > 0 && hits <= 2) {
+                size_t hits = engine::Collider::raycast(
+                    getEntityManager(),
+                    getWorldPosition(),
+                    glm::vec3(0.0f, -1.0f, 0.0f),
+                    5.0f,
+                    getCollider(),
+                    false,
+                    0.1f,
+                    true // getAny returns on first hit
+                ).size();
+                if (hits > 0) {
                     state = EnemyState::Idle;
                 } else if (firstFrame) {
                     rotateToPlayer();
@@ -126,8 +135,17 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     float mid = (backupSearchLo + backupSearchHi) * 0.5f;
                     glm::vec3 testPos = getWorldPosition() + backward * mid;
                     glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                    size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, getCollider()).size();
-                    if (hits > 0 && hits <= 2) {
+                    size_t hits = engine::Collider::raycast(
+                        getEntityManager(),
+                        rayOrigin,
+                        glm::vec3(0.0f, -1.0f, 0.0f),
+                        5.0f,
+                        getCollider(),
+                        false,
+                        0.1f,
+                        true
+                    ).size();
+                    if (hits > 0) {
                         cachedMaxSafeBackup = mid;
                         backupSearchLo = mid;
                     } else {
@@ -219,7 +237,16 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
                 glm::vec3 testPos = getWorldPosition() + right * strafeDir * 2.0f;
                 glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                size_t hits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, this->getCollider()).size();
+                size_t hits = engine::Collider::raycast(
+                    getEntityManager(),
+                    rayOrigin,
+                    glm::vec3(0.0f, -1.0f, 0.0f),
+                    5.0f,
+                    getCollider(),
+                    false,
+                    0.1f,
+                    true
+                ).size();
                 if (hits > 0 && hits <= 2) {
                     if (getPressed().x != strafeDir) {
                         stopMove(getPressed(), false);
@@ -247,8 +274,17 @@ void rind::WalkingEnemy::wander() {
         glm::vec3 goal = glm::vec3(cos(direction), 0.0f, sin(direction)) * amount;
         glm::vec3 worldGoal = getWorldPosition() + goal;
         glm::vec3 rayOrigin = worldGoal + glm::vec3(0.0f, 2.0f, 0.0f);
-        size_t rayHits = engine::Collider::raycast(getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), 5.0f).size();
-        if (rayHits > 0 && rayHits <= 2 ) {
+        size_t rayHits = engine::Collider::raycast(
+            getEntityManager(),
+            rayOrigin,
+            glm::vec3(0.0f, -1.0f, 0.0f),
+            5.0f,
+            getCollider(),
+            false,
+            0.1f,
+            true // getAny returns on first hit
+        ).size();
+        if (rayHits > 0) {
             wanderTarget = worldGoal;
             wandering = true;
             break;

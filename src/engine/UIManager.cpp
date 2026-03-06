@@ -582,7 +582,7 @@ engine::LayoutRect engine::UIManager::toPixelRect(const LayoutRect& designRect, 
 };
 
 void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t frameIndex) {
-    std::set<GraphicsShader*>& shaders = node.shaders;
+    std::unordered_set<GraphicsShader*>& shaders = node.shaders;
     const glm::vec2 swapExtentF = glm::vec2(renderer->getSwapChainExtent().width, renderer->getSwapChainExtent().height);
     float contentScale = 1.0f;
 #ifdef __APPLE__

@@ -115,7 +115,16 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 yVel = std::clamp(yVel, -10.0f, 10.0f);
                 if (yVel < 0.0f) {
                     float groundCheckDist = std::abs(yVel * deltaTime) + 1.5f;
-                    size_t groundHits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), glm::vec3(0.0f, -1.0f, 0.0f), groundCheckDist, this->getCollider()).size();
+                    size_t groundHits = engine::Collider::raycast(
+                        getEntityManager(),
+                        getWorldPosition(),
+                        glm::vec3(0.0f, -1.0f, 0.0f),
+                        groundCheckDist,
+                        this->getCollider(),
+                        false,
+                        0.1f,
+                        true // getAny returns on first hit
+                    ).size();
                     if (groundHits > 0) {
                         yVel = 0.0f;
                     }
@@ -199,7 +208,15 @@ void rind::FlyingEnemy::update(float deltaTime) {
                 }
                 float strafeDir = randX > 0.0f ? 1.0f : -1.0f;
                 glm::vec3 right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-                size_t hits = engine::Collider::raycast(getEntityManager(), getWorldPosition(), right * strafeDir, 2.0f, this->getCollider()).size();
+                size_t hits = engine::Collider::raycast(
+                    getEntityManager(),
+                    getWorldPosition(),
+                    right * strafeDir, 2.0f,
+                    this->getCollider(),
+                    false,
+                    0.1f,
+                    true
+                ).size();
                 if (hits > 0) {
                     if (getPressed().x != strafeDir) {
                         stopMove(getPressed(), false);
@@ -304,7 +321,7 @@ void rind::FlyingEnemy::wanderTo(float deltaTime) {
 }
 
 void rind::FlyingEnemy::shoot() {
-    glm::vec3 rayDir = -glm::normalize(glm::vec3(glm::rotate(getHead()->getWorldTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))[2]));
+    glm::vec3 rayDir = glm::normalize(glm::vec3(getHead()->getWorldTransform()[0]));
     glm::vec3 gunPos = gunEndPosition->getWorldPosition();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),

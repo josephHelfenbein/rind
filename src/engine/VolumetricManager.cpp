@@ -186,13 +186,10 @@ void engine::VolumetricManager::updateVolumetricBuffer(uint32_t currentFrame) {
         vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
         createVolumetricDescriptorSets();
     }
-    std::vector<VolumetricGPU> gpuData;
-    gpuData.reserve(volumetrics.size());
-    for (const auto& volumetric : volumetrics) {
-        gpuData.push_back(volumetric->getGPUData());
+    VolumetricGPU* gpuData = static_cast<VolumetricGPU*>(volumetricBuffersMapped[currentFrame]);
+    for (size_t i = 0; i < volumetrics.size(); ++i) {
+        gpuData[i] = volumetrics[i]->getGPUData();
     }
-    if (gpuData.empty()) return;
-    memcpy(volumetricBuffersMapped[currentFrame], gpuData.data(), gpuData.size() * sizeof(VolumetricGPU));
 }
 
 void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer, uint32_t currentFrame) {

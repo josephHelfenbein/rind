@@ -17,7 +17,7 @@ rind::Enemy::Enemy(engine::EntityManager* entityManager, rind::Player* player, c
     }
 
 void rind::Enemy::shoot() {
-    glm::vec3 rayDir = -glm::normalize(glm::vec3(glm::rotate(getHead()->getWorldTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))[2]));
+    glm::vec3 rayDir = glm::normalize(glm::vec3(getHead()->getWorldTransform()[0]));
     glm::vec3 gunPos = gunEndPosition->getWorldPosition();
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
@@ -90,7 +90,7 @@ void rind::Enemy::update(float deltaTime) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
         glm::vec3 velocityOffset = getVelocity() * deltaTime;
         glm::vec3 currentGunEndPos = glm::vec3(gunEndPosition->getWorldTransform()[3]) + velocityOffset;
-        glm::vec3 rayDir = -glm::normalize(glm::vec3(getHead()->getWorldTransform()[2]));
+        glm::vec3 rayDir = -glm::normalize(glm::vec3(glm::rotate(getHead()->getWorldTransform(), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))[2]));
         if (trailFramesRemaining == maxTrailFrames) {
             volumetricManager->createVolumetric(
                 glm::scale(
@@ -105,7 +105,7 @@ void rind::Enemy::update(float deltaTime) {
                     ),
                     glm::vec3(1.6f, 1.6f, 1.6f)
                 ),
-                glm::vec4(glm::min(getTrailColor() + glm::vec3(0.1f), glm::vec3(1.0f)), 12.0f),
+                glm::vec4(glm::min(getTrailColor() + glm::vec3(0.1f), glm::vec3(1.0f)), 15.0f),
                 0.1f
             );
             volumetricManager->createVolumetric(

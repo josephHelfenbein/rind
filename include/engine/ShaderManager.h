@@ -7,13 +7,12 @@
 #include <memory>
 #include <typeindex>
 #include <optional>
-#include <set>
+#include <unordered_set>
 #include <functional>
 #include <smaa/Textures/AreaTex.h>
 #include <smaa/Textures/SearchTex.h>
 
 namespace engine {
-
     struct ShaderStageInfo {
         std::string path;
         VkShaderStageFlagBits stage;
@@ -112,8 +111,24 @@ namespace engine {
         void createPipeline(engine::Renderer* renderer);
         void createDescriptorPool(engine::Renderer* renderer);
         void updateDescriptorSets(engine::Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers);
-    };
 
+        bool operator==(const GraphicsShader& other) const {
+            return name == other.name;
+        }
+    };
+};
+
+// add hash specialization for GraphicsShader to allow usage in unordered_set for RenderNode
+namespace std {
+    template <>
+    struct std::hash<engine::GraphicsShader> {
+    std::size_t operator()(const engine::GraphicsShader& shader) const {
+            return std::hash<std::string>()(shader.name);
+        }
+    };
+};
+
+namespace engine {
     struct ComputeShader {
         std::string name;
         ShaderStageInfo compute;
@@ -148,7 +163,7 @@ namespace engine {
     struct RenderNode {
         bool is2D = false;
         PassInfo* passInfo = nullptr;
-        std::set<GraphicsShader*> shaders;
+        std::unordered_set<GraphicsShader*> shaders;
         std::vector<std::string> shaderNames;
     };
     struct RenderGraph {

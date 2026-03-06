@@ -1,6 +1,7 @@
 #pragma once
 #include <engine/Renderer.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/glm_element_traits.hpp>
@@ -22,6 +23,9 @@ namespace engine {
             int parentIndex = -1;
             glm::mat4 inverseBindMatrix;
             glm::mat4 localTransform;
+            glm::vec3 localTranslation{0.0f};
+            glm::quat localRotation{1.0f, 0.0f, 0.0f, 0.0f};
+            glm::vec3 localScale{1.0f};
         };
         struct AnimationSampler {
             std::vector<float> inputTimes;

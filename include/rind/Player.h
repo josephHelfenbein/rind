@@ -34,6 +34,7 @@ namespace rind {
         engine::Entity* gunModel = nullptr;
         engine::Entity* playerModel = nullptr;
         engine::Entity* camHolder = nullptr;
+        engine::Entity* playerShadow = nullptr;
 
         bool canDoubleJump = false;
         bool resetDoubleJump = false;

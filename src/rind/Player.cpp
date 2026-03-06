@@ -106,7 +106,7 @@ rind::Player::Player(engine::EntityManager* entityManager, engine::InputManager*
         playerModel->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot-visible"));
         addChild(playerModel);
         playerModel->playAnimation("Run", true, 1.0f);
-        engine::Entity* playerShadow = new engine::Entity(
+        playerShadow = new engine::Entity(
             entityManager,
             "playerShadow",
             "shadow",
@@ -207,15 +207,15 @@ void rind::Player::update(float deltaTime) {
     if (speed > 0.1f) {
         if (playerModel->getAnimationState().currentAnimation != "Run") {
             playerModel->playAnimation("Run", true, speed / 5.0f);
-            playerModel->getChildByName("playerShadow")->playAnimation("Run", true, speed / 5.0f);
+            playerShadow->playAnimation("Run", true, speed / 5.0f);
         } else {
             playerModel->getAnimationState().playbackSpeed = speed / 5.0f;
-            playerModel->getChildByName("playerShadow")->getAnimationState().playbackSpeed = speed / 5.0f;
+            playerShadow->getAnimationState().playbackSpeed = speed / 5.0f;
         }
     } else {
         if (playerModel->getAnimationState().currentAnimation != "Idle") {
             playerModel->playAnimation("Idle", true, 1.0f);
-            playerModel->getChildByName("playerShadow")->playAnimation("Idle", true, 1.0f);
+            playerShadow->playAnimation("Idle", true, 1.0f);
         }
     }
     engine::CharacterEntity::update(deltaTime);
@@ -229,7 +229,7 @@ void rind::Player::update(float deltaTime) {
     if (currentGunLocOffset != glm::vec3(0.0f)) {
         currentGunLocOffset -= currentGunLocOffset * deltaTime * 8.0f;
     }
-    glm::vec3 localVelocity = glm::inverse(glm::mat3(camera->getWorldTransform())) * getVelocity();
+    glm::vec3 localVelocity = glm::transpose(glm::mat3(camera->getWorldTransform())) * getVelocity();
     if (localVelocity != glm::vec3(0.0f)) {
         currentGunLocOffset -= localVelocity * deltaTime * 0.05f;
     }
@@ -292,7 +292,7 @@ void rind::Player::update(float deltaTime) {
                     ),
                     glm::vec3(1.3f, 1.3f, 1.3f)
                 ),
-                glm::vec4(1.0f, 0.2f, 0.2f, 12.0f),
+                glm::vec4(1.0f, 0.2f, 0.2f, 15.0f),
                 0.1f
             );
             volumetricManager->createVolumetric(

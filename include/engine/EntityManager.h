@@ -105,6 +105,13 @@ namespace engine {
         Model* model = nullptr;
         AnimationState animState;
         std::vector<glm::mat4> jointMatrices;
+        std::vector<glm::vec3> localTranslations;
+        std::vector<glm::quat> localRotations;
+        std::vector<glm::vec3> localScales;
+        std::vector<glm::vec3> prevTranslations;
+        std::vector<glm::quat> prevRotations;
+        std::vector<glm::vec3> prevScales;
+        std::vector<glm::mat4> globalTransforms;
 
         bool castShadow = true;
 

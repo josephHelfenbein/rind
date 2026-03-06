@@ -1,6 +1,8 @@
 #include <engine/ModelManager.h>
 
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <unordered_map>
 
@@ -82,12 +84,18 @@ void engine::Model::loadFromFile() {
                 glm::vec3 translation(trs->translation[0], trs->translation[1], trs->translation[2]);
                 glm::quat rotation(trs->rotation[3], trs->rotation[0], trs->rotation[1], trs->rotation[2]);
                 glm::vec3 scale(trs->scale[0], trs->scale[1], trs->scale[2]);
+                joint.localTranslation = translation;
+                joint.localRotation = rotation;
+                joint.localScale = scale;
                 glm::mat4 T = glm::translate(glm::mat4(1.0f), translation);
                 glm::mat4 R = glm::mat4_cast(rotation);
                 glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
                 joint.localTransform = T * R * S;
             } else if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&node.transform)) {
                 std::memcpy(&joint.localTransform, mat, sizeof(glm::mat4));
+                glm::vec3 skew;
+                glm::vec4 perspective;
+                glm::decompose(joint.localTransform, joint.localScale, joint.localRotation, joint.localTranslation, skew, perspective);
             }
             joint.parentIndex = -1;
             for (size_t j = 0; j < gltf.nodes.size(); ++j) {

@@ -55,16 +55,22 @@ float vnoise(float3 p) {
     );
 }
 
-float fbm(float3 p) {
-    return vnoise(p) * 0.500 + vnoise(p * 2.0) * 0.250 + vnoise(p * 4.0) * 0.125 + vnoise(p * 8.0) * 0.063 + vnoise(p * 16.0) * 0.031;
+float fbm(float3 p, int octaves) {
+    float v = 0.0;
+    float amp = 0.500;
+    float freq = 1.0;
+    if (octaves >= 1) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }
+    if (octaves >= 2) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }
+    if (octaves >= 3) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }
+    if (octaves >= 4) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }
+    if (octaves >= 5) { v += vnoise(p * freq) * amp; }
+    return v;
 }
 
-float sampleDensity(float3 localPos, float age, float lifetime) {
-    float t = age / max(lifetime, 0.0001);
+float sampleDensity(float3 localPos, float age, float ageFade, int fbmOctaves) {
     float radial = exp(-dot(localPos, localPos) * 12.0);
     float3 noiseCoord = localPos * 6.0 + float3(0.0, age * 0.4, age * 0.15);
-    float n = fbm(noiseCoord);
-    float ageFade = pow(saturate(1.0 - t), 1.8);
+    float n = fbm(noiseCoord, fbmOctaves);
     return radial * n * ageFade;
 }
 
@@ -86,11 +92,32 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     tNear = max(tNear, 0.0);
     if (tFar <= tNear) discard;
 
+    float3 entryWorld = mul(float4(localOrigin + tNear * localDir, 1.0), vol.model).xyz;
+    float4 entryClip = mul(float4(entryWorld, 1.0), pc.viewProj);
+    float entryClipD = entryClip.z / entryClip.w;
+    float2 entryUV = saturate(entryClip.xy / entryClip.w * 0.5 + 0.5);
+    float preSceneD = depthTexture.SampleLevel(depthSampler, entryUV, 0);
+
+    if (preSceneD < 1.0) {
+        if (entryClipD >= preSceneD) discard; // fully occluded
+
+        float3 exitWorld = mul(float4(localOrigin + tFar * localDir, 1.0), vol.model).xyz;
+        float4 exitClip  = mul(float4(exitWorld, 1.0), pc.viewProj);
+        float  exitClipD = exitClip.z / exitClip.w;
+
+        if (exitClipD > preSceneD) { // partially occluded
+            float depthFrac = saturate((preSceneD - entryClipD) / (exitClipD - entryClipD));
+            tFar = lerp(tNear, tFar, depthFrac);
+        }
+    }
+
     float3 volCenter = vol.model[3].xyz;
     float camDist = length(volCenter - pc.camPos);
     float lodT = saturate((camDist - LOD_NEAR) / (LOD_FAR - LOD_NEAR));
     int maxSteps = (int) lerp(64.0, 8.0,  lodT);
     float baseDivs = lerp(24.0, 6.0, lodT);
+    int fbmOctaves = (int) lerp(5.0, 2.0, lodT);
+    bool doRefinement = lodT < 0.7;
 
     float totalLen = tFar - tNear;
     float baseStep = totalLen / baseDivs;
@@ -99,8 +126,12 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 tint = vol.color.rgb;
 
     float4 accum = float4(0.0, 0.0, 0.0, 0.0);
-    float t = tNear;
+    float jitter = hash3(float3(fragCoord.xy, vol.age)) * baseStep;
+    float t = tNear + jitter;
     float stepSize = baseStep;
+    float time = vol.age / max(vol.lifetime, 0.0001);
+    float x = saturate(1.0 - time);
+    float ageFade = x * x * (1.0 + 0.2 * x);
     int steps = 0;
 
     [loop]
@@ -108,22 +139,14 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
         steps++;
         if (accum.a >= 0.99) break;
         float3 localMid = localOrigin + (t + stepSize * 0.5) * localDir;
-
-        float3 worldMid = mul(float4(localMid, 1.0), vol.model).xyz;
-        float4 clipMid = mul(float4(worldMid,  1.0), pc.viewProj);
-        float2 depthUV = saturate(clipMid.xy / clipMid.w * 0.5 + 0.5);
-        float sceneD = depthTexture.SampleLevel(depthSampler, depthUV, 0);
-        float sampleD = clipMid.z / clipMid.w;
-        if (sceneD < 1.0 && sampleD > sceneD) break;
-
-        float density = sampleDensity(localMid, vol.age, vol.lifetime);
+        float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves);
         if (density <= THRESHOLD) {
             stepSize = min(stepSize * 1.5, maxStep);
             t += stepSize;
             continue;
         }
 
-        if (stepSize > baseStep * 1.1) {
+        if (doRefinement && stepSize > baseStep * 1.1) {
             t = max(t - stepSize * 0.5, tNear);
             stepSize = baseStep;
             continue;

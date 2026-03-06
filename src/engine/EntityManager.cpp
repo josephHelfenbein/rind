@@ -7,7 +7,6 @@
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
-#include <glm/gtx/matrix_decompose.hpp>
 
 void engine::EntityManager::addCollider(Collider* collider) {
     colliders.push_back(collider);
@@ -211,19 +210,16 @@ void engine::Entity::updateAnimation(float deltaTime) {
     if (jointMatrices.size() != skeleton.size()) {
         jointMatrices.resize(skeleton.size(), glm::mat4(1.0f));
     }
-    std::vector<glm::vec3> localTranslations(skeleton.size());
-    std::vector<glm::quat> localRotations(skeleton.size());
-    std::vector<glm::vec3> localScales(skeleton.size());
+    localTranslations.resize(skeleton.size());
+    localRotations.resize(skeleton.size());
+    localScales.resize(skeleton.size());
     
     for (size_t i = 0; i < skeleton.size(); ++i) {
         const engine::Model::Joint& joint = skeleton[i];
-        glm::vec3 skew;
-        glm::vec4 perspective;
-        glm::decompose(joint.localTransform, localScales[i], localRotations[i], localTranslations[i], skew, perspective);
+        localTranslations[i] = joint.localTranslation;
+        localRotations[i] = joint.localRotation;
+        localScales[i] = joint.localScale;
     }
-    std::vector<glm::vec3> prevTranslations;
-    std::vector<glm::quat> prevRotations;
-    std::vector<glm::vec3> prevScales;
     const Model::AnimationClip* prevClip = nullptr;
     
     if (animState.blendFactor < 1.0f && !animState.prevAnimation.empty()) {
@@ -239,16 +235,9 @@ void engine::Entity::updateAnimation(float deltaTime) {
                 const engine::Model::AnimationSampler& sampler = prevClip->samplers[channel.samplerIndex];
                 if (sampler.inputTimes.empty()) continue;
                 float t = prevTime;
-                size_t keyIndex = 0;
-                for (size_t i = 0; i < sampler.inputTimes.size() - 1; ++i) {
-                    if (t >= sampler.inputTimes[i] && t < sampler.inputTimes[i + 1]) {
-                        keyIndex = i;
-                        break;
-                    }
-                    if (i == sampler.inputTimes.size() - 2) {
-                        keyIndex = i;
-                    }
-                }
+                auto it = std::lower_bound(sampler.inputTimes.begin(), sampler.inputTimes.end(), t);
+                if (it != sampler.inputTimes.begin()) --it;
+                size_t keyIndex = std::distance(sampler.inputTimes.begin(), it);
                 float t0 = sampler.inputTimes[keyIndex];
                 float t1 = sampler.inputTimes[std::min(keyIndex + 1, sampler.inputTimes.size() - 1)];
                 float factor = (t1 > t0) ? glm::clamp((t - t0) / (t1 - t0), 0.0f, 1.0f) : 0.0f;
@@ -344,7 +333,7 @@ void engine::Entity::updateAnimation(float deltaTime) {
             localScales[i] = glm::mix(prevScales[i], localScales[i], blend);
         }
     }
-    std::vector<glm::mat4> globalTransforms(skeleton.size());
+    globalTransforms.resize(skeleton.size(), glm::mat4(1.0f));
     for (size_t i = 0; i < skeleton.size(); ++i) {
         glm::mat4 T = glm::translate(glm::mat4(1.0f), localTranslations[i]);
         glm::mat4 R = glm::mat4_cast(localRotations[i]);
@@ -769,7 +758,7 @@ void engine::EntityManager::processPendingDeletions() {
 
 void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, RenderNode& node, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {
     std::vector<Entity*>& rootEntities = getRootEntities();
-    std::set<GraphicsShader*>& shaders = node.shaders;
+    std::unordered_set<GraphicsShader*>& shaders = node.shaders;
     Camera* camera = getCamera();
     if (!camera) {
         std::cout << "Warning: No camera set in EntityManager. Skipping entity rendering.\n";
