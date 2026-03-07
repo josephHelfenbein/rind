@@ -570,7 +570,7 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
         1, &toColorAttachment
     );
     
-    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particlesimple");
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipelineLayout, 0, 1, &particleManager->getDescriptorSets()[currentFrame], 0, nullptr);
 
@@ -607,14 +607,11 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
             .pColorAttachments = &colorAttachment,
         };
         renderer->getFpCmdBeginRendering()(commandBuffer, &renderingInfo);
-        ParticlePC pushConstants = {
+        SimpleParticlePC pushConstants = {
             .viewProj = viewProjs[face],
-            .screenSize = glm::vec2(static_cast<float>(cubemapSize), static_cast<float>(cubemapSize)),
-            .particleSize = 0.35f,
-            .trailWidth = 1.5f,
-            .streakScale = 0.05f
+            .particleSize = 0.1f
         };
-        vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);
+        vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SimpleParticlePC), &pushConstants);
         vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(particles.size()), 0, 0);
         renderer->getFpCmdEndRendering()(commandBuffer);
     }

@@ -320,6 +320,13 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         particlePass->images = images;
     }
 
+    // Simple Particle Pass (for irradiance maps)
+    auto simpleParticlePass = std::make_shared<PassInfo>();
+    simpleParticlePass->name = "SimpleParticlePass";
+    simpleParticlePass->usesSwapchain = false;
+    simpleParticlePass->hasDepthAttachment = false;
+    simpleParticlePass->attachmentFormats = { VK_FORMAT_R16G16B16A16_SFLOAT };
+
     // Volumetric Pass
     auto volumetricPass = std::make_shared<PassInfo>();
     volumetricPass->name = "VolumetricPass";
@@ -756,11 +763,43 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .depthWrite = false,
                 .enableDepth = false,
                 .passInfo = particlePass,
+                .blendEnable = true,
+                .blendAdditive = true,
                 .colorAttachmentCount = 1,
                 .getVertexInputDescriptions = nullptr
             }
         };
         shader.config.setPushConstant<ParticlePC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        shaders.push_back(shader);
+    }
+
+    // Simple Particle
+    {
+        GraphicsShader shader = {
+            .name = "particlesimple",
+            .vertex = { shaderPath("particlesimple.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("particlesimple.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .poolMultiplier = 1,
+                .vertexBitBindings = 1,
+                .fragmentBitBindings = 0,
+                .vertexDescriptorCounts = {
+                    1
+                },
+                .vertexDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = simpleParticlePass,
+                .blendEnable = true,
+                .blendAdditive = true,
+                .colorAttachmentCount = 1,
+                .getVertexInputDescriptions = nullptr
+            }
+        };
+        shader.config.setPushConstant<SimpleParticlePC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
         shaders.push_back(shader);
     }
 

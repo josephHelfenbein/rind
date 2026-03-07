@@ -44,7 +44,7 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float dist = length(float2(distX * 2.0, distY));
     float coreFalloff = saturate(1.0 - dist * 1.5);
     float glowFalloff = saturate(1.0 - dist * 0.8);
-    float falloff = coreFalloff * 0.7 + glowFalloff * 0.3;
+    float falloff = coreFalloff * 0.35 + glowFalloff * 0.5;
     falloff = pow(falloff, 1.5);
     float ageFade = 1.0 - input.age;
     ageFade = pow(ageFade, 0.5);

@@ -167,6 +167,14 @@ rind::Player::Player(
             glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
             "ui_healthbar_overlay"
         );
+        engine::UIObject* crosshair = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
+            "crosshair",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
+            "ui_crosshair",
+            engine::Corner::Center
+        );
         entityManager->getRenderer()->getInputManager()->registerRecreateSwapChainCallback("playerHealthbarResize", [this]() {
             this->resizeHealthbar();
         });
@@ -537,7 +545,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             particleManager->burstParticles(
                 glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
                 trailColor,
-                -glm::normalize(getVelocity()) * 20.0f,
+                -glm::normalize(getVelocity()) * 15.0f,
                 50,
                 2.0f,
                 2.0f,
@@ -546,7 +554,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
             particleManager->burstParticles(
                 glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
                 trailColor,
-                -glm::normalize(getVelocity()) * 15.0f,
+                -glm::normalize(getVelocity()) * 10.0f,
                 50,
                 2.0f,
                 2.0f,
@@ -587,7 +595,7 @@ void rind::Player::damage(float amount) {
         );
         engine::TextObject* diedText = new engine::TextObject(
             uiManager,
-            glm::mat4(1.0f), 
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f)),
             "deathWindowText",
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             "You Died!",
@@ -641,21 +649,21 @@ void rind::Player::shoot() {
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
-        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+        trailColor,
         rayDir * 10.0f,
-        10,
-        3.0f,
-        0.2f,
+        20,
+        1.5f,
+        0.35f,
         0.8f
     );
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
-        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
+        trailColor,
         rayDir * 15.0f,
-        40,
-        3.0f,
-        0.2f,
-        0.2f
+        60,
+        2.0f,
+        0.35f,
+        0.3f
     );
     std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
         getEntityManager(),
@@ -678,16 +686,16 @@ void rind::Player::shoot() {
             50,
             4.0f,
             0.5f,
-            0.8f
+            0.9f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             trailColor,
             reflectedDir * 25.0f,
-            30,
+            60,
             4.0f,
             0.4f,
-            0.5f
+            0.3f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
@@ -701,11 +709,11 @@ void rind::Player::shoot() {
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             trailColor,
-            reflectedDir * 20.0f,
-            50,
+            reflectedDir * 30.0f,
+            40,
             3.0f,
             0.35f,
-            0.3f
+            1.1f
         );
         engine::Entity* other = collision.other->getParent();
         if (other->getType() == engine::Entity::EntityType::Enemy) {

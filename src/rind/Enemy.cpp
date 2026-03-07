@@ -27,11 +27,20 @@ void rind::Enemy::shoot() {
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         getTrailColor(),
+        rayDir * 10.0f,
+        20,
+        1.5f,
+        0.35f,
+        0.8f
+    );
+    particleManager->burstParticles(
+        glm::translate(glm::mat4(1.0f), gunPos),
+        getTrailColor(),
         rayDir * 15.0f,
-        10,
-        3.0f,
-        0.3f,
-        0.7f
+        60,
+        2.0f,
+        0.35f,
+        0.3f
     );
     std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
         getEntityManager(),
@@ -54,16 +63,16 @@ void rind::Enemy::shoot() {
             50,
             4.0f,
             0.5f,
-            0.8f
+            0.9f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
             getTrailColor(),
             reflectedDir * 25.0f,
-            30,
+            60,
             4.0f,
             0.4f,
-            0.5f
+            0.3f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
@@ -73,6 +82,15 @@ void rind::Enemy::shoot() {
             2.0f,
             0.3f,
             0.7f
+        );
+        particleManager->burstParticles(
+            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            getTrailColor(),
+            reflectedDir * 30.0f,
+            40,
+            3.0f,
+            0.35f,
+            1.1f
         );
         engine::Entity* other = collision.other->getParent();
         if (other->getType() == engine::Entity::EntityType::Player) {
@@ -238,7 +256,7 @@ void rind::Enemy::damage(float amount) {
             glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
             getTrailColor(),
             glm::vec3(0.0f, 1.0f, 0.0f) * 5.0f,
-            200,
+            250,
             5.0f,
             0.5f,
             0.5f
@@ -247,10 +265,28 @@ void rind::Enemy::damage(float amount) {
             glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
             getTrailColor(),
             glm::vec3(0.0f, 1.0f, 0.0f) * 10.0f,
-            200,
-            8.0f,
+            160,
+            7.0f,
             1.0f,
             1.0f
+        );
+        particleManager->burstParticles(
+            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getTrailColor(),
+            glm::vec3(0.0f, 1.0f, 0.0f) * 11.0f,
+            50,
+            5.0f,
+            1.0f,
+            1.5f
+        );
+        particleManager->burstParticles(
+            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getTrailColor(),
+            glm::vec3(0.0f, 1.0f, 0.0f) * 12.0f,
+            100,
+            6.0f,
+            2.0f,
+            0.3f
         );
         audioManager->playSound3D("enemy_death", getWorldPosition(), 1.2f, 0.15F);
         getEntityManager()->markForDeletion(this);

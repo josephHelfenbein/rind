@@ -188,14 +188,6 @@ rind::GameInstance::GameInstance() {
         engine::SceneManager* sceneManager = renderer->getSceneManager();
         engine::EntityManager* entityManager = renderer->getEntityManager();
         engine::UIManager* uiManager = renderer->getUIManager();
-        engine::UIObject* crosshair = new engine::UIObject(
-            uiManager,
-            glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)),
-            "crosshair",
-            glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
-            "ui_crosshair",
-            engine::Corner::Center
-        );
         std::vector<std::string> rockMaterial = {
             "materials_rock_albedo",
             "materials_rock_metallic",
@@ -511,6 +503,13 @@ rind::GameInstance::GameInstance() {
             }
         }
     );
+}
+
+rind::GameInstance::~GameInstance() {
+    entityManager->clear();
+    uiManager->clear();
+    particleManager->clear();
+    volumetricManager->clear();
 }
 
 void rind::GameInstance::run() {

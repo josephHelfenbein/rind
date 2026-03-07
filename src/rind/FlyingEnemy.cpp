@@ -336,9 +336,19 @@ void rind::FlyingEnemy::shoot() {
     particleManager->burstParticles(
         glm::translate(glm::mat4(1.0f), gunPos),
         getTrailColor(),
+        rayDir * 10.0f,
+        20,
+        1.5f,
+        0.35f,
+        0.8f
+    );
+    particleManager->burstParticles(
+        glm::translate(glm::mat4(1.0f), gunPos),
+        getTrailColor(),
         rayDir * 15.0f,
-        10,
-        3.0f,
+        60,
+        2.0f,
+        0.35f,
         0.3f
     );
     volumetricManager->createVolumetric(

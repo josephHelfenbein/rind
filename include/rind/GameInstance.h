@@ -18,7 +18,7 @@ namespace rind {
     class GameInstance {
     public:
         GameInstance();
-        ~GameInstance() = default;
+        ~GameInstance();
         void run();
 
         uint32_t getDifficultyLevel() const { return difficulty; }

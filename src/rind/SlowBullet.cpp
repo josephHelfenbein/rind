@@ -1,6 +1,7 @@
 #include <rind/SlowBullet.h>
 #include <rind/Player.h>
 #include <rind/Enemy.h>
+#include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
 
 #define PI 3.14159265358979323846f
@@ -77,16 +78,16 @@ void rind::SlowBullet::update(float deltaTime) {
             50,
             4.0f,
             0.5f,
-            0.3f
+            0.9f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
             color,
             reflectedDir * 25.0f,
-            30,
+            60,
             4.0f,
             0.4f,
-            1.0f
+            0.3f
         );
         particleManager->burstParticles(
             glm::translate(glm::mat4(1.0f), hitPoint),
@@ -94,34 +95,81 @@ void rind::SlowBullet::update(float deltaTime) {
             reflectedDir * 10.0f,
             50,
             2.0f,
-            0.8f,
+            0.3f,
             0.7f
+        );
+        particleManager->burstParticles(
+            glm::translate(glm::mat4(1.0f), hitPoint),
+            color,
+            reflectedDir * 30.0f,
+            40,
+            3.0f,
+            0.35f,
+            1.1f
         );
         getEntityManager()->markForDeletion(this);
     } else {
-        float sizeFactor = dist(rng) * 0.375 + 0.625f; // 0.25 to 1.0
-        particleManager->burstParticles(
-            getWorldTransform(),
-            color,
-            -velocity * 0.5f,
-            2,
-            1.0f,
-            0.8f,
-            sizeFactor
+        engine::Camera* camera = getEntityManager()->getCamera();
+        if (!camera) {
+            return;
+        }
+        float distanceToCamera = glm::length(getWorldPosition() - camera->getWorldPosition());
+        if (distanceToCamera > 60.0f) {
+            getEntityManager()->markForDeletion(this);
+            return;
+        }
+        if (!camera->isSphereInFrustum(getWorldPosition(), 1.0f)) {
+            particleManager->burstParticles(
+                getWorldTransform(),
+                color,
+                glm::vec3(0.0f, 1.0f, 0.0f) * 0.5f,
+                2,
+                1.0f,
+                2.0f,
+                0.5f
+            );
+        }
+        float sizeFactor = dist(rng) * 0.2f + 0.4f; // 0.2 to 0.6
+        float randomPhi = dist(rng) * 2.0f * PI;
+        float randomCostheta = dist(rng) * 2.0f - 1.0f;
+        float randomSintheta = sqrt(1.0f - randomCostheta * randomCostheta);
+        glm::vec3 randomDir = glm::vec3(
+            cos(randomPhi) * randomSintheta,
+            sin(randomPhi) * randomSintheta,
+            randomCostheta
         );
+        if (distanceToCamera > 30.0f) {
+            particleManager->burstParticles(
+                getWorldTransform(),
+                color,
+                randomDir * 2.0f,
+                2,
+                1.0f,
+                0.8f,
+                sizeFactor
+            );
+        } else {
+            particleManager->burstParticles(
+                getWorldTransform(),
+                color,
+                randomDir * 2.0f,
+                4,
+                1.0f,
+                0.8f,
+                sizeFactor
+            );
+        }
         float streakRoll = dist(rng) + 1.0f;
-        if (streakRoll > 1.9f) {
-            glm::vec3 rotAxis = glm::normalize(glm::vec3(dist(rng), dist(rng), dist(rng)));
+        if (streakRoll > 1.8f) {
             float rotAmount = dist(rng) * 2.0f * PI;
-            glm::mat4 rot = glm::rotate(glm::mat4(1.0f), rotAmount, rotAxis);
+            glm::mat4 rot = glm::rotate(glm::mat4(1.0f), rotAmount, randomDir);
             glm::vec3 offset = glm::vec3(rot * glm::vec4(0.25f, 0.0f, 0.0f, 1.0f));
             glm::vec3 startPos = getWorldPosition() + offset;
-            glm::mat4 rot2 = glm::rotate(glm::mat4(1.0f), rotAmount + 0.25f, rotAxis);
+            glm::mat4 rot2 = glm::rotate(glm::mat4(1.0f), rotAmount + 0.25f, randomDir);
             glm::vec3 endOffset = glm::vec3(rot2 * glm::vec4(0.25f, 0.0f, 0.0f, 1.0f));
             glm::vec3 endPos = getWorldPosition() + endOffset;
-            particleManager->spawnTrail(startPos, glm::normalize(endPos - startPos), color, 0.3f);
+            particleManager->spawnTrail(startPos, glm::normalize(endPos - startPos), color, 0.2f);
         }
-        float audioRoll = dist(rng) + 1.0f;
         if (streakRoll > 1.95f) {
             std::string choice = streakRoll >= 1.97 ? "1" : "2";
             audioManager->playSound3D("slowbullet_sound_" + choice, getWorldPosition(), 0.4f, 0.5F);

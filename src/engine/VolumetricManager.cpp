@@ -192,8 +192,15 @@ void engine::VolumetricManager::updateVolumetricBuffer(uint32_t currentFrame) {
         createVolumetricDescriptorSets();
     }
     VolumetricGPU* gpuData = static_cast<VolumetricGPU*>(volumetricBuffersMapped[currentFrame]);
+    Camera* camera = renderer->getEntityManager()->getCamera();
+    if (!camera) return;
+    visibleVolumetrics = 0;
     for (size_t i = 0; i < volumetrics.size(); ++i) {
-        gpuData[i] = volumetrics[i]->getGPUData();
+        const VolumetricGPU& curr = volumetrics[i]->getGPUData();
+        float scale = glm::length(glm::vec3(curr.model[0])); // assuming uniform scale
+        if (camera->isSphereInFrustum(curr.model[3], scale)) {
+            gpuData[visibleVolumetrics++] = curr;
+        }
     }
 }
 
@@ -212,7 +219,7 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VolumetricPC), &pushConstants);
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeVertexBuffer, &offset);
-    vkCmdDraw(commandBuffer, 36, static_cast<uint32_t>(volumetrics.size()), 0, 0);
+    vkCmdDraw(commandBuffer, 36, static_cast<uint32_t>(visibleVolumetrics), 0, 0);
 }
 
 void engine::VolumetricManager::updateAll(float deltaTime) {

@@ -44,6 +44,7 @@ namespace engine {
         void setPrevPosition(const glm::vec3& pos) { prevPosition = pos; }
         void setPrevPrevPosition(const glm::vec3& pos) { prevPrevPosition = pos; }
         void setAge(float a) { age = a; }
+        const glm::mat4& getTransform() const { return transform; }
 
         void markForDeletion() { markedForDeletion = true; }
         bool isMarkedForDeletion() const { return markedForDeletion; }
@@ -94,12 +95,13 @@ namespace engine {
 
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
-
+        
         std::vector<VkBuffer> particleBuffers;
         std::vector<VkDeviceMemory> particleBufferMemory;
         std::vector<void*> particleBuffersMapped;
         std::vector<VkDescriptorSet> descriptorSets;
-
+        
+        uint32_t visibleCount = 0;
         uint32_t maxParticles = 5000;
         uint32_t hardCap = 100000;
     };

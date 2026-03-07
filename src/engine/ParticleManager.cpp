@@ -349,8 +349,19 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
         createParticleDescriptorSets();
     }
     ParticleGPU* gpuData = static_cast<ParticleGPU*>(particleBuffersMapped[currentFrame]);
+    visibleCount = 0;
+    uint32_t backIdx = static_cast<uint32_t>(particles.size());
+    Camera* camera = renderer->getEntityManager()->getCamera();
+    if (!camera) return;
     for (size_t i = 0; i < particles.size(); ++i) {
-        gpuData[i] = particles[i]->getGPUData();
+        if (camera->isSphereInFrustum(glm::vec3(particles[i]->getTransform()[3]), 0.1f)) {
+            gpuData[visibleCount++] = particles[i]->getGPUData();
+        } else {
+            gpuData[--backIdx] = particles[i]->getGPUData();
+        }
+    }
+    for (size_t i = visibleCount; i < particles.size(); ++i) {
+        gpuData[i] = gpuData[backIdx++];
     }
 }
 
@@ -365,12 +376,12 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
     ParticlePC pushConstants = {
         .viewProj = camera->getViewProjectionMatrix(),
         .screenSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
-        .particleSize = 0.03f,
+        .particleSize = 0.022f,
         .trailWidth = 0.03f,
         .streakScale = 0.0005f
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pushConstants);
-    vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(particles.size()), 0, 0);
+    vkCmdDraw(commandBuffer, 4, static_cast<uint32_t>(visibleCount), 0, 0);
 }
 
 void engine::ParticleManager::updateAll(float deltaTime) {

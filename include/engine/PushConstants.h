@@ -83,6 +83,12 @@ namespace engine {
         float pad;
     };
 
+    struct SimpleParticlePC {
+        glm::mat4 viewProj;
+        float particleSize;
+        float pad[3];
+    };
+
     struct VolumetricPC {
         glm::mat4 viewProj;
         glm::vec3 camPos;

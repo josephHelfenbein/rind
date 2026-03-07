@@ -49,6 +49,8 @@ namespace engine {
             };
         }
 
+        const glm::mat4& getFinalTransform() const { return finalTransform; }
+
         void detachFromManager() { volumetricManager = nullptr; }
 
         void markForDeletion() { markedForDeletion = true; }
@@ -95,6 +97,7 @@ namespace engine {
         std::vector<void*> volumetricBuffersMapped;
         std::vector<VkDescriptorSet> descriptorSets;
 
+        uint32_t visibleVolumetrics = 0;
         uint32_t maxVolumetrics = 100;
         uint32_t hardCap = 5000;
 
