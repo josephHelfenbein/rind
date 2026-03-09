@@ -107,6 +107,24 @@ void engine::InputManager::processInput(GLFWwindow* window) {
                 };
                 events.push_back(event);
             }
+            int newZone = (value > axisDeadzone) ? 1 : (value < -axisDeadzone) ? -1 : 0;
+            if (newZone != gamepadAxisZones[axis]) {
+                if (gamepadAxisZones[axis] != 0) {
+                    InputEvent releaseEvent = {
+                        .type = InputEvent::Type::GamepadAxisRelease,
+                        .gamepadAxisEvent = { axis, static_cast<float>(gamepadAxisZones[axis]) }
+                    };
+                    events.push_back(releaseEvent);
+                }
+                if (newZone != 0) {
+                    InputEvent pressEvent = {
+                        .type = InputEvent::Type::GamepadAxisPress,
+                        .gamepadAxisEvent = { axis, static_cast<float>(newZone) }
+                    };
+                    events.push_back(pressEvent);
+                }
+                gamepadAxisZones[axis] = newZone;
+            }
             gamepadAxisStates[axis] = value;
             if (isUIFocused && controllerMode) {
                 if (axis == GLFW_GAMEPAD_AXIS_RIGHT_X || axis == GLFW_GAMEPAD_AXIS_RIGHT_Y) {
@@ -115,8 +133,8 @@ void engine::InputManager::processInput(GLFWwindow* window) {
                         float sensitivity = renderer->getSettingsManager()->getSettings()->sensitivity;
                         glfwGetWindowSize(renderer->getWindow(), &ww, &wh);
                         fakeControllerCursor += glm::dvec2(
-                            (axis == GLFW_GAMEPAD_AXIS_RIGHT_X ? value : 0.0) * sensitivity,
-                            (axis == GLFW_GAMEPAD_AXIS_RIGHT_Y ? value : 0.0) * sensitivity
+                            (axis == GLFW_GAMEPAD_AXIS_RIGHT_X ? value : 0.0) * sensitivity * 1000.0f,
+                            (axis == GLFW_GAMEPAD_AXIS_RIGHT_Y ? value : 0.0) * sensitivity * 1000.0f
                         );
                         fakeControllerCursor = glm::clamp(fakeControllerCursor, glm::dvec2(0.0), glm::dvec2(ww, wh));
                     }
@@ -193,5 +211,8 @@ void engine::InputManager::resetKeyStates() {
     }
     for (float& state : gamepadAxisStates) {
         state = 0.0f;
+    }
+    for (int& zone : gamepadAxisZones) {
+        zone = 0;
     }
 }

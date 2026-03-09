@@ -238,6 +238,10 @@ void rind::Player::update(float deltaTime) {
             playerShadow->playAnimation("Idle", true, 1.0f);
         }
     }
+    if ((rightStickX != 0.0f || rightStickY != 0.0f) && inputManager->getCursorLocked()) {
+        float sensitivity = getEntityManager()->getRenderer()->getSettingsManager()->getSettings()->sensitivity;
+        rotate(glm::vec3(0.0f, -rightStickX * sensitivity * 10.0f, -rightStickY * sensitivity * 10.0f));
+    }
     rind::CharacterEntity::update(deltaTime);
     if (currentGunRotOffset != glm::vec3(0.0f)) {
         currentGunRotOffset -= currentGunRotOffset * deltaTime * 8.0f;
@@ -580,49 +584,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     }
                     break;
                 case GLFW_GAMEPAD_BUTTON_B:
-                    canDash = true;
-                    break;
-                default:
-                    break;
-            }
-        } else if (event.type == engine::InputEvent::Type::GamepadAxisMove) {
-            switch (event.gamepadAxisEvent.axis) {
-                case GLFW_GAMEPAD_AXIS_LEFT_X:
-                    stopMove(glm::vec3(0.0f, 0.0f, getPressed().z));
-                    if (std::abs(event.gamepadAxisEvent.value) > 0.2f) {
-                        move(glm::vec3(0.0f, 0.0f, event.gamepadAxisEvent.value));
-                    }
-                    break;
-                case GLFW_GAMEPAD_AXIS_LEFT_Y:
-                    stopMove(glm::vec3(getPressed().x, 0.0f, 0.0f));
-                    if (std::abs(event.gamepadAxisEvent.value) > 0.2f) {
-                        move(glm::vec3(-event.gamepadAxisEvent.value, 0.0f, 0.0f));
-                    }
-                    break;
-                case GLFW_GAMEPAD_AXIS_RIGHT_X:
-                    if (std::abs(event.gamepadAxisEvent.value) > 0.2f) {
-                        float sensitivity = renderer->getSettingsManager()->getSettings()->sensitivity;
-                        rotate(glm::vec3(0.0f, -event.gamepadAxisEvent.value * sensitivity, 0.0f));
-                    }
-                    break;
-                case GLFW_GAMEPAD_AXIS_RIGHT_Y:
-                    if (std::abs(event.gamepadAxisEvent.value) > 0.2f) {
-                        float sensitivity = renderer->getSettingsManager()->getSettings()->sensitivity;
-                        rotate(glm::vec3(0.0f, 0.0f, -event.gamepadAxisEvent.value * sensitivity));
-                    }
-                    break;
-                case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
-                    if (event.gamepadAxisEvent.value > 0.5f
-                     && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
-                    {
-                        shoot();
-                        lastShotTime = std::chrono::steady_clock::now();
-                    }
-                    break;
-                case GLFW_GAMEPAD_AXIS_LEFT_TRIGGER:
-                    if (event.gamepadAxisEvent.value > 0.5f
-                     && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
-                    {
+                    if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)) {
                         static thread_local std::vector<engine::Collider*> candidates;
                         candidates.clear();
                         getEntityManager()->getSpatialGrid().query(getCollider()->getWorldAABB(), candidates);
@@ -638,6 +600,66 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                                 }
                             }
                         }
+                    }
+                    break;
+                default:
+                    break;
+            }
+        } else if (event.type == engine::InputEvent::Type::GamepadAxisPress) {
+            switch (event.gamepadAxisEvent.axis) {
+                case GLFW_GAMEPAD_AXIS_LEFT_X: {
+                    float dir = event.gamepadAxisEvent.value > 0.0f ? 1.0f : -1.0f;
+                    move({0.0f, 0.0f, dir});
+                    break;
+                }
+                case GLFW_GAMEPAD_AXIS_LEFT_Y: {
+                    float dir = event.gamepadAxisEvent.value > 0.0f ? -1.0f : 1.0f;
+                    move({dir, 0.0f, 0.0f});
+                    break;
+                }
+                default:
+                    break;
+            }
+        } else if (event.type == engine::InputEvent::Type::GamepadAxisRelease) {
+            switch (event.gamepadAxisEvent.axis) {
+                case GLFW_GAMEPAD_AXIS_LEFT_X: {
+                    float dir = event.gamepadAxisEvent.value > 0.0f ? 1.0f : -1.0f;
+                    stopMove({0.0f, 0.0f, dir});
+                    break;
+                }
+                case GLFW_GAMEPAD_AXIS_LEFT_Y: {
+                    float dir = event.gamepadAxisEvent.value > 0.0f ? -1.0f : 1.0f;
+                    stopMove({dir, 0.0f, 0.0f});
+                    break;
+                }
+                case GLFW_GAMEPAD_AXIS_RIGHT_X:
+                    rightStickX = 0.0f;
+                    break;
+                case GLFW_GAMEPAD_AXIS_RIGHT_Y:
+                    rightStickY = 0.0f;
+                    break;
+                default:
+                    break;
+            }
+        } else if (event.type == engine::InputEvent::Type::GamepadAxisMove) {
+            switch (event.gamepadAxisEvent.axis) {
+                case GLFW_GAMEPAD_AXIS_RIGHT_X:
+                    rightStickX = event.gamepadAxisEvent.value;
+                    break;
+                case GLFW_GAMEPAD_AXIS_RIGHT_Y:
+                    rightStickY = event.gamepadAxisEvent.value;
+                    break;
+                case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
+                    if (event.gamepadAxisEvent.value > 0.5f
+                     && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
+                    {
+                        shoot();
+                        lastShotTime = std::chrono::steady_clock::now();
+                    }
+                    break;
+                case GLFW_GAMEPAD_AXIS_LEFT_TRIGGER:
+                    if (event.gamepadAxisEvent.value > 0.5f) {
+                        canDash = true;
                     }
                     break;
                 default:

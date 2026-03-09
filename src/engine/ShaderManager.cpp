@@ -684,7 +684,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 },
                 .inputBindings = {
                     {
-                        0,
+                        .binding = 0,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
                             EntityManager* entityManager = renderer->getEntityManager();
                             auto& lightsBuffers = entityManager->getLightsBuffers();
@@ -700,7 +700,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                     },
                     {
-                        1,
+                        .binding = 1,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
                             EntityManager* entityManager = renderer->getEntityManager();
                             auto& irradianceProbesBuffers = entityManager->getIrradianceProbesBuffers();
@@ -722,7 +722,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 6, "particle", "ParticleColor" },
                     { 7, "volumetric", "VolumetricColor" },
                     {
-                        8,
+                        .binding = 8,
                         .imageArrayProvider = [](Renderer* renderer, size_t frame, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
                             auto* textureManager = renderer->getTextureManager();
                             Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_shadow_cube") : nullptr;
@@ -1253,12 +1253,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .inputBindings = {
                     { 0, "smaaEdge", "SMAAEdgesColor" },
                     {
-                        1,
+                        .binding = 1,
                         .textureName = "smaa_area",
                         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
                     },
                     {
-                        2,
+                        .binding = 2,
                         .textureName = "smaa_search",
                         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
                     }

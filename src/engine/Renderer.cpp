@@ -2340,15 +2340,12 @@ int engine::Renderer::rateDeviceSuitability(VkPhysicalDevice device) {
 void engine::Renderer::processInput(GLFWwindow* window) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
     InputManager* inputManager = renderer->getInputManager();
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE
-     || (renderer->clicking && inputManager->isControllerMode() && !inputManager->isFakeCursorPressing())
-    ) {
+    inputManager->processInput(window);
+    bool pressing = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
+                 || (inputManager->isControllerMode() && inputManager->isFakeCursorPressing());
+    if (!pressing) {
         renderer->clicking = false;
-    } else if (renderer->getHoveredObject()
-     && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
-        || (inputManager->isControllerMode() && inputManager->isFakeCursorPressing())
-        )
-    ) {
+    } else if (renderer->getHoveredObject() && pressing) {
         if (!renderer->clicking) {
             if (renderer->getHoveredObject()->getType() == UIType::Button) {
                 ButtonObject* button = static_cast<ButtonObject*>(renderer->getHoveredObject());
@@ -2356,9 +2353,6 @@ void engine::Renderer::processInput(GLFWwindow* window) {
                 renderer->clicking = true;
                 if (renderer->uiManager) {
                     renderer->uiManager->processPendingRemovals();
-                }
-                if (renderer && renderer->inputManager) {
-                    renderer->inputManager->processInput(window);
                 }
                 return;
             } else if (renderer->getHoveredObject()->getType() == UIType::Checkbox) {
@@ -2380,7 +2374,6 @@ void engine::Renderer::processInput(GLFWwindow* window) {
     && !renderer->inputManager->getCursorLocked() && !renderer->inputManager->getUIFocused()) {
         renderer->toggleLockCursor(true);
     }
-    inputManager->processInput(window);
 }
 
 void engine::Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {

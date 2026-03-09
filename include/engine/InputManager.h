@@ -22,6 +22,8 @@ namespace engine {
             GamepadButtonPress,
             GamepadButtonRelease,
             GamepadAxisMove,
+            GamepadAxisPress,
+            GamepadAxisRelease,
         } type;
         union {
             struct { int key; int scancode; int mods; } keyEvent;
@@ -91,6 +93,8 @@ namespace engine {
         int mouseButtonStates[GLFW_MOUSE_BUTTON_LAST + 1] = {0};
         int gamepadButtonStates[GLFW_GAMEPAD_BUTTON_LAST + 1] = {0};
         float gamepadAxisStates[GLFW_GAMEPAD_AXIS_LAST + 1] = {0.0f};
+        int gamepadAxisZones[GLFW_GAMEPAD_AXIS_LAST + 1] = {0}; // -1, 0, or 1
+        static constexpr float axisDeadzone = 0.2f;
         glm::dvec2 fakeControllerCursor{0.0, 0.0};
         bool fakeCursorPressing = false;
         bool hasMousePosition = false;

@@ -360,9 +360,13 @@ namespace engine {
             float contentScale = std::max(xscale, yscale);
             float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
             const float cursorScale = 0.1f;
+            glm::vec2 texOffset(0.0f);
+            if (Texture* tex = renderer->getTextureManager()->getTexture(cursor->getTexture())) {
+                texOffset = glm::vec2(static_cast<float>(tex->width), static_cast<float>(tex->height)) * 0.5f;
+            }
             glm::vec3 designPos(
-                static_cast<float>(mousePos.x) * std::max(xscale, 1.0f) / (layoutScale * cursorScale),
-                -static_cast<float>(mousePos.y) * std::max(yscale, 1.0f) / (layoutScale * cursorScale),
+                static_cast<float>(mousePos.x) * std::max(xscale, 1.0f) / (layoutScale * cursorScale) - texOffset.x,
+                -static_cast<float>(mousePos.y) * std::max(yscale, 1.0f) / (layoutScale * cursorScale) + texOffset.y,
                 -10.0f
             );
             cursor->setTransform(

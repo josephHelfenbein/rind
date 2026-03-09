@@ -115,6 +115,17 @@ namespace engine {
             int colorAttachmentCount = 1;
             std::type_index pushConstantType = std::type_index(typeid(void));
 
+            template<typename T>
+            void setPushConstant(VkShaderStageFlags stageFlags) {
+                pushConstantRange.stageFlags = stageFlags;
+                pushConstantRange.offset = 0;
+                pushConstantRange.size = sizeof(T);
+                pushConstantType = std::type_index(typeid(T));
+            }
+            std::function<void(engine::Renderer*, GraphicsShader*, VkCommandBuffer)> fillPushConstants = nullptr;
+
+            std::function<void(std::vector<VkVertexInputBindingDescription>&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
+
             struct InputBinding {
                 uint32_t binding;
                 std::string sourceShaderName;
@@ -125,17 +136,6 @@ namespace engine {
                 VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             };
             std::vector<InputBinding> inputBindings;
-
-            template<typename T>
-            void setPushConstant(VkShaderStageFlags stageFlags) {
-                pushConstantRange.stageFlags = stageFlags;
-                pushConstantRange.offset = 0;
-                pushConstantRange.size = sizeof(T);
-                pushConstantType = std::type_index(typeid(T));
-            }
-            std::function<void(engine::Renderer*, GraphicsShader*, VkCommandBuffer)> fillPushConstants = nullptr;
-            
-            std::function<void(std::vector<VkVertexInputBindingDescription>&, std::vector<VkVertexInputAttributeDescription>&)> getVertexInputDescriptions = nullptr;
         } config;
 
         VkPipeline pipeline{};

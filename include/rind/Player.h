@@ -79,5 +79,8 @@ namespace rind {
         uint32_t maxTrailFrames = 5u;
         glm::vec3 trailEndPos = glm::vec3(0.0f);
         glm::vec3 trailColor = glm::vec3(1.0f, 0.0f, 0.0f);
+
+        float rightStickX = 0.0f;
+        float rightStickY = 0.0f;
     };
 };
