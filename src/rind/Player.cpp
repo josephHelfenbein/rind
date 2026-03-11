@@ -168,6 +168,13 @@ rind::Player::Player(
             glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
             "ui_healthbar_overlay"
         );
+        healEffectObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f)),
+            "healEffect",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+            "ui_heal_overlay"
+        );
         engine::UIObject* crosshair = new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
@@ -210,6 +217,9 @@ void rind::Player::resizeHealthbar() {
         glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, -0.08f, 1.0f)), glm::vec3(0.0f, -280.0f, 0.0f))
     );
     damageEffectObject->setTransform(
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f))
+    );
+    healEffectObject->setTransform(
         glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f))
     );
 }
@@ -296,6 +306,31 @@ void rind::Player::update(float deltaTime) {
             lastHeartbeat = 0.0f;
             audioManager->playSound("player_heartbeat", 0.3f, 0.1f);
         }
+    }
+    if (healUIShowTime > 0.0f) {
+        float alpha = -(0.5f * std::pow(healUIShowTime, 5) - (0.5f * healUIShowTime));
+        healEffectObject->setTint(glm::vec4(0.2f, 0.2f, 1.0f, alpha));
+        healEffectObject->loadTexture();
+        float amount = -(10.0f * std::pow(healUIShowTime, 5) - (10.0f * healUIShowTime));
+        particleManager->burstParticles(
+            getWorldTransform(),
+            glm::vec3(0.2f, 0.2f, 1.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
+            amount,
+            1.5f,
+            2.0f,
+            0.3f
+        );
+        particleManager->burstParticles(
+            getWorldTransform(),
+            glm::vec3(0.2f, 0.2f, 1.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
+            amount,
+            1.0f,
+            2.0f,
+            0.7f
+        );
+        healUIShowTime -= deltaTime;
     }
     if (trailFramesRemaining > 0) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
@@ -717,6 +752,7 @@ void rind::Player::damage(float amount) {
         }
         else {
             audioManager->playSound("player_heal", 0.4f, 0.4f);
+            healUIShowTime = 1.0f;
             earlyReturn = true;
         }
     }
@@ -772,19 +808,28 @@ void rind::Player::damage(float amount) {
         particleManager->burstParticles(
             glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
             trailColor,
-            glm::vec3(0.0f, 1.0f, 0.0f) * 5.0f,
+            glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             200,
             5.0f,
-            0.5f,
-            0.5f
+            2.0f,
+            0.3f
         );
         particleManager->burstParticles(
-            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getWorldTransform(),
             trailColor,
-            glm::vec3(0.0f, 1.0f, 0.0f) * 10.0f,
+            glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
+            200,
+            5.0f,
+            2.0f,
+            0.6f
+        );
+        particleManager->burstParticles(
+            getWorldTransform(),
+            trailColor,
+            glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             200,
             8.0f,
-            1.0f,
+            2.0f,
             1.0f
         );
         getCollider()->setTransform(
