@@ -186,6 +186,11 @@ void engine::Renderer::initVulkan() {
 void engine::Renderer::mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        if (pendingScreenModeApply) {
+            pendingScreenModeApply = false;
+            applyScreenMode();
+            if (currentScreenMode != 0) recreateSwapChain();
+        }
         processInput(window);
         drawFrame();
     }
@@ -809,6 +814,41 @@ void engine::Renderer::createLogicalDevice() {
     }
 }
 
+void engine::Renderer::applyScreenMode() {
+    if (!settingsManager) return;
+    uint32_t mode = settingsManager->getSettings()->screenMode;
+    if (mode == currentScreenMode) return;
+
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    if (!monitor) return;
+    const GLFWvidmode* vidmode = glfwGetVideoMode(monitor);
+    if (!vidmode) return;
+
+    if (mode == 0) {
+        // Windowed
+        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+        glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_TRUE);
+        glfwSetWindowMonitor(window, nullptr, windowedPosX, windowedPosY, windowedWidth, windowedHeight, 0);
+    } else {
+        if (currentScreenMode == 0) {
+            glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
+            glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+        }
+        if (mode == 1) {
+            // Borderless
+            glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+            glfwSetWindowMonitor(window, nullptr, 0, 0, vidmode->width, vidmode->height, 0);
+        } else if (mode == 2) {
+            // Fullscreen
+            glfwSetWindowMonitor(window, monitor, 0, 0, vidmode->width, vidmode->height, vidmode->refreshRate);
+        }
+    }
+    currentScreenMode = mode;
+    clicking = false;
+    ignoreMouseUntilRelease = true;
+    if (inputManager) inputManager->resetKeyStates();
+}
+
 void engine::Renderer::createSwapChain(VkSwapchainKHR oldSwapchain) {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -857,6 +897,7 @@ void engine::Renderer::createSwapChain(VkSwapchainKHR oldSwapchain) {
 }
 
 void engine::Renderer::recreateSwapChain() {
+    applyScreenMode();
     int width = 0, height = 0;
     glfwGetFramebufferSize(window, &width, &height);
     while (width == 0 || height == 0) {
@@ -2343,6 +2384,10 @@ void engine::Renderer::processInput(GLFWwindow* window) {
     inputManager->processInput(window);
     bool pressing = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
                  || (inputManager->isControllerMode() && inputManager->isFakeCursorPressing());
+    if (renderer->ignoreMouseUntilRelease) {
+        if (!pressing) renderer->ignoreMouseUntilRelease = false;
+        pressing = false;
+    }
     if (!pressing) {
         renderer->clicking = false;
     } else if (renderer->getHoveredObject() && pressing) {

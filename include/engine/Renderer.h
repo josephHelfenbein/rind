@@ -167,6 +167,7 @@ namespace engine {
         void requestShadowMapRecreation() { shadowMapRecreationPending = true; }
 
         void recreateSwapChain();
+        void requestScreenModeApply() { pendingScreenModeApply = true; }
 
     private:
         const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -208,6 +209,10 @@ namespace engine {
         VkPhysicalDevice physicalDevice;
         VkSurfaceKHR surface;
         bool framebufferResized = false;
+        int windowedPosX = 100, windowedPosY = 100;
+        int windowedWidth = 800, windowedHeight = 600;
+        uint32_t currentScreenMode = 0;
+        bool pendingScreenModeApply = false;
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
         PFN_vkCmdEndRendering fpCmdEndRendering = nullptr;
@@ -261,12 +266,14 @@ namespace engine {
 
         UIObject* hoveredObject = nullptr;
         bool clicking = false;
+        bool ignoreMouseUntilRelease = false;
 
         void createInstance();
         void setupDebugMessenger();
         void createSurface();
         void pickPhysicalDevice();
         void createLogicalDevice();
+        void applyScreenMode();
         void createSwapChain(VkSwapchainKHR oldSwapchain);
         void createImageViews();
         void createAttachmentResources();

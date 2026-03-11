@@ -18,6 +18,7 @@ namespace engine {
         struct Settings {
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
             uint32_t aaMode = 1; // 0 = none, 1 = FXAA, 2 = SMAA
+            uint32_t screenMode = 0; // 0 = windowed, 1 = borderless, 2 = fullscreen
             float fpsLimit = 0.0f;
             float shadowQuality = 2.0f; // 0=512 2 samples, 1=1024 4 samples, 2=2048 8 samples, 3=2048 16 samples
             float sensitivity = 1.0f;
@@ -123,6 +124,7 @@ namespace engine {
                 }
             }
             tempSettings = new Settings(*currentSettings);
+            renderer->requestScreenModeApply();
         }
 
         void saveSettings() {
@@ -408,6 +410,13 @@ namespace engine {
             { SettingsDefinition::Bool, "Enable Screen Space Reflections", "ssrEnabled", &Settings::ssrEnabled },
             { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"} },
             { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"} },
+            { SettingsDefinition::Enum, "Screen Mode", "screenMode", nullptr, &Settings::screenMode, {"Windowed", "Borderless", "Fullscreen"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f,
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if (prev->screenMode != curr->screenMode) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
             { SettingsDefinition::Slider, "Sensitivity", "sensitivity", nullptr, nullptr, {}, &Settings::sensitivity, 0.0f, 0.05f, "", true, 10000.0f, false, 0.0f, 0.0f },
             { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
             { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 0.0f, 240.0f, " FPS", true, 1.0f, true, 0.0f, 240.0f,
