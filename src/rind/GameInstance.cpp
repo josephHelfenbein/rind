@@ -444,21 +444,30 @@ rind::GameInstance::GameInstance() {
             this,
             player,
             "groundEnemySpawner",
-            glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -25.0f, 0.0f))
+            glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -25.0f, 0.0f)),
+            2,
+            2,
+            8.0f
         );
         rind::EnemySpawner<rind::FlyingEnemy>* enemySpawner2 = new rind::EnemySpawner<rind::FlyingEnemy>(
             entityManager,
             this,
             player,
             "airEnemySpawner",
-            glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, -25.0f, 0.0f))
+            glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, -25.0f, 0.0f)),
+            1,
+            3,
+            6.0f
         );
         rind::EnemySpawner<rind::BashingEnemy>* enemySpawner3 = new rind::EnemySpawner<rind::BashingEnemy>(
             entityManager,
             this,
             player,
             "bashingEnemySpawner",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f))
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f)),
+            1,
+            1,
+            5.5f
         );
 
         for (int i = -3; i <= 3; ++i) {

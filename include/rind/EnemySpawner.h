@@ -14,13 +14,16 @@ namespace rind {
             rind::GameInstance* gameInstance,
             rind::Player* player,
             const std::string& name,
-            const glm::mat4& transform
-        ) : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player) {}
+            const glm::mat4& transform,
+            uint32_t maxEnemyMultiplier,
+            uint32_t baseMaxEnemies,
+            float baseSpawnRate
+        ) : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player), baseSpawnRate(baseSpawnRate), baseMaxEnemies(baseMaxEnemies), maxEnemyMultiplier(maxEnemyMultiplier) {}
 
         void update(float deltaTime) override {
             spawnTimer += deltaTime;
-            float timeRandomness = (dist(rng) - 0.5f) * 2.0f;
-            float adjustedSpawnInterval = spawnInterval + timeRandomness;
+            float timeRandomness = (dist(rng) - 0.5f) * baseSpawnRate * 0.5f; // +-25% of base spawn rate
+            float adjustedSpawnInterval = (baseSpawnRate + timeRandomness) * (gameInstance->getDifficultyLevel() / 5.0f);
             if (spawnTimer >= adjustedSpawnInterval) {
                 spawnTimer = 0.0f;
                 spawnEnemy();
@@ -28,11 +31,7 @@ namespace rind {
         }
     private:
         void spawnEnemy() {
-            if (gameInstance->getDifficultyLevel() != assumedDifficulty) {
-                assumedDifficulty = gameInstance->getDifficultyLevel();
-                maxEnemies = 2 + assumedDifficulty;
-                spawnInterval = std::max(1.0f, 10.0f - assumedDifficulty * 3.0f);
-            }
+            uint32_t maxEnemies = maxEnemyMultiplier * gameInstance->getDifficultyLevel() + baseMaxEnemies;
             if (enemyCount >= maxEnemies) {
                 return;
             }
@@ -58,11 +57,12 @@ namespace rind {
         }
 
         rind::Player* targetPlayer = nullptr;
-        float spawnInterval = 10.0f;
+        float baseSpawnRate;
         float spawnTimer = 5.0f;
         uint32_t enemyCount = 0u;
         uint32_t spawnedEnemies = 0u;
-        uint32_t maxEnemies = 2u;
+        uint32_t maxEnemyMultiplier;
+        uint32_t baseMaxEnemies;
         uint32_t assumedDifficulty = 0u;
         rind::GameInstance* gameInstance = nullptr;
         std::mt19937 rng{std::random_device{}()};
