@@ -196,6 +196,7 @@ namespace engine {
 
         void initWindow();
         void initVulkan();
+        void calibrateOpenMP();
         void mainLoop();
         void cleanup();
 

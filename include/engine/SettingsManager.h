@@ -357,6 +357,10 @@ namespace engine {
                         }
                     }
                     saveSettings();
+                    this->hideSettingsUI();
+                    if (this->onCloseCallback) {
+                        this->onCloseCallback();
+                    }
                 },
                 Corner::Bottom
             ));

@@ -387,15 +387,17 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
 
 void engine::ParticleManager::updateAll(float deltaTime) {
 #if defined(USE_OPENMP)
-    #pragma omp parallel for
-    for (int i = 0; i < static_cast<int>(particles.size()); ++i) {
-        particles[i]->update(deltaTime);
-    }
-#else
+    const int count = static_cast<int>(particles.size());
+    if (count > 64) {
+        #pragma omp parallel for
+        for (int i = 0; i < count; ++i) {
+            particles[i]->update(deltaTime);
+        }
+    } else
+#endif
     for (auto& particle : particles) {
         particle->update(deltaTime);
     }
-#endif
     auto it = std::remove_if(particles.begin(), particles.end(), [](Particle* p) {
         if (p->isMarkedForDeletion()) {
             p->detachFromManager();

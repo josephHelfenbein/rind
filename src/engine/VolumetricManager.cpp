@@ -225,7 +225,17 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
 
 void engine::VolumetricManager::updateAll(float deltaTime) {
 #if defined(USE_OPENMP)
-    #pragma omp parallel for
+    const int count = static_cast<int>(volumetrics.size());
+    if (count > 64) {
+        #pragma omp parallel for
+        for (int i = 0; i < count; ++i) {
+            Volumetric* volumetric = volumetrics[static_cast<size_t>(i)];
+            volumetric->setAge(volumetric->getAge() + deltaTime);
+            if (volumetric->getAge() >= volumetric->getLifetime()) {
+                volumetric->markForDeletion();
+            }
+        }
+    } else
 #endif
     for (int i = 0; i < static_cast<int>(volumetrics.size()); ++i) {
         Volumetric* volumetric = volumetrics[static_cast<size_t>(i)];

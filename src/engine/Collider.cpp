@@ -433,7 +433,12 @@ void engine::ConvexHullCollider::buildConvexData(const std::vector<glm::vec3>& v
     outCenter = glm::vec3(0.0f);
     outVerts.resize(verts.size());
 #if defined(USE_OPENMP)
-    #pragma omp parallel for
+    if (verts.size() > 128) {
+        #pragma omp parallel for
+        for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
+            outVerts[i] = glm::vec3(transform * glm::vec4(verts[static_cast<size_t>(i)], 1.0f));
+        }
+    } else
 #endif
     for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
         outVerts[i] = glm::vec3(transform * glm::vec4(verts[static_cast<size_t>(i)], 1.0f));
@@ -512,33 +517,30 @@ engine::AABB engine::ConvexHullCollider::getWorldAABB() {
         glm::vec3 p = glm::vec3(const_cast<ConvexHullCollider*>(this)->getWorldTransform()[3]);
         return AABB{p - glm::vec3(0.001f), p + glm::vec3(0.001f)};
     }
-#if defined(USE_OPENMP)
-    float minX = std::numeric_limits<float>::max();
-    float minY = std::numeric_limits<float>::max();
-    float minZ = std::numeric_limits<float>::max();
-    float maxX = std::numeric_limits<float>::lowest();
-    float maxY = std::numeric_limits<float>::lowest();
-    float maxZ = std::numeric_limits<float>::lowest();
-    #pragma omp parallel for reduction(min:minX, minY, minZ) reduction(max:maxX, maxY, maxZ)
-    for (int i = 0; i < static_cast<int>(worldVerts.size()); ++i) {
-        const glm::vec3& w = worldVerts[static_cast<size_t>(i)];
-        if (w.x < minX) minX = w.x;
-        if (w.y < minY) minY = w.y;
-        if (w.z < minZ) minZ = w.z;
-        if (w.x > maxX) maxX = w.x;
-        if (w.y > maxY) maxY = w.y;
-        if (w.z > maxZ) maxZ = w.z;
-    }
-    return AABB{ glm::vec3(minX, minY, minZ), glm::vec3(maxX, maxY, maxZ) };
-#else
     glm::vec3 minW = glm::vec3(std::numeric_limits<float>::max());
     glm::vec3 maxW = glm::vec3(std::numeric_limits<float>::lowest());
+#if defined(USE_OPENMP)
+    if (worldVerts.size() > 256) {
+        float minX = minW.x, minY = minW.y, minZ = minW.z;
+        float maxX = maxW.x, maxY = maxW.y, maxZ = maxW.z;
+        #pragma omp parallel for reduction(min:minX, minY, minZ) reduction(max:maxX, maxY, maxZ)
+        for (int i = 0; i < static_cast<int>(worldVerts.size()); ++i) {
+            const glm::vec3& w = worldVerts[static_cast<size_t>(i)];
+            if (w.x < minX) minX = w.x;
+            if (w.y < minY) minY = w.y;
+            if (w.z < minZ) minZ = w.z;
+            if (w.x > maxX) maxX = w.x;
+            if (w.y > maxY) maxY = w.y;
+            if (w.z > maxZ) maxZ = w.z;
+        }
+        return AABB{ glm::vec3(minX, minY, minZ), glm::vec3(maxX, maxY, maxZ) };
+    }
+#endif
     for (const auto& w : worldVerts) {
         minW = glm::min(minW, w);
         maxW = glm::max(maxW, w);
     }
     return AABB{ minW, maxW };
-#endif
 }
 
 void engine::ConvexHullCollider::setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform) {

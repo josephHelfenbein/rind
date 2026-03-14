@@ -184,6 +184,23 @@ rind::Player::Player(
             "ui_crosshair",
             engine::Corner::Center
         );
+        grenadeEmptyIconObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.3f, -0.3f, 1.0f)), glm::vec3(100.0f, -300.0f, 1.0f)),
+            "grenadeEmptyIcon",
+            glm::vec4(1.0f),
+            "ui_grenade_empty",
+            engine::Corner::BottomLeft
+        );
+        grenadeFullIconObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.3f, -0.3f, 1.0f)), glm::vec3(100.0f, -300.0f, 0.0f)),
+            "grenadeFullIcon",
+            glm::vec4(1.0f),
+            "ui_grenade_full",
+            engine::Corner::BottomLeft
+        );
+        grenadeFullIconObject->setUVClip(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         entityManager->getRenderer()->getInputManager()->registerRecreateSwapChainCallback("playerHealthbarResize", [this]() {
             this->resizeHealthbar();
         });
@@ -283,6 +300,9 @@ void rind::Player::update(float deltaTime) {
             glm::vec3(gunModelScale)
         )
     );
+    float timeSinceLastGrenade = std::chrono::duration<float>(std::chrono::steady_clock::now() - lastGrenadeTime).count();
+    float cooldownRatio = std::min(timeSinceLastGrenade / grenadeCooldown, 1.0f);
+    grenadeFullIconObject->setUVClip(glm::vec4(0.0f, 0.0f, cooldownRatio, 1.0f));
     if (healthbarObject->getUVClip().z != getHealth() / getMaxHealth()) {
         float dir = getHealth() - getMaxHealth() * healthbarObject->getUVClip().z;
         float changeAmount = deltaTime * 30.0f;
@@ -790,14 +810,14 @@ void rind::Player::damage(float amount) {
         }
         engine::UIObject* windowTint = new engine::UIObject(
             uiManager,
-            glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), 
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), glm::vec3(0.0f, 0.0f, -1.0f)), 
             "deathWindowTint",
             glm::vec4(0.5f, 0.0f, 0.0f, 0.8f),
             "ui_window"
         );
         engine::TextObject* diedText = new engine::TextObject(
             uiManager,
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f)),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -2.0f)),
             "deathWindowText",
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             "You Died!",
@@ -806,7 +826,7 @@ void rind::Player::damage(float amount) {
         engine::SceneManager* sceneManager = getEntityManager()->getRenderer()->getSceneManager();
         engine::ButtonObject* quitButton = new engine::ButtonObject(
             uiManager,
-            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -400.0f, 0.0f)), glm::vec3(0.15, 0.05, 1.0)),
+            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -400.0f, -2.0f)), glm::vec3(0.15, 0.05, 1.0)),
             "deathMenuButton",
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
@@ -935,15 +955,15 @@ void rind::Player::shoot() {
                 if (!character->checkVisibilityOfPlayer()) {
                     character->setWanderTarget(getWorldPosition());
                     character->wanderTo(getEntityManager()->getRenderer()->getDeltaTime());
-                    audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, 0.2F);
+                    audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, 0.2f);
                 }
             }
-            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, 0.2F);
+            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, 0.2f);
         } else {
-            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, 0.2F);
+            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, 0.2f);
         }
     }
-    audioManager->playSound3D("laser_shot", gunPos, 0.5f, 0.2F);
+    audioManager->playSound3D("laser_shot", gunPos, 0.5f, 0.2f);
     trailFramesRemaining = maxTrailFrames;
     trailEndPos = endPos;
 }
@@ -958,4 +978,5 @@ void rind::Player::throwGrenade() {
         trailColor,
         6.0f
     );
+    audioManager->playSound3D("player_throw", gunPos, 0.5f, 0.2f);
 }

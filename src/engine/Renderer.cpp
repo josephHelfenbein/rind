@@ -23,6 +23,9 @@
 #include <set>
 #include <thread>
 #include <chrono>
+#if defined(USE_OPENMP)
+#include <omp.h>
+#endif
 
 engine::Renderer::Renderer(const std::string& windowTitle) : windowTitle(windowTitle) {}
 
@@ -141,7 +144,66 @@ void engine::Renderer::initWindow() {
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
+void engine::Renderer::calibrateOpenMP() {
+#if defined(USE_OPENMP)
+    const int maxThreads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()) / 2);
+    const int N = 1000;
+
+    std::vector<glm::vec4> a(N), b(N);
+    for (int i = 0; i < N; ++i) {
+        float fi = static_cast<float>(i);
+        a[i] = glm::vec4(fi, fi * 0.5f, fi * 0.3f, 1.0f);
+        b[i] = glm::vec4(fi * 0.2f, fi, fi * 0.7f, 1.0f);
+    }
+
+    int bestThreads = 1;
+    double bestTime = std::numeric_limits<double>::max();
+    const int warmupRuns = 50;
+    const int timedRuns = 200;
+
+    std::vector<int> threadCounts = {1};
+    for (int t = 2; t <= maxThreads; t += 2) {
+        threadCounts.push_back(t);
+    }
+
+    for (int numThreads : threadCounts) {
+        omp_set_num_threads(numThreads);
+        volatile float sink = 0.0f;
+
+        for (int r = 0; r < warmupRuns; ++r) {
+            float sum = 0.0f;
+            #pragma omp parallel for reduction(+:sum)
+            for (int i = 0; i < N; ++i) {
+                sum += glm::dot(a[i], b[i]);
+            }
+            sink = sum;
+        }
+
+        auto start = std::chrono::high_resolution_clock::now();
+        for (int r = 0; r < timedRuns; ++r) {
+            float sum = 0.0f;
+            #pragma omp parallel for reduction(+:sum)
+            for (int i = 0; i < N; ++i) {
+                sum += glm::dot(a[i], b[i]);
+            }
+            sink = sum;
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        double elapsed = std::chrono::duration<double, std::micro>(end - start).count();
+
+        if (elapsed < bestTime) {
+            bestTime = elapsed;
+            bestThreads = numThreads;
+        }
+    }
+
+    omp_set_num_threads(bestThreads);
+    std::cout << "Ideal thread count: " << bestThreads << " (tested up to " << maxThreads << ")" << std::endl;
+#endif
+}
+
 void engine::Renderer::initVulkan() {
+    calibrateOpenMP();
     createInstance();
     setupDebugMessenger();
     createSurface();
