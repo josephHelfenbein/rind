@@ -821,7 +821,7 @@ void rind::Player::damage(float amount) {
             "deathWindowText",
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             "You Died!",
-            "Lato"
+            "ColdNightForAlligators"
         );
         engine::SceneManager* sceneManager = getEntityManager()->getRenderer()->getSceneManager();
         engine::ButtonObject* quitButton = new engine::ButtonObject(

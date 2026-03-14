@@ -797,27 +797,16 @@ void engine::Renderer::createLogicalDevice() {
         .sampleRateShading = VK_TRUE,
         .samplerAnisotropy = VK_TRUE
     };
-    bool enableAtomicFloatExt = false;
-    bool canUseBufferFloat32AtomicAdd = false;
-    VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomicFloatFeatures = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT
-    };
     VkPhysicalDeviceVulkan13Features vulkan13Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .synchronization2 = VK_TRUE,
         .dynamicRendering = VK_TRUE
     };
-    vulkan13Features.pNext = &atomicFloatFeatures;
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &vulkan13Features
     };
     vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
-    if (hasDeviceExtension(physicalDevice, VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME)) {
-        enableAtomicFloatExt = true;
-        canUseBufferFloat32AtomicAdd = atomicFloatFeatures.shaderBufferFloat32AtomicAdd == VK_TRUE;
-    }
-    useCASAdvection = !(enableAtomicFloatExt && canUseBufferFloat32AtomicAdd);
     VkDeviceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext = &vulkan13Features,
@@ -830,15 +819,6 @@ void engine::Renderer::createLogicalDevice() {
         .pNext = &enabledVulkan13Features,
         .features = deviceFeatures
     };
-    VkPhysicalDeviceShaderAtomicFloatFeaturesEXT enabledAtomicFloat{};
-    if (!useCASAdvection && enableAtomicFloatExt && canUseBufferFloat32AtomicAdd) {
-        enabledAtomicFloat = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,
-            .shaderBufferFloat32AtomicAdd = VK_TRUE
-        };
-        enabledAtomicFloat.pNext = enabledFeatures2.pNext;
-        enabledFeatures2.pNext = &enabledAtomicFloat;
-    }
     createInfo.pNext = &enabledFeatures2;
     createInfo.pEnabledFeatures = nullptr;
     std::vector<const char*> enabledExtensions = deviceExtensions;
@@ -847,9 +827,6 @@ void engine::Renderer::createLogicalDevice() {
     }
     if (hasDeviceExtension(physicalDevice, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) {
         enabledExtensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-    }
-    if (!useCASAdvection && enableAtomicFloatExt) {
-        enabledExtensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
     }
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
     createInfo.ppEnabledExtensionNames = enabledExtensions.data();
@@ -1006,6 +983,7 @@ void engine::Renderer::recreateSwapChain() {
 void engine::Renderer::refreshDescriptorSets() {
     vkDeviceWaitIdle(device);
     uiManager->loadTextures();
+    uiManager->reloadFontDescriptorSets();
     createPostProcessDescriptorSets();
 }
 
@@ -1014,6 +992,21 @@ void engine::Renderer::resetPostProcessDescriptorPools() {
     auto shaders = shaderManager->getGraphicsShaders();
     for (const auto& shaderCopy : shaders) {
         if (shaderCopy.config.inputBindings.empty()) continue;
+        auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
+        if (!shader) continue;
+        if (shader->descriptorPool != VK_NULL_HANDLE) {
+            vkResetDescriptorPool(device, shader->descriptorPool, 0);
+        }
+        shader->descriptorSets.clear();
+    }
+}
+
+void engine::Renderer::resetPerObjectDescriptorPools() {
+    vkDeviceWaitIdle(device);
+    auto shaders = shaderManager->getGraphicsShaders();
+    for (const auto& shaderCopy : shaders) {
+        if (!shaderCopy.config.inputBindings.empty()) continue;
+        if (shaderCopy.config.poolMultiplier <= 1) continue;
         auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
         if (!shader) continue;
         if (shader->descriptorPool != VK_NULL_HANDLE) {

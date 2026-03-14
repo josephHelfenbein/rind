@@ -141,6 +141,7 @@ namespace engine {
         void ensureFallback2DTexture();
         void refreshDescriptorSets();
         void resetPostProcessDescriptorPools();
+        void resetPerObjectDescriptorPools();
         void createPostProcessDescriptorSets();
         VkImageView getPassImageView(const std::string& shaderName, const std::string& attachmentName);
 
@@ -181,11 +182,6 @@ namespace engine {
             , "VK_KHR_portability_subset"
         #endif
         };
-        #ifndef VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME
-        #define VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME "VK_EXT_shader_atomic_float"
-        #endif
-        // Runtime toggle: use CAS fallback when float atomicAdd isn’t available via VK_EXT_shader_atomic_float
-        bool useCASAdvection = true;
         #ifdef NDEBUG
             const bool enableValidationLayers = false;
             const bool DEBUG_RENDER_LOGS = false;

@@ -36,13 +36,7 @@ engine::UIObject::~UIObject() {
     if (uiManager->getRenderer()->getHoveredObject() == this) {
         uiManager->getRenderer()->setHoveredObject(nullptr);
     }
-    if (!descriptorSets.empty()) {
-        VkDevice device = uiManager->getRenderer()->getDevice();
-        for (auto& descriptorSet : descriptorSets) {
-            vkFreeDescriptorSets(device, uiManager->getRenderer()->getShaderManager()->getGraphicsShader("ui")->descriptorPool, 1, &descriptorSet);
-        }
-        descriptorSets.clear();
-    }
+    descriptorSets.clear();
     delete onHover;
     delete onStopHover;
     std::unordered_map<std::string, std::variant<UIObject*, TextObject*>>& roots = uiManager->getRootObjects();
@@ -410,6 +404,11 @@ void engine::UIManager::clear() {
             delete std::get<UIObject*>(obj);
         }
     }
+    for (auto& [name, font] : fonts) {
+        for (auto& [ch, character] : font.characters) {
+            character.descriptorSets.clear();
+        }
+    }
 }
 
 void engine::UIManager::loadTextures() {
@@ -417,6 +416,19 @@ void engine::UIManager::loadTextures() {
         if (!std::holds_alternative<UIObject*>(found)) continue;
         UIObject* object = std::get<UIObject*>(found);
         object->loadTexture();
+    }
+}
+
+void engine::UIManager::reloadFontDescriptorSets() {
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("text");
+    if (!shader) return;
+    for (auto& [name, font] : fonts) {
+        for (auto& [ch, character] : font.characters) {
+            if (!character.descriptorSets.empty()) continue;
+            std::vector<Texture*> textures = { character.texture };
+            std::vector<VkBuffer> buffers;
+            character.descriptorSets = shader->createDescriptorSets(renderer, textures, buffers);
+        }
     }
 }
 
@@ -553,10 +565,10 @@ void engine::UIManager::loadFonts() {
             }
             fonts.insert_or_assign(fontName, std::move(font));
             FT_Done_Face(face);
-            FT_Done_FreeType(ft);
         }
     };
     scanAndLoadFonts(scanAndLoadFonts, fontDirectory, "");
+    FT_Done_FreeType(ft);
 }
 
 engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, TextObject*> node, const LayoutRect& parentRect) {

@@ -334,6 +334,7 @@ namespace engine {
         void renderUI(VkCommandBuffer commandBuffer, uint32_t frameIndex);
         void clear();
         void loadTextures();
+        void reloadFontDescriptorSets();
         void loadFonts();
         UIObject* processMouseMovement(GLFWwindow* window, double xpos, double ypos);
 

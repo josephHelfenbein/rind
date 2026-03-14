@@ -23,6 +23,7 @@ void engine::SceneManager::setActiveScene(int index) {
     renderer->getParticleManager()->clear();
     renderer->getVolumetricManager()->clear();
     renderer->getAudioManager()->stopAllSounds();
+    renderer->resetPerObjectDescriptorPools();
     scenes[index]->run(renderer);
     renderer->getEntityManager()->setIrradianceBakingPending(true);
     renderer->refreshDescriptorSets();
