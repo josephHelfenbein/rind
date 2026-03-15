@@ -7,7 +7,6 @@ struct VSOutput {
 struct PointLight {
     float4 positionRadius;
     float4 colorIntensity;
-    float4x4 lightViewProj[6];
     float4 shadowParams;
     uint4 shadowData;
 };
@@ -105,9 +104,7 @@ float geometrySchlickGGX(float NdotV, float roughness) {
     return NdotV / max(denom, 0.0001);
 }
 
-float geometrySmith(float3 N, float3 V, float3 L, float roughness) {
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
+float geometrySmith(float NdotV, float NdotL, float roughness) {
     float ggx2 = geometrySchlickGGX(NdotV, roughness);
     float ggx1 = geometrySchlickGGX(NdotL, roughness);
     return ggx1 * ggx2;
@@ -174,7 +171,8 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float diskRadius = 0.02 + 0.04 * (currentDistance / farPlane) * sqrt(pc.shadowSamples / 16.0);
     float penumbraSize = 0.015 * (currentDistance / farPlane);
     float angle = worldAngle(fragPos);
-    float cosA = cos(angle), sinA = sin(angle);
+    float cosA = 0.0f, sinA = 0.0f;
+    sincos(angle, sinA, cosA);
     float3 up = abs(sampleDir.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
     float3 right = normalize(cross(up, sampleDir));
     float3 forward = cross(sampleDir, right);
@@ -194,12 +192,15 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     return 1.0 - shadow;
 }
 
-float3 evaluateIrradiance(float3 N, float3 fragPos) {
-    float3 irradiance = float3(0.0, 0.0, 0.0);
+void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, out float3 diffuseIrr, out float3 specularIrr) {
+    diffuseIrr = float3(0.0, 0.0, 0.0);
+    specularIrr = float3(0.0, 0.0, 0.0);
     uint numProbes = irradianceProbesUBO.numProbes.x;
-    float totalWeight = 0.0001;
+    float totalWeightDiffuse = 0.0001;
+    float totalWeightSpecular = 0.0001;
     
-    float3 n = float3(N.z, N.x, N.y);
+    float3 diffuseN = float3(diffuseDir.z, diffuseDir.x, diffuseDir.y);
+    float3 specularN = float3(specularDir.z, specularDir.x, specularDir.y);
     
     for (uint i = 0; i < numProbes; ++i) {
         float3 probePos = irradianceProbesUBO.probes[i].position.xyz;
@@ -226,18 +227,29 @@ float3 evaluateIrradiance(float3 N, float3 fragPos) {
             const float c4 = 0.886227;
             const float c5 = 0.247708;
             
-            float3 shSum = c4 * L00
-                         + 2.0 * c2 * (L11 * n.x + L1m1 * n.y + L10 * n.z)
-                         + 2.0 * c1 * (L2m2 * n.x * n.y + L21 * n.x * n.z + L2m1 * n.y * n.z)
-                         + c3 * L20 * n.z * n.z
-                         + c1 * L22 * (n.x * n.x - n.y * n.y)
+            float3 shSumDiffuse = c4 * L00
+                         + 2.0 * c2 * (L11 * diffuseN.x + L1m1 * diffuseN.y + L10 * diffuseN.z)
+                         + 2.0 * c1 * (L2m2 * diffuseN.x * diffuseN.y + L21 * diffuseN.x * diffuseN.z + L2m1 * diffuseN.y * diffuseN.z)
+                         + c3 * L20 * diffuseN.z * diffuseN.z
+                         + c1 * L22 * (diffuseN.x * diffuseN.x - diffuseN.y * diffuseN.y)
                          - c5 * L20;
-            
-            irradiance += shSum * weight;
-            totalWeight += weight;
+            diffuseIrr += shSumDiffuse * weight;
+            totalWeightDiffuse += weight;
+
+            float3 shSumSpecular = c4 * L00
+                         + 2.0 * c2 * (L11 * specularN.x + L1m1 * specularN.y + L10 * specularN.z)
+                         + 2.0 * c1 * (L2m2 * specularN.x * specularN.y + L21 * specularN.x * specularN.z + L2m1 * specularN.y * specularN.z)
+                         + c3 * L20 * specularN.z * specularN.z
+                         + c1 * L22 * (specularN.x * specularN.x - specularN.y * specularN.y)
+                         - c5 * L20;
+            specularIrr += shSumSpecular * weight;
+            totalWeightSpecular += weight;
         }
     }
-    return max(irradiance / totalWeight, float3(0.0, 0.0, 0.0));
+    diffuseIrr /= totalWeightDiffuse;
+    specularIrr /= totalWeightSpecular;
+    diffuseIrr = max(diffuseIrr, float3(0.0, 0.0, 0.0));
+    specularIrr = max(specularIrr, float3(0.0, 0.0, 0.0));
 }
 
 float3 ACESFilm(float3 x) {
@@ -315,7 +327,7 @@ float4 main(VSOutput input) : SV_Target {
 
         float3 F = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, roughness);
         float D = distributionGGX(N, H, roughness);
-        float G = geometrySmith(N, V, L, roughness);
+        float G = geometrySmith(NdotV, NdotL, roughness);
 
         float3 numerator = F * D * G;
         float denominator = 4.0 * max(NdotV, 0.0001) * max(NdotL, 0.0001);
@@ -329,18 +341,19 @@ float4 main(VSOutput input) : SV_Target {
         contribution = clamp(contribution, float3(0.0, 0.0, 0.0), float3(100.0, 100.0, 100.0));
         Lo += contribution;
     }
-    float3 irradiance = evaluateIrradiance(N, fragPos);
     float NdotV = max(dot(N, V), 0.0);
     float3 FIndirect = fresnelSchlickRoughness(NdotV, F0, roughness);
     float3 kDIndirect = (1.0 - FIndirect) * (1.0 - metallic);
     
-    float3 indirectDiffuse = kDIndirect * irradiance * albedoSample.rgb;
-    
     float3 R = reflect(-V, N);
     
     float3 dominantDir = lerp(R, N, roughness * roughness);
-    float3 specularIrradiance = evaluateIrradiance(dominantDir, fragPos);
+    float3 irradiance = float3(0.0, 0.0, 0.0);
+    float3 specularIrradiance = float3(0.0, 0.0, 0.0);
+
+    evaluateIrradiance(N, dominantDir, fragPos, irradiance, specularIrradiance);
     
+    float3 indirectDiffuse = kDIndirect * irradiance * albedoSample.rgb;
     float shSpecularValidity = roughness * roughness;
     
     float2 envBRDF = float2(1.0 - roughness, roughness) * FIndirect.r;

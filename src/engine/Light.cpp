@@ -23,7 +23,6 @@ engine::PointLight engine::Light::getPointLightData() {
     PointLight pl = {
         .positionRadius = glm::vec4(worldPos, radius),
         .colorIntensity = glm::vec4(color, intensity),
-        .lightViewProj = {},
         .shadowParams = glm::vec4(0.005f, radius, 0.1f, 1.0f), // bias, far, near, strength
         .shadowData = glm::uvec4(shadowIdx, hasShadowMap ? 1 : 0, 0, 0)
     };

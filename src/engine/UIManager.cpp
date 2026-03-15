@@ -36,7 +36,15 @@ engine::UIObject::~UIObject() {
     if (uiManager->getRenderer()->getHoveredObject() == this) {
         uiManager->getRenderer()->setHoveredObject(nullptr);
     }
-    descriptorSets.clear();
+    if (!descriptorSets.empty()) {
+        engine::Renderer* renderer = uiManager->getRenderer();
+        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
+        if (shader && shader->descriptorPool != VK_NULL_HANDLE) {
+            vkFreeDescriptorSets(renderer->getDevice(), shader->descriptorPool,
+                static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data());
+        }
+        descriptorSets.clear();
+    }
     delete onHover;
     delete onStopHover;
     std::unordered_map<std::string, std::variant<UIObject*, TextObject*>>& roots = uiManager->getRootObjects();

@@ -49,7 +49,6 @@ namespace engine {
     struct PointLight {
         glm::vec4 positionRadius;
         glm::vec4 colorIntensity;
-        glm::mat4 lightViewProj[6];
         glm::vec4 shadowParams;
         glm::uvec4 shadowData;
     };

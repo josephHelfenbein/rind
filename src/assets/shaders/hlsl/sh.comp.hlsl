@@ -103,25 +103,25 @@ void main(uint3 globalID : SV_DispatchThreadID,
             }
         }
     }
-    
+    GroupMemoryBarrierWithGroupSync();
+    for (int i = 0; i < 9; ++i) {
+        sharedSH[localIndex][i] = WaveActiveSum(sharedSH[localIndex][i]);
+    }
     GroupMemoryBarrierWithGroupSync();
     
-    for (uint stride = 32; stride > 0; stride >>= 1) {
-        if (localIndex < stride) {
-            for (int i = 0; i < 9; ++i) {
-                sharedSH[localIndex][i] += sharedSH[localIndex + stride][i];
-            }
-        }
-        GroupMemoryBarrierWithGroupSync();
-    }
-    
     if (localIndex == 0) {
+        uint waveSize = WaveGetLaneCount();
+        uint numWaves = (64 + waveSize - 1) / waveSize;
         uint numGroupsX = (cubemapSize + 7) / 8;
         uint numGroupsY = (cubemapSize + 7) / 8;
         uint workgroupIndex = face * numGroupsX * numGroupsY + groupID.y * numGroupsX + groupID.x;
-        
+
         for (int i = 0; i < 9; ++i) {
-            outputSH[workgroupIndex].coeffs[i] = float4(sharedSH[0][i], 0.0f);
+            float3 total = sharedSH[0][i];
+            for (uint w = 1; w < numWaves; w++) {
+                total += sharedSH[w * waveSize][i];
+            }
+            outputSH[workgroupIndex].coeffs[i] = float4(total, 0.0f);
         }
     }
 }

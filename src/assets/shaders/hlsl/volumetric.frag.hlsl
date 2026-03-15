@@ -116,10 +116,11 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 volCenter = vol.model[3].xyz;
     float camDist = length(volCenter - pc.camPos);
     float lodT = saturate((camDist - LOD_NEAR) / (LOD_FAR - LOD_NEAR));
-    int maxSteps = (int) lerp(48.0, 8.0, lodT);
-    float baseDivs = lerp(24.0, 6.0, lodT);
-    int fbmOctaves = (int) lerp(5.0, 2.0, lodT);
-    bool doRefinement = lodT < 0.7;
+    float waveLodT = WaveActiveMax(lodT);
+    int maxSteps = (int) lerp(48.0, 8.0, waveLodT);
+    float baseDivs = lerp(24.0, 6.0, waveLodT);
+    int fbmOctaves = (int) lerp(5.0, 2.0, waveLodT);
+    bool doRefinement = waveLodT < 0.7;
 
     float totalLen = tFar - tNear;
     float baseStep = totalLen / baseDivs;

@@ -62,12 +62,14 @@ float computeSSAO(float2 uv, float3 centerPos, float3 centerNormal) {
     float occlusion = 0.0;
 
     const int numSamples = 16;
+    float4 projCenter = mul(float4(centerPos, 1.0), pc.proj);
 
     for (uint i = 0; i < numSamples; ++i) {
         float3 sampleVec = mul(kernel[i], TBN) * RADIUS;
         float3 samplePos = centerPos + sampleVec;
 
-        float4 offsetPos = mul(float4(samplePos, 1.0), pc.proj);
+        float4 projOffset = mul(float4(sampleVec, 1.0), pc.proj);
+        float4 offsetPos = projCenter + projOffset;
         offsetPos /= offsetPos.w;
         float2 sampleUV = offsetPos.xy * 0.5 + 0.5;
         float expectedDepth = offsetPos.z;

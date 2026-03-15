@@ -164,7 +164,7 @@ foreach(HLSL ${HLSL_SOURCE_FILES})
 
   add_custom_command(
         OUTPUT ${SPIRV}
-        COMMAND ${DXC_EXECUTABLE} -spirv -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
+        COMMAND ${DXC_EXECUTABLE} -spirv -O3 -fvk-use-scalar-layout -fspv-target-env=vulkan1.3 -fvk-use-dx-position-w -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
         DEPENDS ${HLSL}
         COMMENT "Compiling ${FILE_NAME} to SPIR-V"
     )
