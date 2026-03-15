@@ -15,8 +15,8 @@ void engine::EntityManager::addCollider(Collider* collider) {
 
 void engine::EntityManager::removeCollider(Collider* collider) {
     spatialGrid.remove(collider);
-    colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
-    dynamicColliders.erase(std::remove(dynamicColliders.begin(), dynamicColliders.end(), collider), dynamicColliders.end());
+    std::erase(colliders, collider);
+    std::erase(dynamicColliders, collider);
 }
 
 void engine::EntityManager::addDynamicCollider(Collider* collider) {
@@ -24,7 +24,7 @@ void engine::EntityManager::addDynamicCollider(Collider* collider) {
 }
 
 void engine::EntityManager::removeDynamicCollider(Collider* collider) {
-    dynamicColliders.erase(std::remove(dynamicColliders.begin(), dynamicColliders.end(), collider), dynamicColliders.end());
+    std::erase(dynamicColliders, collider);
 }
 
 void engine::EntityManager::rebuildSpatialGrid() {
@@ -66,21 +66,9 @@ engine::Model* engine::Entity::getModel() const {
     return model;
 }
 
-void engine::Entity::updateWorldTransform() {
-    glm::mat4 transform(1.0f);
-    static thread_local std::vector<Entity*> hierarchy;
-    hierarchy.clear();
-    for (Entity* current = this; current != nullptr; current = current->getParent()) {
-        hierarchy.push_back(current);
-    }
-    for (int i = static_cast<int>(hierarchy.size()) - 1; i >= 0; --i) {
-        Entity* current = hierarchy[i];
-        transform = transform * current->transform;
-    }
-    if (worldTransform != transform) {
-        worldTransform = transform;
-        ++transformGeneration;
-    }
+void engine::Entity::updateWorldTransform(const glm::mat4& parentWorld) {
+    worldTransform = parentWorld * transform;
+    ++transformGeneration;
 }
 
 glm::vec3 engine::Entity::getWorldPosition() const {
@@ -97,7 +85,7 @@ void engine::Entity::addChild(Entity* child) {
 }
 
 void engine::Entity::removeChild(Entity* child) {
-    children.erase(std::remove(children.begin(), children.end(), child), children.end());
+    std::erase(children, child);
     child->setParent(nullptr);
     entityManager->addRootEntry(child);
 }
@@ -513,7 +501,7 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
         if (entity->getType() == Entity::EntityType::Collider || entity->getType() == Entity::EntityType::Trigger) {
             Collider* collider = static_cast<Collider*>(entity);
             spatialGrid.remove(collider);
-            colliders.erase(std::remove(colliders.begin(), colliders.end(), collider), colliders.end());
+            std::erase(colliders, collider);
         }
         entities.erase(it);
     }
@@ -743,14 +731,14 @@ void engine::EntityManager::processIrradianceSH() {
 
 void engine::EntityManager::updateAll(float deltaTime) {
     if (spatialGridDirty) {
-        auto updateTransforms = [&](auto& self, Entity* entity) -> void {
-            entity->updateWorldTransform();
+        auto updateTransforms = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
+            entity->updateWorldTransform(parentWorld);
             for (Entity* child : entity->getChildren()) {
-                self(self, child);
+                self(self, child, entity->getWorldTransform());
             }
         };
         for (Entity* rootEntity : rootEntities) {
-            updateTransforms(updateTransforms, rootEntity);
+            updateTransforms(updateTransforms, rootEntity, glm::mat4(1.0f));
         }
         rebuildSpatialGrid();
         spatialGridDirty = false;
@@ -758,17 +746,17 @@ void engine::EntityManager::updateAll(float deltaTime) {
         updateDynamicColliders();
     }
     
-    auto traverse = [&](auto& self, Entity* entity) -> void {
-        entity->updateWorldTransform();
+    auto traverse = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
+        entity->updateWorldTransform(parentWorld);
         entity->update(deltaTime);
         entity->updateAnimation(deltaTime);
         for (Entity* child : entity->getChildren()) {
-            self(self, child);
+            self(self, child, entity->getWorldTransform());
         }
     };
     std::vector<Entity*> rootsCopy = rootEntities;
     for (Entity* rootEntity : rootsCopy) {
-        traverse(traverse, rootEntity);
+        traverse(traverse, rootEntity, glm::mat4(1.0f));
     }
     if (textureLoadDirty) {
         loadTextures();
@@ -779,13 +767,14 @@ void engine::EntityManager::updateAll(float deltaTime) {
 void engine::EntityManager::processPendingDeletions() {
     if (pendingDeletions.empty()) return;
     vkDeviceWaitIdle(renderer->getDevice());
-    std::vector<Entity*> deletionsCopy = pendingDeletions;
-    for (Entity* entity : deletionsCopy) {
+    static thread_local std::vector<Entity*> rootsTraversalBuffer;
+    rootsTraversalBuffer.clear();
+    std::swap(rootsTraversalBuffer, pendingDeletions);
+    for (Entity* entity : rootsTraversalBuffer) {
         if (entity) {
             removeEntity(entity->getName());
         }
     }
-    pendingDeletions.clear();
 }
 
 void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {

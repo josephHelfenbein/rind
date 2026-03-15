@@ -18,174 +18,226 @@ engine::Collider::~Collider() {
     }
 }
 
-std::vector<engine::Collider::Collision> engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, bool returnFirstHit, float margin, bool getAny) {
-    static thread_local std::vector<engine::Collider::Collision> results;
-    results.clear();
+engine::Collider::Collision engine::Collider::testRayCollision(Collider* collider, AABB rayAABB, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider) {
+    if (collider == ignoreCollider || collider->getIsTrigger()) {
+        return {};
+    }
+    AABB aabb = collider->getWorldAABB();
+    if (!aabbIntersects(rayAABB, aabb)) {
+        return {};
+    }
+    switch (collider->getColliderType()) {
+        case ColliderType::AABB: {
+            AABBCollider* aabbCollider = static_cast<AABBCollider*>(collider);
+            glm::vec3 invDir = 1.0f / rayDir;
+            glm::vec3 t1 = (aabb.min - rayOrigin) * invDir;
+            glm::vec3 t2 = (aabb.max - rayOrigin) * invDir;
+            glm::vec3 tmin = glm::min(t1, t2);
+            glm::vec3 tmax = glm::max(t1, t2);
+            float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
+            float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
+            if (tNear <= tFar && tFar >= 0.0f && tNear <= maxDistance) {
+                float tHit = tNear >= 0.0f ? tNear : tFar;
+                glm::vec3 hitPoint = rayOrigin + rayDir * tHit;
+                glm::vec3 normal(0.0f);
+                if (tNear >= 0.0f) {
+                    if (tmin.x == tNear) normal = glm::vec3(rayDir.x > 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
+                    else if (tmin.y == tNear) normal = glm::vec3(0.0f, rayDir.y > 0 ? -1.0f : 1.0f, 0.0f);
+                    else normal = glm::vec3(0.0f, 0.0f, rayDir.z > 0 ? -1.0f : 1.0f);
+                }
+                Collision collision = {
+                    .other = collider,
+                    .mtv = { .normal = normal },
+                    .worldHitPoint = hitPoint
+                };
+                return collision;
+            }
+            break;
+        }
+        case ColliderType::OBB: {
+            OBBCollider* obbCollider = static_cast<OBBCollider*>(collider);
+            obbCollider->ensureCached();
+            const auto& axes = obbCollider->getAxesCache();
+            glm::vec3 obbCenter = obbCollider->getCenterCache();
+            glm::vec3 halfSize = obbCollider->getHalfSize();
+            glm::vec3 delta = obbCenter - rayOrigin;
+            float halfSizes[3] = { halfSize.x, halfSize.y, halfSize.z };
+            float tMin = 0.0f;
+            float tMax = maxDistance;
+            bool hit = true;
+            int hitAxis = -1;
+            float hitAxisDir = 0.0f;
+            for (int i = 0; i < 3; ++i) {
+                float e = glm::dot(axes[i], delta);
+                float f = glm::dot(axes[i], rayDir);
+                if (std::abs(f) > 1e-6f) {
+                    float t1 = (e - halfSizes[i]) / f;
+                    float t2 = (e + halfSizes[i]) / f;
+                    float sign = 1.0f;
+                    if (t1 > t2) { std::swap(t1, t2); sign = -1.0f; }
+                    if (t1 > tMin) {
+                        tMin = t1;
+                        hitAxis = i;
+                        hitAxisDir = -sign * (f > 0 ? 1.0f : -1.0f);
+                    }
+                    tMax = glm::min(tMax, t2);
+                    if (tMin > tMax) {
+                        hit = false;
+                        break;
+                    }
+                } else if (-e - halfSizes[i] > 0.0f || -e + halfSizes[i] < 0.0f) {
+                    hit = false;
+                    break;
+                }
+            }
+            if (hit && tMax >= 0.0f) {
+                glm::vec3 normal = hitAxis >= 0 ? axes[hitAxis] * hitAxisDir : glm::vec3(0.0f);
+                Collision collision = {
+                    .other = collider,
+                    .mtv = { .normal = normal },
+                    .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
+                };
+                return collision;
+            }
+            break;
+        }
+        case ColliderType::ConvexHull: {
+            ConvexHullCollider* hullCollider = static_cast<ConvexHullCollider*>(collider);
+            const std::vector<glm::vec3>& faceAxes = hullCollider->getFaceAxesCached();
+            const std::vector<glm::vec3>& worldVerts = hullCollider->getWorldVerts();
+            glm::vec3 center = hullCollider->getWorldCenter();
+            float tMin = 0.0f;
+            float tMax = maxDistance;
+            bool hit = true;
+            glm::vec3 hitNormal(0.0f);
+            for (const glm::vec3& normal : faceAxes) {
+                float hullMin = std::numeric_limits<float>::max();
+                float hullMax = std::numeric_limits<float>::lowest();
+                for (const glm::vec3& v : worldVerts) {
+                    float proj = glm::dot(v, normal);
+                    hullMin = glm::min(hullMin, proj);
+                    hullMax = glm::max(hullMax, proj);
+                }
+                float originProj = glm::dot(rayOrigin, normal);
+                float dirProj = glm::dot(rayDir, normal);
+                if (std::abs(dirProj) > 1e-6f) {
+                    float t1 = (hullMin - originProj) / dirProj;
+                    float t2 = (hullMax - originProj) / dirProj;
+                    if (t1 > t2) std::swap(t1, t2);
+                    if (t1 > tMin) {
+                        tMin = t1;
+                        hitNormal = dirProj > 0 ? -normal : normal;
+                    }
+                    tMax = glm::min(tMax, t2);
+                    if (tMin > tMax) {
+                        hit = false;
+                        break;
+                    }
+                } else if (originProj < hullMin || originProj > hullMax) {
+                    hit = false;
+                    break;
+                }
+            }
+            if (hit && tMax >= 0.0f) {
+                Collision collision = {
+                    .other = collider,
+                    .mtv = { .normal = hitNormal },
+                    .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
+                };
+                return collision;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return {};
+}
+
+engine::Collider::Collision engine::Collider::raycastFirst(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin) {
+    static thread_local std::vector<engine::Collider::Collision> hits;
+    hits.clear();
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
-    
     AABB rayAABB = {
         .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
-    
     static thread_local std::vector<engine::Collider*> candidates;
     entityManager->getSpatialGrid().query(rayAABB, candidates);
     
     for (Collider* collider : candidates) {
-        if (collider == ignoreCollider || collider->getIsTrigger()) {
-            continue;
-        }
-        AABB aabb = collider->getWorldAABB();
-        if (!aabbIntersects(rayAABB, aabb)) {
-            continue;
-        }
-        switch (collider->getColliderType()) {
-            case ColliderType::AABB: {
-                AABBCollider* aabbCollider = static_cast<AABBCollider*>(collider);
-                glm::vec3 invDir = 1.0f / rayDir;
-                glm::vec3 t1 = (aabb.min - rayOrigin) * invDir;
-                glm::vec3 t2 = (aabb.max - rayOrigin) * invDir;
-                glm::vec3 tmin = glm::min(t1, t2);
-                glm::vec3 tmax = glm::max(t1, t2);
-                float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
-                float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
-                if (tNear <= tFar && tFar >= 0.0f && tNear <= maxDistance) {
-                    float tHit = tNear >= 0.0f ? tNear : tFar;
-                    glm::vec3 hitPoint = rayOrigin + rayDir * tHit;
-                    glm::vec3 normal(0.0f);
-                    if (tNear >= 0.0f) {
-                        if (tmin.x == tNear) normal = glm::vec3(rayDir.x > 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
-                        else if (tmin.y == tNear) normal = glm::vec3(0.0f, rayDir.y > 0 ? -1.0f : 1.0f, 0.0f);
-                        else normal = glm::vec3(0.0f, 0.0f, rayDir.z > 0 ? -1.0f : 1.0f);
-                    }
-                    Collision collision = {
-                        .other = collider,
-                        .mtv = { .normal = normal },
-                        .worldHitPoint = hitPoint
-                    };
-                    results.push_back(collision);
-                    if (getAny) {
-                        return results;
-                    }
-                }
-                break;
-            }
-            case ColliderType::OBB: {
-                OBBCollider* obbCollider = static_cast<OBBCollider*>(collider);
-                obbCollider->ensureCached();
-                const auto& axes = obbCollider->getAxesCache();
-                glm::vec3 obbCenter = obbCollider->getCenterCache();
-                glm::vec3 halfSize = obbCollider->getHalfSize();
-                glm::vec3 delta = obbCenter - rayOrigin;
-                float halfSizes[3] = { halfSize.x, halfSize.y, halfSize.z };
-                float tMin = 0.0f;
-                float tMax = maxDistance;
-                bool hit = true;
-                int hitAxis = -1;
-                float hitAxisDir = 0.0f;
-                for (int i = 0; i < 3; ++i) {
-                    float e = glm::dot(axes[i], delta);
-                    float f = glm::dot(axes[i], rayDir);
-                    if (std::abs(f) > 1e-6f) {
-                        float t1 = (e - halfSizes[i]) / f;
-                        float t2 = (e + halfSizes[i]) / f;
-                        float sign = 1.0f;
-                        if (t1 > t2) { std::swap(t1, t2); sign = -1.0f; }
-                        if (t1 > tMin) {
-                            tMin = t1;
-                            hitAxis = i;
-                            hitAxisDir = -sign * (f > 0 ? 1.0f : -1.0f);
-                        }
-                        tMax = glm::min(tMax, t2);
-                        if (tMin > tMax) {
-                            hit = false;
-                            break;
-                        }
-                    } else if (-e - halfSizes[i] > 0.0f || -e + halfSizes[i] < 0.0f) {
-                        hit = false;
-                        break;
-                    }
-                }
-                if (hit && tMax >= 0.0f) {
-                    glm::vec3 normal = hitAxis >= 0 ? axes[hitAxis] * hitAxisDir : glm::vec3(0.0f);
-                    Collision collision = {
-                        .other = collider,
-                        .mtv = { .normal = normal },
-                        .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
-                    };
-                    results.push_back(collision);
-                    if (getAny) {
-                        return results;
-                    }
-                }
-                break;
-            }
-            case ColliderType::ConvexHull: {
-                ConvexHullCollider* hullCollider = static_cast<ConvexHullCollider*>(collider);
-                const std::vector<glm::vec3>& faceAxes = hullCollider->getFaceAxesCached();
-                const std::vector<glm::vec3>& worldVerts = hullCollider->getWorldVerts();
-                glm::vec3 center = hullCollider->getWorldCenter();
-                float tMin = 0.0f;
-                float tMax = maxDistance;
-                bool hit = true;
-                glm::vec3 hitNormal(0.0f);
-                for (const glm::vec3& normal : faceAxes) {
-                    float hullMin = std::numeric_limits<float>::max();
-                    float hullMax = std::numeric_limits<float>::lowest();
-                    for (const glm::vec3& v : worldVerts) {
-                        float proj = glm::dot(v, normal);
-                        hullMin = glm::min(hullMin, proj);
-                        hullMax = glm::max(hullMax, proj);
-                    }
-                    float originProj = glm::dot(rayOrigin, normal);
-                    float dirProj = glm::dot(rayDir, normal);
-                    if (std::abs(dirProj) > 1e-6f) {
-                        float t1 = (hullMin - originProj) / dirProj;
-                        float t2 = (hullMax - originProj) / dirProj;
-                        if (t1 > t2) std::swap(t1, t2);
-                        if (t1 > tMin) {
-                            tMin = t1;
-                            hitNormal = dirProj > 0 ? -normal : normal;
-                        }
-                        tMax = glm::min(tMax, t2);
-                        if (tMin > tMax) {
-                            hit = false;
-                            break;
-                        }
-                    } else if (originProj < hullMin || originProj > hullMax) {
-                        hit = false;
-                        break;
-                    }
-                }
-                if (hit && tMax >= 0.0f) {
-                    Collision collision = {
-                        .other = collider,
-                        .mtv = { .normal = hitNormal },
-                        .worldHitPoint = rayOrigin + rayDir * (tMin >= 0.0f ? tMin : tMax)
-                    };
-                    results.push_back(collision);
-                    if (getAny) {
-                        return results;
-                    }
-                }
-                break;
-            }
+        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+        if (collision.other) {
+            hits.push_back(collision);
         }
     }
-    if (returnFirstHit && !results.empty()) {
-        Collision closest = results[0];
+    if (!hits.empty()) {
+        Collision closest = hits[0];
         float closestDist = glm::length(closest.worldHitPoint - rayOrigin);
-        for (const Collision& collision : results) {
+        for (const Collision& collision : hits) {
             float dist = glm::length(collision.worldHitPoint - rayOrigin);
             if (dist < closestDist) {
                 closest = collision;
                 closestDist = dist;
             }
         }
-        results.clear();
-        results.push_back(closest);
+        return closest;
     }
-    return results;
+    return {};
+}
+
+bool engine::Collider::raycastAny(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin) {
+    glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
+    AABB rayAABB = {
+        .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
+        .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
+    };
+    static thread_local std::vector<engine::Collider*> candidates;
+    entityManager->getSpatialGrid().query(rayAABB, candidates);
+    
+    for (Collider* collider : candidates) {
+        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+        if (collision.other) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void engine::Collider::raycast(EntityManager* entityManager, std::vector<engine::Collider::Collision>& outColliders, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin) {
+    glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
+    AABB rayAABB = {
+        .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
+        .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
+    };
+    static thread_local std::vector<engine::Collider*> candidates;
+    entityManager->getSpatialGrid().query(rayAABB, candidates);
+    
+    for (Collider* collider : candidates) {
+        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+        if (collision.other) {
+            outColliders.push_back(collision);
+        }
+    }
+}
+
+size_t engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin) {
+    size_t hitCount = 0;
+    glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
+    AABB rayAABB = {
+        .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
+        .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
+    };
+    static thread_local std::vector<engine::Collider*> candidates;
+    entityManager->getSpatialGrid().query(rayAABB, candidates);
+    
+    for (Collider* collider : candidates) {
+        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+        if (collision.other) {
+            hitCount++;
+        }
+    }
+    return hitCount;
 }
 
 std::array<glm::vec3, 8> engine::Collider::buildOBBCorners(const glm::mat4& transform, const glm::vec3& half) {
@@ -302,7 +354,8 @@ std::pair<float, float> engine::Collider::projectVertsOntoAxis(std::span<const g
 }
 
 bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB) {
-    std::vector<glm::vec3> axes;
+    static thread_local std::vector<glm::vec3> axes;
+    axes.clear();
     axes.reserve(axesA.size() + axesB.size() + 36);
     for (const auto& axis : axesA) {
         addAxisUnique(axes, axis);

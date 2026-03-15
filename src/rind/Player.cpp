@@ -334,7 +334,7 @@ void rind::Player::update(float deltaTime) {
         healEffectObject->loadTexture();
         float amount = -(10.0f * std::pow(healUIShowTime, 5) - (10.0f * healUIShowTime));
         particleManager->burstParticles(
-            getWorldTransform(),
+            getWorldPosition(),
             glm::vec3(0.2f, 0.2f, 1.0f),
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             amount,
@@ -343,7 +343,7 @@ void rind::Player::update(float deltaTime) {
             0.2f
         );
         particleManager->burstParticles(
-            getWorldTransform(),
+            getWorldPosition(),
             glm::vec3(0.2f, 0.2f, 1.0f),
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             amount,
@@ -747,7 +747,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
         if (duration >= dashCooldown && canDash) {
             dash(currentPress, 100.0f);
             particleManager->burstParticles(
-                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
                 trailColor,
                 -glm::normalize(getVelocity()) * 15.0f,
                 50,
@@ -756,7 +756,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 1.2f
             );
             particleManager->burstParticles(
-                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
                 trailColor,
                 -glm::normalize(getVelocity()) * 10.0f,
                 50,
@@ -839,7 +839,7 @@ void rind::Player::damage(float amount) {
         );
         windowTint->addChild(quitButton);
         particleManager->burstParticles(
-            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             trailColor,
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             200,
@@ -848,7 +848,7 @@ void rind::Player::damage(float amount) {
             0.3f
         );
         particleManager->burstParticles(
-            getWorldTransform(),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             trailColor,
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             200,
@@ -857,7 +857,7 @@ void rind::Player::damage(float amount) {
             0.6f
         );
         particleManager->burstParticles(
-            getWorldTransform(),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             trailColor,
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             200,
@@ -879,7 +879,7 @@ void rind::Player::shoot() {
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     particleManager->burstParticles(
-        glm::translate(glm::mat4(1.0f), gunPos),
+        gunPos,
         trailColor,
         rayDir * 10.0f,
         20,
@@ -888,7 +888,7 @@ void rind::Player::shoot() {
         0.8f
     );
     particleManager->burstParticles(
-        glm::translate(glm::mat4(1.0f), gunPos),
+        gunPos,
         trailColor,
         rayDir * 15.0f,
         60,
@@ -896,22 +896,20 @@ void rind::Player::shoot() {
         0.35f,
         0.3f
     );
-    std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
+    engine::Collider::Collision hit = engine::Collider::raycastFirst(
         getEntityManager(),
         camera->getWorldPosition(),
         rayDir,
         1000.0f,
-        this->getCollider(),
-        true
+        this->getCollider()
     );
     glm::vec3 endPos = gunPos + rayDir * 1000.0f;
-    if (!hits.empty()) {
-        engine::Collider::Collision collision = hits[0];
-        endPos = collision.worldHitPoint;
-        glm::vec3 normal = glm::normalize(collision.mtv.normal);
+    if (hit.other) {
+        endPos = hit.worldHitPoint;
+        glm::vec3 normal = glm::normalize(hit.mtv.normal);
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            hit.worldHitPoint,
             trailColor,
             reflectedDir * 40.0f,
             50,
@@ -920,7 +918,7 @@ void rind::Player::shoot() {
             0.9f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            hit.worldHitPoint,
             trailColor,
             reflectedDir * 25.0f,
             100,
@@ -929,7 +927,7 @@ void rind::Player::shoot() {
             0.4f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            hit.worldHitPoint,
             trailColor,
             reflectedDir * 10.0f,
             50,
@@ -938,7 +936,7 @@ void rind::Player::shoot() {
             0.7f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            hit.worldHitPoint,
             trailColor,
             reflectedDir * 30.0f,
             40,
@@ -946,7 +944,7 @@ void rind::Player::shoot() {
             0.35f,
             1.1f
         );
-        engine::Entity* other = collision.other->getParent();
+        engine::Entity* other = hit.other->getParent();
         if (other->getType() == engine::Entity::EntityType::Enemy) {
             rind::Enemy* character = static_cast<rind::Enemy*>(other);
             character->damage(34.0f);
@@ -958,9 +956,9 @@ void rind::Player::shoot() {
                     audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, 0.2f);
                 }
             }
-            audioManager->playSound3D("laser_enemy_impact", collision.worldHitPoint, 0.5f, 0.2f);
+            audioManager->playSound3D("laser_enemy_impact", hit.worldHitPoint, 0.5f, 0.2f);
         } else {
-            audioManager->playSound3D("laser_ground_impact", collision.worldHitPoint, 0.5f, 0.2f);
+            audioManager->playSound3D("laser_ground_impact", hit.worldHitPoint, 0.5f, 0.2f);
         }
     }
     audioManager->playSound3D("laser_shot", gunPos, 0.5f, 0.2f);

@@ -1,8 +1,7 @@
 #include <rind/WalkingEnemy.h>
 #include <engine/ParticleManager.h>
 #include <glm/gtc/quaternion.hpp>
-
-#define PI 3.14159265358979323846f
+#include <numbers>
 
 rind::WalkingEnemy::WalkingEnemy(
     engine::EntityManager* entityManager,
@@ -89,17 +88,14 @@ void rind::WalkingEnemy::update(float deltaTime) {
         float distanceToPlayer = glm::length(toPlayer);
         switch (state) {
             case EnemyState::Spawning: {
-                size_t hits = engine::Collider::raycast(
+                if (engine::Collider::raycastAny(
                     getEntityManager(),
                     getWorldPosition(),
                     glm::vec3(0.0f, -1.0f, 0.0f),
                     5.0f,
                     getCollider(),
-                    false,
-                    0.1f,
-                    true // getAny returns on first hit
-                ).size();
-                if (hits > 0) {
+                    0.1f
+                )) {
                     state = EnemyState::Idle;
                 } else if (firstFrame) {
                     rotateToPlayer();
@@ -144,17 +140,14 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     float mid = (backupSearchLo + backupSearchHi) * 0.5f;
                     glm::vec3 testPos = getWorldPosition() + backward * mid;
                     glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                    size_t hits = engine::Collider::raycast(
+                    if (engine::Collider::raycastAny(
                         getEntityManager(),
                         rayOrigin,
                         glm::vec3(0.0f, -1.0f, 0.0f),
                         5.0f,
                         getCollider(),
-                        false,
-                        0.1f,
-                        true
-                    ).size();
-                    if (hits > 0) {
+                        0.1f
+                    )) {
                         cachedMaxSafeBackup = mid;
                         backupSearchLo = mid;
                     } else {
@@ -169,10 +162,10 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 float angle = acos(dot);
                 glm::vec3 cross = glm::cross(forward, targetDir);
                 float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
-                float maxRotation = deltaTime * PI;
+                float maxRotation = deltaTime * std::numbers::pi_v<float>;
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
                 rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
-                bool facingPlayer = (angle < PI / 4.0f);
+                bool facingPlayer = (angle < std::numbers::pi_v<float> / 4.0f);
                 float distanceError = distanceToPlayer - safeDistance;
                 if (std::abs(distanceError) < 0.5f) {
                     stopMove(getPressed(), false);
@@ -214,7 +207,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
                 float angle = acos(dot);
                 glm::vec3 cross = glm::cross(forward, targetDir);
                 float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
-                float maxRotation = deltaTime * PI;
+                float maxRotation = deltaTime * std::numbers::pi_v<float>;
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
                 glm::vec3 headWorldPos = glm::vec3(getHead()->getWorldTransform()[3]);
                 glm::vec3 toPlayerFromHead = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f) - headWorldPos;
@@ -252,10 +245,8 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     glm::vec3(0.0f, -1.0f, 0.0f),
                     5.0f,
                     getCollider(),
-                    false,
-                    0.1f,
-                    true
-                ).size();
+                    0.1f
+                );
                 if (hits > 0 && hits <= 2) {
                     if (getPressed().x != strafeDir) {
                         stopMove(getPressed(), false);
@@ -278,22 +269,19 @@ void rind::WalkingEnemy::wander() {
     float amount = 0.0f;
     uint32_t tries = 0;
     while (tries < 20) {
-        direction = (dist(rng) + 1.0f) * PI;
+        direction = (dist(rng) + 1.0f) * std::numbers::pi_v<float>;
         amount = (dist(rng) + 1.0f) * 10.0f;
         glm::vec3 goal = glm::vec3(cos(direction), 0.0f, sin(direction)) * amount;
         glm::vec3 worldGoal = getWorldPosition() + goal;
         glm::vec3 rayOrigin = worldGoal + glm::vec3(0.0f, 2.0f, 0.0f);
-        size_t rayHits = engine::Collider::raycast(
+        if (engine::Collider::raycastAny(
             getEntityManager(),
             rayOrigin,
             glm::vec3(0.0f, -1.0f, 0.0f),
             5.0f,
             getCollider(),
-            false,
-            0.1f,
-            true // getAny returns on first hit
-        ).size();
-        if (rayHits > 0) {
+            0.1f
+        )) {
             wanderTarget = worldGoal;
             wandering = true;
             break;
@@ -335,7 +323,7 @@ void rind::WalkingEnemy::wanderTo(float deltaTime) {
     float angle = acos(dot);
     glm::vec3 cross = glm::cross(forward, targetDir);
     float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
-    float maxRotation = deltaTime * 2 * PI;
+    float maxRotation = deltaTime * 2.0f * std::numbers::pi_v<float>;
     float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
     rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
     if (getPressed() != glm::vec3(0.0f, 0.0f, -1.0f)) {

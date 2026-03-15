@@ -5,25 +5,17 @@
 #include <engine/SpatialGrid.h>
 
 engine::Particle::Particle(
-    ParticleManager* particleManager,
     EntityManager* entityManager,
-    const glm::mat4& transform,
+    const glm::vec3& position,
     const glm::vec3& color,
     const glm::vec3& velocity,
     float lifetime,
     float type,
     float size
-) : particleManager(particleManager), entityManager(entityManager), transform(transform), color(color), velocity(velocity), lifetime(lifetime), type(type), size(size) {
-        particleManager->registerParticle(this);
-        prevPosition = glm::vec3(transform[3]);
+) : entityManager(entityManager), position(position), color(color), velocity(velocity), lifetime(lifetime), type(type), size(size) {
+        prevPosition = position;
         prevPrevPosition = prevPosition;
     }
-
-engine::Particle::~Particle() {
-    if (particleManager) {
-        particleManager->unregisterParticle(this);
-    }
-}
 
 void engine::Particle::update(float deltaTime) {
     age += deltaTime;
@@ -35,7 +27,7 @@ void engine::Particle::update(float deltaTime) {
         return;
     }
     velocity.y -= gravity * deltaTime; // gravity
-    glm::vec3 currentPos = glm::vec3(transform[3]);
+    glm::vec3 currentPos = position;
     prevPrevPosition = prevPosition;
     prevPosition = currentPos;
     glm::vec3 newPos = currentPos + velocity * deltaTime;
@@ -57,7 +49,7 @@ void engine::Particle::update(float deltaTime) {
             }
         }
     }
-    transform[3] = glm::vec4(newPos, 1.0f);
+    position = newPos;
 }
 
 engine::Collider::Collision engine::Particle::checkCollision(const glm::vec3& position) {
@@ -200,17 +192,12 @@ engine::ParticleManager::~ParticleManager() {
     particleBuffers.clear();
     particleBufferMemory.clear();
     particleBuffersMapped.clear();
-    auto particlesCopy = std::move(particles);
     particles.clear();
-    for (auto* particle : particlesCopy) {
-        particle->detachFromManager();
-        delete particle;
-    }
 }
 
 void engine::ParticleManager::clear() {
-    for (const auto& particle : particles) {
-        particle->markForDeletion();
+    for (auto& particle : particles) {
+        particle.markForDeletion();
     }
 }
 
@@ -285,7 +272,7 @@ void engine::ParticleManager::createParticleDescriptorSets() {
     }
 }
 
-void engine::ParticleManager::burstParticles(const glm::mat4& transform, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size) {
+void engine::ParticleManager::burstParticles(const glm::vec3& position, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size) {
     float velLength = glm::length(velocity) + dist(rng) * 0.1f * glm::length(velocity);
     for (size_t i = 0; i < static_cast<size_t>(count); ++i) {
         float offsetX = dist(rng) * spread * velLength;
@@ -296,15 +283,16 @@ void engine::ParticleManager::burstParticles(const glm::mat4& transform, const g
         glm::vec3 colorOffset = glm::vec3(dist(rng), dist(rng), dist(rng)) * 0.1f;
         glm::vec3 particleColor = color + colorOffset;
         particleColor = glm::clamp(particleColor, glm::vec3(0.0f), glm::vec3(1.0f));
-        new Particle(this, renderer->getEntityManager(), transform, particleColor, velocity + velocityOffset, particleLifetime, 0.0f, size);
+        particles.emplace_back(renderer->getEntityManager(), position, particleColor, velocity + velocityOffset, particleLifetime, 0.0f, size);
     }
 }
 
 void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec3& color, float lifetime, float fakeAge) {
-    Particle* p = new Particle(this, renderer->getEntityManager(), glm::translate(glm::mat4(1.0f), start), color, glm::vec3(0.0f), lifetime, 1.0f);
-    p->setPrevPosition(dir);
-    p->setPrevPrevPosition(start);
-    p->setAge(fakeAge);
+    particles.emplace_back(renderer->getEntityManager(), start, color, glm::vec3(0.0f), lifetime, 1.0f);
+    Particle& p = particles.back();
+    p.setPrevPosition(dir);
+    p.setPrevPrevPosition(start);
+    p.setAge(fakeAge);
 }
 
 void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
@@ -313,10 +301,6 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
         vkDeviceWaitIdle(device);
         if (particles.size() > hardCap) {
             size_t toRemove = particles.size() - hardCap;
-            for (size_t i = 0; i < toRemove; ++i) {
-                particles[i]->detachFromManager();
-                delete particles[i];
-            }
             particles.erase(particles.begin(), particles.begin() + toRemove);
         }
         maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.size())), hardCap);
@@ -355,10 +339,10 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
     Camera* camera = renderer->getEntityManager()->getCamera();
     if (!camera) return;
     for (size_t i = 0; i < particles.size(); ++i) {
-        if (camera->isSphereInFrustum(glm::vec3(particles[i]->getTransform()[3]), 0.1f)) {
-            gpuData[visibleCount++] = particles[i]->getGPUData();
+        if (camera->isSphereInFrustum(particles[i].getPosition(), 0.1f)) {
+            gpuData[visibleCount++] = particles[i].getGPUData();
         } else {
-            gpuData[--backIdx] = particles[i]->getGPUData();
+            gpuData[--backIdx] = particles[i].getGPUData();
         }
     }
     for (size_t i = visibleCount; i < particles.size(); ++i) {
@@ -391,20 +375,14 @@ void engine::ParticleManager::updateAll(float deltaTime) {
     if (count > 64) {
         #pragma omp parallel for
         for (int i = 0; i < count; ++i) {
-            particles[i]->update(deltaTime);
+            particles[i].update(deltaTime);
         }
     } else
 #endif
     for (auto& particle : particles) {
-        particle->update(deltaTime);
+        particle.update(deltaTime);
     }
-    auto it = std::remove_if(particles.begin(), particles.end(), [](Particle* p) {
-        if (p->isMarkedForDeletion()) {
-            p->detachFromManager();
-            delete p;
-            return true;
-        }
-        return false;
+    std::erase_if(particles, [](const Particle& p) {
+        return p.isMarkedForDeletion();
     });
-    particles.erase(it, particles.end());
 }

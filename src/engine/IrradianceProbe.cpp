@@ -525,7 +525,7 @@ void engine::IrradianceProbe::copyBakedToDynamic(Renderer* renderer, VkCommandBu
 void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame) {
     if (!dynamicImageReady) return;
     ParticleManager* particleManager = renderer->getParticleManager();
-    const std::vector<Particle*>& particles = particleManager->getParticles();
+    const std::vector<Particle>& particles = particleManager->getParticles();
     size_t currentParticleCount = particles.size();
     
     // update if there are particles in the scene, or all particles disappeared

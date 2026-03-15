@@ -41,8 +41,12 @@ namespace engine {
             }
             return glm::vec3(0.0f);
         }
+        inline static Collision testRayCollision(Collider* collider, AABB rayAABB, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider);
         static bool aabbIntersects(const AABB& a, const AABB& b, float margin = 0.0f);
-        static std::vector<Collision> raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance = FLT_MAX, Collider* ignoreCollider = nullptr, bool returnFirstHit = false, float margin = 0.1f, bool getAny = false);
+        static Collision raycastFirst(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin = 0.1f);
+        static void raycast(EntityManager* entityManager, std::vector<Collision>& outColliders, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider = nullptr, float margin = 0.1f);
+        static size_t raycast(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider = nullptr, float margin = 0.1f);
+        static bool raycastAny(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider = nullptr, float margin = 0.1f);
         static AABB aabbFromCorners(const std::array<glm::vec3, 8>& corners);
         static std::array<glm::vec3, 8> getCornersFromAABB(const AABB& aabb);
         bool getIsTrigger() const { return isTrigger; }

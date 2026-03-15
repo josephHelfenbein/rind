@@ -163,17 +163,14 @@ void rind::CharacterEntity::updateMovement(float deltaTime) {
             }
         }
     }
-    size_t groundHits = engine::Collider::raycast(
+    if (engine::Collider::raycastAny(
         getEntityManager(),
         getCollider()->getWorldPosition() + glm::vec3(0.0f, -collider->getHalfSize().y + 0.1f, 0.0f),
         glm::vec3(0.0f, -1.0f, 0.0f),
         0.1f,
         getCollider(),
-        false,
-        0.0f,
-        true // getAny early exits on first hit
-    ).size();
-    if (groundHits > 0) {
+        0.0f
+    )) {
         touchedGround = true;
     }
     if (touchedGround) {

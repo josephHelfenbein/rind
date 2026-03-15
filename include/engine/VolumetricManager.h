@@ -17,8 +17,12 @@ namespace engine {
     };
     class Volumetric {
     public:
-        Volumetric(VolumetricManager* volumetricManager, const glm::mat4& initialTransform, const glm::mat4& finalTransform, const glm::vec4& color, float lifetime);
-        ~Volumetric();
+        Volumetric(
+            const glm::mat4& initialTransform,
+            const glm::mat4& finalTransform,
+            const glm::vec4& color,
+            float lifetime
+        );
         const glm::vec4& getColor() const { return color; }
         void setColor(const glm::vec4& color) { this->color = color; }
         float getLifetime() const { return lifetime; }
@@ -51,12 +55,9 @@ namespace engine {
 
         const glm::mat4& getFinalTransform() const { return finalTransform; }
 
-        void detachFromManager() { volumetricManager = nullptr; }
-
         void markForDeletion() { markedForDeletion = true; }
         bool isMarkedForDeletion() const { return markedForDeletion; }
     private:
-        VolumetricManager* volumetricManager;
         glm::mat4 initialTransform;
         glm::mat4 finalTransform;
         glm::vec4 color;
@@ -73,17 +74,13 @@ namespace engine {
 
         void createVolumetric(const glm::mat4& initialTransform, const glm::mat4& finalTransform, const glm::vec4& color, float lifetime) {
             if (volumetrics.size() >= hardCap) return;
-            new Volumetric(this, initialTransform, finalTransform, color, lifetime);
-        }
-        void registerVolumetric(Volumetric* volumetric) { volumetrics.push_back(volumetric); }
-        void unregisterVolumetric(Volumetric* volumetric) {
-            volumetrics.erase(std::remove(volumetrics.begin(), volumetrics.end(), volumetric), volumetrics.end());
+            volumetrics.emplace_back(initialTransform, finalTransform, color, lifetime);
         }
 
         void updateVolumetricBuffer(uint32_t currentFrame);
         void createVolumetricDescriptorSets();
         std::vector<VkDescriptorSet> getDescriptorSets() const { return descriptorSets; }
-        std::vector<Volumetric*> getVolumetrics() const { return volumetrics; }
+        std::vector<Volumetric> getVolumetrics() const { return volumetrics; }
 
         void updateAll(float deltaTime);
         void renderVolumetrics(VkCommandBuffer commandBuffer, uint32_t currentFrame);
@@ -91,7 +88,7 @@ namespace engine {
     private:
         engine::Renderer* renderer;
 
-        std::vector<Volumetric*> volumetrics;
+        std::vector<Volumetric> volumetrics;
         std::vector<VkBuffer> volumetricBuffers;
         std::vector<VkDeviceMemory> volumetricBufferMemory;
         std::vector<void*> volumetricBuffersMapped;

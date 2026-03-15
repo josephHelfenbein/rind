@@ -3,8 +3,7 @@
 #include <rind/Enemy.h>
 #include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
-
-#define PI 3.14159265358979323846f
+#include <numbers>
 
 rind::SlowBullet::SlowBullet(
     engine::EntityManager* entityManager,
@@ -72,7 +71,7 @@ void rind::SlowBullet::update(float deltaTime) {
             audioManager->playSound3D("laser_ground_impact", hitPoint, 0.5f, 0.2F);
         }
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), hitPoint),
+            hitPoint,
             color,
             reflectedDir * 40.0f,
             50,
@@ -81,7 +80,7 @@ void rind::SlowBullet::update(float deltaTime) {
             0.9f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), hitPoint),
+            hitPoint,
             color,
             reflectedDir * 25.0f,
             100,
@@ -90,7 +89,7 @@ void rind::SlowBullet::update(float deltaTime) {
             0.4f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), hitPoint),
+            hitPoint,
             color,
             reflectedDir * 10.0f,
             50,
@@ -99,7 +98,7 @@ void rind::SlowBullet::update(float deltaTime) {
             0.7f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), hitPoint),
+            hitPoint,
             color,
             reflectedDir * 30.0f,
             40,
@@ -120,7 +119,7 @@ void rind::SlowBullet::update(float deltaTime) {
         }
         if (!camera->isSphereInFrustum(getWorldPosition(), 1.0f)) {
             particleManager->burstParticles(
-                getWorldTransform(),
+                getWorldPosition(),
                 color,
                 glm::vec3(0.0f, 1.0f, 0.0f) * 0.5f,
                 2,
@@ -131,7 +130,7 @@ void rind::SlowBullet::update(float deltaTime) {
             return;
         }
         float sizeFactor = dist(rng) * 0.2f + 0.4f; // 0.2 to 0.6
-        float randomPhi = dist(rng) * 2.0f * PI;
+        float randomPhi = dist(rng) * 2.0f * std::numbers::pi_v<float>;
         float randomCostheta = dist(rng) * 2.0f - 1.0f;
         float randomSintheta = sqrt(1.0f - randomCostheta * randomCostheta);
         glm::vec3 randomDir = glm::vec3(
@@ -141,7 +140,7 @@ void rind::SlowBullet::update(float deltaTime) {
         );
         if (distanceToCamera > 30.0f) {
             particleManager->burstParticles(
-                getWorldTransform(),
+                getWorldPosition(),
                 color,
                 randomDir * 2.0f,
                 2,
@@ -151,7 +150,7 @@ void rind::SlowBullet::update(float deltaTime) {
             );
         } else {
             particleManager->burstParticles(
-                getWorldTransform(),
+                getWorldPosition(),
                 color,
                 randomDir * 2.0f,
                 4,
@@ -163,7 +162,7 @@ void rind::SlowBullet::update(float deltaTime) {
         float streakRoll = dist(rng) + 1.0f;
         if (streakRoll > 1.0f) { // 50% chance
             glm::vec3 startPos = getWorldPosition() + randomDir * 0.2f;
-            float randomPhi2 = dist(rng) * 2.0f * PI;
+            float randomPhi2 = dist(rng) * 2.0f * std::numbers::pi_v<float>;
             float randomCostheta2 = dist(rng) * 2.0f - 1.0f;
             float randomSintheta2 = sqrt(1.0f - randomCostheta2 * randomCostheta2);
             glm::vec3 randomDir2 = glm::vec3(

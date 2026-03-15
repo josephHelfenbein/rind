@@ -7,8 +7,7 @@
 #include <engine/VolumetricManager.h>
 #include <rind/Player.h>
 #include <rind/Enemy.h>
-
-#define PI 3.14159265358979323846f
+#include <numbers>
 
 namespace rind {
     class Grenade : public engine::Entity {
@@ -74,7 +73,7 @@ namespace rind {
             }
             if (!camera->isSphereInFrustum(getWorldPosition(), 1.0f)) {
                 particleManager->burstParticles(
-                    getWorldTransform(),
+                    getWorldPosition(),
                     color,
                     glm::vec3(0.0f, 1.0f, 0.0f) * 0.5f,
                     4,
@@ -85,7 +84,7 @@ namespace rind {
                 return;
             }
             float sizeFactor = dist(rng) * 0.2f + 0.4f; // 0.2 to 0.6
-            float randomPhi = dist(rng) * 2.0f * PI;
+            float randomPhi = dist(rng) * 2.0f * std::numbers::pi_v<float>;
             float randomCostheta = dist(rng) * 2.0f - 1.0f;
             float randomSintheta = sqrt(1.0f - randomCostheta * randomCostheta);
             glm::vec3 randomDir = glm::vec3(
@@ -95,7 +94,7 @@ namespace rind {
             );
             if (distanceToCamera > 30.0f) {
                 particleManager->burstParticles(
-                    getWorldTransform(),
+                    getWorldPosition(),
                     color,
                     randomDir * 2.0f,
                     6,
@@ -105,7 +104,7 @@ namespace rind {
                 );
             } else {
                 particleManager->burstParticles(
-                    getWorldTransform(),
+                    getWorldPosition(),
                     color,
                     randomDir * 2.0f,
                     10,
@@ -180,7 +179,7 @@ namespace rind {
                 4.0f
             );
             particleManager->burstParticles(
-                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
                 color,
                 glm::vec3(0.0f, 1.0f, 0.0f) * 5.0f,
                 250,
@@ -189,7 +188,7 @@ namespace rind {
                 0.5f
             );
             particleManager->burstParticles(
-                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
                 color,
                 glm::vec3(0.0f, 1.0f, 0.0f) * 10.0f,
                 160,
@@ -198,7 +197,7 @@ namespace rind {
                 1.0f
             );
             particleManager->burstParticles(
-                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
                 color,
                 glm::vec3(0.0f, 1.0f, 0.0f) * 11.0f,
                 50,
@@ -207,7 +206,7 @@ namespace rind {
                 1.5f
             );
             particleManager->burstParticles(
-                glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+                getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
                 color,
                 glm::vec3(0.0f, 1.0f, 0.0f) * 12.0f,
                 300,

@@ -2,8 +2,7 @@
 
 #include <engine/ParticleManager.h>
 #include <glm/gtc/quaternion.hpp>
-
-#define PI 3.14159265358979323846f
+#include <numbers>
 
 rind::BashingEnemy::BashingEnemy(
     engine::EntityManager* entityManager,
@@ -56,17 +55,14 @@ void rind::BashingEnemy::update(float deltaTime) {
         }
         switch (state) {
             case EnemyState::Spawning: {
-                size_t hits = engine::Collider::raycast(
+                if (engine::Collider::raycastAny(
                     getEntityManager(),
                     getWorldPosition(),
                     glm::vec3(0.0f, -1.0f, 0.0f),
                     5.0f,
                     getCollider(),
-                    false,
-                    0.1f,
-                    true
-                ).size();
-                if (hits > 0) {
+                    0.1f
+                )) {
                     state = EnemyState::Idle;
                 } else if (firstFrame) {
                     rotateToPlayer();
@@ -108,17 +104,14 @@ void rind::BashingEnemy::update(float deltaTime) {
                     float mid = (lo + hi) * 0.5f;
                     glm::vec3 testPos = getWorldPosition() + backward * mid;
                     glm::vec3 rayOrigin = testPos + glm::vec3(0.0f, 2.0f, 0.0f);
-                    size_t hits = engine::Collider::raycast(
+                    if (engine::Collider::raycastAny(
                         getEntityManager(),
                         rayOrigin,
                         glm::vec3(0.0f, -1.0f, 0.0f),
                         5.0f,
                         getCollider(),
-                        false,
-                        0.1f,
-                        true
-                    ).size();
-                    if (hits > 0) {
+                        0.1f
+                    )) {
                         maxSafeBackup = mid;
                         lo = mid;
                     } else {
@@ -132,10 +125,10 @@ void rind::BashingEnemy::update(float deltaTime) {
                 float angle = acos(dot);
                 glm::vec3 cross = glm::cross(forward, targetDir);
                 float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
-                float maxRotation = deltaTime * PI;
+                float maxRotation = deltaTime * std::numbers::pi_v<float>;
                 float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
                 rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
-                bool facingPlayer = (angle < PI / 4.0f);
+                bool facingPlayer = (angle < std::numbers::pi_v<float> / 4.0f);
                 float distanceError = distanceToPlayer - safeDistance;
                 if (std::abs(distanceError) < 0.5f) {
                     stopMove(getPressed(), false);
@@ -185,7 +178,7 @@ void rind::BashingEnemy::wander() {
     float amount = 0.0f;
     uint32_t tries = 0;
     while (tries < 20) {
-        direction = (dist(rng) + 1.0f) * PI;
+        direction = (dist(rng) + 1.0f) * std::numbers::pi_v<float>;
         amount = (dist(rng) + 1.0f) * 10.0f;
         glm::vec3 goal = glm::vec3(cos(direction), 0.0f, sin(direction)) * amount;
         glm::vec3 worldGoal = getWorldPosition() + goal;
@@ -196,10 +189,8 @@ void rind::BashingEnemy::wander() {
             glm::vec3(0.0f, -1.0f, 0.0f),
             5.0f,
             getCollider(),
-            false,
-            0.1f,
-            true
-        ).size();
+            0.1f
+        );
         if (rayHits > 0 && rayHits <= 2 ) {
             wanderTarget = worldGoal;
             wandering = true;
@@ -242,7 +233,7 @@ void rind::BashingEnemy::wanderTo(float deltaTime) {
     float angle = acos(dot);
     glm::vec3 cross = glm::cross(forward, targetDir);
     float rotationDir = cross.y > 0.0f ? 1.0f : -1.0f;
-    float maxRotation = deltaTime * 2 * PI;
+    float maxRotation = deltaTime * 2 * std::numbers::pi_v<float>;
     float rotationAmount = glm::min(angle, maxRotation) * rotationDir;
     rotate(glm::vec3(0.0f, rotationAmount, 0.0f));
     if (getPressed() != glm::vec3(0.0f, 0.0f, -1.0f)) {
@@ -257,16 +248,16 @@ void rind::BashingEnemy::hit() {
     }
     glm::vec3 forward = -glm::normalize(glm::vec3(getTransform()[2]));
     glm::vec3 rayOrigin = getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
-    std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
+    engine::Collider::Collision hit = engine::Collider::raycastFirst(
         getEntityManager(),
         rayOrigin,
         forward,
         4.0f,
         getCollider(),
-        true
+        0.1f
     );
-    if (!hits.empty()) {
-        engine::Entity* other = hits[0].other->getParent();
+    if (hit.other) {
+        engine::Entity* other = hit.other->getParent();
         if (other->getType() == engine::Entity::EntityType::Player) {
             Player* player = static_cast<Player*>(other);
             audioManager->playSound3D("laser_enemy_impact", getWorldPosition(), 0.5f, 0.2f);

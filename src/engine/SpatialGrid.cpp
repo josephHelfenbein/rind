@@ -69,7 +69,7 @@ void engine::SpatialGrid::remove(Collider* collider) {
             auto cellIt = dynamicCells.find(coord);
             if (cellIt != dynamicCells.end()) {
                 auto& vec = cellIt->second;
-                vec.erase(std::remove(vec.begin(), vec.end(), collider), vec.end());
+                std::erase(vec, collider);
                 if (vec.empty()) {
                     dynamicCells.erase(cellIt);
                 }
@@ -85,7 +85,7 @@ void engine::SpatialGrid::remove(Collider* collider) {
             auto cellIt = staticCells.find(coord);
             if (cellIt != staticCells.end()) {
                 auto& vec = cellIt->second;
-                vec.erase(std::remove(vec.begin(), vec.end(), collider), vec.end());
+                std::erase(vec, collider);
                 if (vec.empty()) {
                     staticCells.erase(cellIt);
                 }

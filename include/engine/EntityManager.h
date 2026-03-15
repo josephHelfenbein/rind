@@ -53,7 +53,7 @@ namespace engine {
 
         virtual void update(float deltaTime) {}
 
-        void updateWorldTransform();
+        void updateWorldTransform(const glm::mat4& parentWorld);
 
         void addChild(Entity* child);
         void removeChild(Entity* child);
@@ -179,14 +179,14 @@ namespace engine {
             movableEntities.push_back(entity);
         }
         void removeMovableEntry(Entity* entity) {
-            movableEntities.erase(std::remove(movableEntities.begin(), movableEntities.end(), entity), movableEntities.end());
+            std::erase(movableEntities, entity);
         }
 
         void addRootEntry(Entity* entity) {
             rootEntities.push_back(entity);
         }
         void removeRootEntry(Entity* entity) {
-            rootEntities.erase(std::remove(rootEntities.begin(), rootEntities.end(), entity), rootEntities.end());
+            std::erase(rootEntities, entity);
         }
 
         Entity* getEntity(const std::string& name) const {

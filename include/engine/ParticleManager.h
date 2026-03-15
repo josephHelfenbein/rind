@@ -6,7 +6,6 @@
 #include <random>
 
 namespace engine {
-    class ParticleManager;
     struct ParticleGPU {
         glm::vec4 position; // w = age
         glm::vec4 prevPosition; // w = lifetime
@@ -16,43 +15,38 @@ namespace engine {
     class Particle {
     public:
         Particle(
-            ParticleManager* particleManager,
             EntityManager* entityManager,
-            const glm::mat4& transform,
+            const glm::vec3& position,
             const glm::vec3& color,
             const glm::vec3& velocity,
             float lifetime,
             float type = 0.0f,
             float size = 1.0f
         );
-        ~Particle();
         void update(float deltaTime);
 
         engine::Collider::Collision checkCollision(const glm::vec3& position);
 
         ParticleGPU getGPUData() const {
             return {
-                .position = glm::vec4(glm::vec3(transform[3]), age),
+                .position = glm::vec4(position, age),
                 .prevPosition = glm::vec4(prevPosition, lifetime),
                 .prevPrevPosition = glm::vec4(prevPrevPosition, type),
                 .color = glm::vec4(color, size)
             };
         }
 
-        void detachFromManager() { particleManager = nullptr; }
-
         void setPrevPosition(const glm::vec3& pos) { prevPosition = pos; }
         void setPrevPrevPosition(const glm::vec3& pos) { prevPrevPosition = pos; }
         void setAge(float a) { age = a; }
-        const glm::mat4& getTransform() const { return transform; }
+        const glm::vec3& getPosition() const { return position; }
 
         void markForDeletion() { markedForDeletion = true; }
         bool isMarkedForDeletion() const { return markedForDeletion; }
 
     private:
-        ParticleManager* particleManager;
         EntityManager* entityManager;
-        glm::mat4 transform;
+        glm::vec3 position{0.0f};
         glm::vec3 prevPosition{0.0f};
         glm::vec3 prevPrevPosition{0.0f};
         glm::vec3 velocity;
@@ -71,27 +65,20 @@ namespace engine {
         void init();
         void clear();
 
-        void burstParticles(const glm::mat4& transform, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size = 1.0f);
+        void burstParticles(const glm::vec3& position, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size = 1.0f);
         void spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec3& color, float lifetime, float fakeAge = 0.0f);
-
-        void registerParticle(Particle* particle) {
-            particles.push_back(particle);
-        }
-        void unregisterParticle(Particle* particle) {
-            particles.erase(std::remove(particles.begin(), particles.end(), particle), particles.end());
-        }
 
         void updateParticleBuffer(uint32_t currentFrame);
         void createParticleDescriptorSets();
         std::vector<VkDescriptorSet> getDescriptorSets() const { return descriptorSets; }
-        std::vector<Particle*> getParticles() const { return particles; }
+        std::vector<Particle> getParticles() const { return particles; }
 
         void updateAll(float deltaTime);
         void renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame);
 
     private:
         engine::Renderer* renderer;
-        std::vector<Particle*> particles;
+        std::vector<Particle> particles;
 
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};

@@ -5,8 +5,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <stdexcept>
 
-#define PI 3.14159265358979323846f
-
 rind::Enemy::Enemy(
     engine::EntityManager* entityManager,
     rind::Player* player,
@@ -26,7 +24,7 @@ void rind::Enemy::shoot() {
     glm::vec3 rayDir = glm::normalize(glm::vec3(getHead()->getWorldTransform()[0]));
     glm::vec3 gunPos = gunEndPosition->getWorldPosition();
     particleManager->burstParticles(
-        glm::translate(glm::mat4(1.0f), gunPos),
+        gunPos,
         getTrailColor(),
         rayDir * 10.0f,
         20,
@@ -35,7 +33,7 @@ void rind::Enemy::shoot() {
         0.8f
     );
     particleManager->burstParticles(
-        glm::translate(glm::mat4(1.0f), gunPos),
+        gunPos,
         getTrailColor(),
         rayDir * 15.0f,
         60,
@@ -43,22 +41,21 @@ void rind::Enemy::shoot() {
         0.35f,
         0.3f
     );
-    std::vector<engine::Collider::Collision> hits = engine::Collider::raycast(
+    engine::Collider::Collision hit = engine::Collider::raycastFirst(
         getEntityManager(),
         gunPos,
         rayDir,
         1000.0f,
-        this->getCollider(),
-        true
+        this->getCollider()
     );
     glm::vec3 endPos = gunPos + rayDir * 1000.0f;
-    if (!hits.empty()) {
-        engine::Collider::Collision collision = hits[0];
+    if (hit.other) {
+        engine::Collider::Collision collision = hit;
         endPos = collision.worldHitPoint;
         glm::vec3 normal = glm::normalize(collision.mtv.normal);
         glm::vec3 reflectedDir = glm::reflect(rayDir, normal);
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 40.0f,
             50,
@@ -67,7 +64,7 @@ void rind::Enemy::shoot() {
             0.9f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 25.0f,
             100,
@@ -76,7 +73,7 @@ void rind::Enemy::shoot() {
             0.3f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 10.0f,
             50,
@@ -85,7 +82,7 @@ void rind::Enemy::shoot() {
             0.7f
         );
         particleManager->burstParticles(
-            glm::translate(glm::mat4(1.0f), collision.worldHitPoint),
+            collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 30.0f,
             40,
@@ -254,7 +251,7 @@ void rind::Enemy::damage(float amount) {
             4.0f
         );
         particleManager->burstParticles(
-            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             getTrailColor(),
             glm::vec3(0.0f, 1.0f, 0.0f) * 5.0f,
             250,
@@ -263,7 +260,7 @@ void rind::Enemy::damage(float amount) {
             0.5f
         );
         particleManager->burstParticles(
-            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             getTrailColor(),
             glm::vec3(0.0f, 1.0f, 0.0f) * 10.0f,
             160,
@@ -272,7 +269,7 @@ void rind::Enemy::damage(float amount) {
             1.0f
         );
         particleManager->burstParticles(
-            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             getTrailColor(),
             glm::vec3(0.0f, 1.0f, 0.0f) * 11.0f,
             50,
@@ -281,7 +278,7 @@ void rind::Enemy::damage(float amount) {
             1.5f
         );
         particleManager->burstParticles(
-            glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)),
+            getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),
             getTrailColor(),
             glm::vec3(0.0f, 1.0f, 0.0f) * 12.0f,
             300,
