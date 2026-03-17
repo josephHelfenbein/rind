@@ -263,6 +263,8 @@ void rind::BashingEnemy::hit() {
             audioManager->playSound3D("laser_enemy_impact", getWorldPosition(), 0.5f, 0.2f);
             player->damage(20.0f);
             lastShotTime = std::chrono::steady_clock::now();
+            player->setVelocity(player->getVelocity() + glm::vec3(forward.x, 0.3, forward.z) * 10.0f);
+            stopMove(getPressed(), false);
         }
     }
 }

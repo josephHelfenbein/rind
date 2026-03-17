@@ -21,7 +21,7 @@ namespace engine {
             uint32_t screenMode = 0; // 0 = windowed, 1 = borderless, 2 = fullscreen
             float fpsLimit = 0.0f;
             float shadowQuality = 2.0f; // 0=512 2 samples, 1=1024 4 samples, 2=2048 8 samples, 3=2048 16 samples
-            float sensitivity = 1.0f;
+            float sensitivity = 0.003f;
             float masterVolume = 1.0f;
             bool ssrEnabled = true;
             bool showFPS = false;
@@ -421,7 +421,7 @@ namespace engine {
                     }
                 }
             },
-            { SettingsDefinition::Slider, "Sensitivity", "sensitivity", nullptr, nullptr, {}, &Settings::sensitivity, 0.0f, 0.05f, "", true, 10000.0f, false, 0.0f, 0.0f },
+            { SettingsDefinition::Slider, "Sensitivity", "sensitivity", nullptr, nullptr, {}, &Settings::sensitivity, 0.0001f, 0.03f, "", true, 10000.0f, false, 0.0f, 0.0f },
             { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
             { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 0.0f, 240.0f, " FPS", true, 1.0f, true, 0.0f, 240.0f,
                 [](Settings* prev, Settings* curr, Renderer* renderer) {

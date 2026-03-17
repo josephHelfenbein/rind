@@ -18,6 +18,17 @@ void rind::CharacterEntity::update(float deltaTime) {
     if (rotateVelocity != glm::vec3(0.0f)) rotateVelocity = glm::vec3(0.0f);
 }
 
+static bool isAboveSurface(const engine::AABB& playerAABB, const engine::AABB& otherAABB) {
+    float playerCenterX = (playerAABB.min.x + playerAABB.max.x) * 0.5f;
+    float playerCenterZ = (playerAABB.min.z + playerAABB.max.z) * 0.5f;
+    float playerHalfX = (playerAABB.max.x - playerAABB.min.x) * 0.5f;
+    float playerHalfZ = (playerAABB.max.z - playerAABB.min.z) * 0.5f;
+    return playerCenterX > otherAABB.min.x - playerHalfX * 0.3f
+        && playerCenterX < otherAABB.max.x + playerHalfX * 0.3f
+        && playerCenterZ > otherAABB.min.z - playerHalfZ * 0.3f
+        && playerCenterZ < otherAABB.max.z + playerHalfZ * 0.3f;
+}
+
 void rind::CharacterEntity::updateMovement(float deltaTime) {
     const float MAX_DELTA_TIME = 0.05f; // clamp deltaTime to avoid large jumps
     deltaTime = glm::min(deltaTime, MAX_DELTA_TIME);
@@ -90,21 +101,35 @@ void rind::CharacterEntity::updateMovement(float deltaTime) {
                 if (glm::dot(mtv, vStep) > 0.0f) {
                     mtv = -mtv; // oppose attempted vertical motion
                 }
-                glm::vec3 offset = vStep + mtv;
-                setTransform(applyWorldTranslation(getTransform(), offset));
                 float penetration = collision.mtv.penetrationDepth;
-                if (penetration > 1e-6f) {
-                    glm::vec3 n = glm::normalize(mtv);
-                    float vn = glm::dot(frameVelocity, n);
-                    if (vn < 0.0f) {
-                        frameVelocity -= n * vn;
-                        velocity -= n * glm::dot(velocity, n);
+                glm::vec3 n = (penetration > 1e-6f) ? glm::normalize(mtv) : glm::vec3(0.0f);
+                bool isEdgeCollision = false;
+                if (n.y > groundedNormalThreshold && vStep.y < 0.0f) {
+                    engine::AABB playerAABB = collider->getWorldAABB();
+                    playerAABB.min += vStep;
+                    playerAABB.max += vStep;
+                    engine::AABB otherAABB = collision.other->getWorldAABB();
+                    if (!isAboveSurface(playerAABB, otherAABB)) {
+                        isEdgeCollision = true;
                     }
-                    if (n.y > groundedNormalThreshold && frameVelocity.y <= 0.0f) {
-                        touchedGround = true;
-                        groundNormalAccum += n;
-                        frameVelocity.y = 0.0f;
-                        velocity.y = 0.0f;
+                }
+                if (isEdgeCollision) {
+                    setTransform(applyWorldTranslation(getTransform(), vStep));
+                } else {
+                    glm::vec3 offset = vStep + mtv;
+                    setTransform(applyWorldTranslation(getTransform(), offset));
+                    if (penetration > 1e-6f) {
+                        float vn = glm::dot(frameVelocity, n);
+                        if (vn < 0.0f) {
+                            frameVelocity -= n * vn;
+                            velocity -= n * glm::dot(velocity, n);
+                        }
+                        if (n.y > groundedNormalThreshold && frameVelocity.y <= 0.0f) {
+                            touchedGround = true;
+                            groundNormalAccum += n;
+                            frameVelocity.y = 0.0f;
+                            velocity.y = 0.0f;
+                        }
                     }
                 }
             } else {
@@ -151,15 +176,25 @@ void rind::CharacterEntity::updateMovement(float deltaTime) {
         // check if MTV points up enough to be considered ground
         if (penetration > 1e-6f) {
             glm::vec3 n = glm::normalize(mtv);
+            bool isEdge = false;
             if (n.y > groundedNormalThreshold) {
-                touchedGround = true;
-                groundNormalAccum += n;
+                engine::AABB playerAABB = collider->getWorldAABB();
+                engine::AABB otherAABB = postCollision.other->getWorldAABB();
+                if (!isAboveSurface(playerAABB, otherAABB)) {
+                    isEdge = true;
+                }
             }
-            setTransform(applyWorldTranslation(getTransform(), mtv));
-            float vn = glm::dot(frameVelocity, n);
-            if (vn < 0.0f) {
-                frameVelocity -= n * vn;
-                velocity -= n * glm::dot(velocity, n);
+            if (!isEdge) {
+                if (n.y > groundedNormalThreshold) {
+                    touchedGround = true;
+                    groundNormalAccum += n;
+                }
+                setTransform(applyWorldTranslation(getTransform(), mtv));
+                float vn = glm::dot(frameVelocity, n);
+                if (vn < 0.0f) {
+                    frameVelocity -= n * vn;
+                    velocity -= n * glm::dot(velocity, n);
+                }
             }
         }
     }

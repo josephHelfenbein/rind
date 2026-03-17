@@ -350,7 +350,7 @@ namespace engine {
                 glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f)), glm::vec3(0.0f, 0.0f, -10.0f)),
                 "controllerCursor",
                 glm::vec4(1.0f),
-                "ui_cursor",
+                "ui_cursor_cursor",
                 Corner::TopLeft
             );
             cursor->setEnabled(false);

@@ -181,7 +181,15 @@ rind::Player::Player(
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
             "crosshair",
             glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
-            "ui_crosshair",
+            "ui_cursor_crosshair",
+            engine::Corner::Center
+        );
+        hitmarkerObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
+            "hitmarker",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+            "ui_cursor_hitmarker",
             engine::Corner::Center
         );
         grenadeEmptyIconObject = new engine::UIObject(
@@ -352,6 +360,18 @@ void rind::Player::update(float deltaTime) {
             0.4f
         );
         healUIShowTime -= deltaTime;
+    } else {
+        healEffectObject->setTint(glm::vec4(0.2f, 0.2f, 1.0f, 0.0f));
+        healEffectObject->loadTexture();
+    }
+    if (showHitmarkerTime > 0.0f) {
+        float alpha = -(std::pow(2.0f * showHitmarkerTime, 5) - (3.25f * showHitmarkerTime));
+        hitmarkerObject->setTint(glm::vec4(hitmarkerColor, alpha));
+        hitmarkerObject->loadTexture();
+        showHitmarkerTime -= deltaTime;
+    } else {
+        hitmarkerObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+        hitmarkerObject->loadTexture();
     }
     if (trailFramesRemaining > 0) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
@@ -786,6 +806,7 @@ void rind::Player::damage(float amount) {
         else {
             audioManager->playSound("player_heal", 0.4f, 0.4f);
             healUIShowTime = 1.0f;
+            showHitmarker(glm::vec3(0.2f, 0.2f, 1.0f));
             earlyReturn = true;
         }
     }
@@ -947,7 +968,13 @@ void rind::Player::shoot() {
         engine::Entity* other = hit.other->getParent();
         if (other->getType() == engine::Entity::EntityType::Enemy) {
             rind::Enemy* character = static_cast<rind::Enemy*>(other);
-            character->damage(34.0f);
+            const float damageAmount = 34.0f;
+            if (character->getHealth() - damageAmount <= 0.0f) {
+                showHitmarker(glm::vec3(1.0f, 0.2f, 0.2f));
+            } else {
+                showHitmarker(glm::vec3(1.0f, 1.0f, 1.0f));
+            }
+            character->damage(damageAmount);
             if (character->getState() == EnemyState::Idle) {
                 character->rotateToPlayer();
                 if (!character->checkVisibilityOfPlayer()) {
@@ -971,6 +998,7 @@ void rind::Player::throwGrenade() {
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     Grenade* grenade = new Grenade(
         getEntityManager(),
+        this,
         glm::translate(glm::mat4(1.0f), gunPos + forward * 0.5f),
         forward * 20.0f + glm::vec3(0.0f, 3.0f, 0.0f),
         trailColor,

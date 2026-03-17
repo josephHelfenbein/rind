@@ -398,6 +398,7 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
     } else {
         std::atomic<bool> separated{false};
         std::vector<float> overlaps(static_cast<size_t>(m), 0.0f);
+        const glm::vec3* axesPtr = axes.data();
         #pragma omp parallel
         {
             float localMin = std::numeric_limits<float>::max();
@@ -408,7 +409,7 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
             #pragma omp for schedule(dynamic, 1) nowait
             for (int i = 0; i < m; ++i) {
                 if (separated.load(std::memory_order_relaxed)) continue;
-                const glm::vec3& axis = axes[static_cast<size_t>(i)];
+                const glm::vec3& axis = axesPtr[static_cast<size_t>(i)];
                 float aMin = std::numeric_limits<float>::max();
                 float aMax = std::numeric_limits<float>::lowest();
                 for (int j = 0; j < vA; ++j) {
@@ -444,7 +445,7 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
             {
                 if (localMin < minPenetration) {
                     minPenetration = localMin;
-                    bestAxis = axes[static_cast<size_t>(localIdx)];
+                    bestAxis = axesPtr[static_cast<size_t>(localIdx)];
                 }
             }
         }

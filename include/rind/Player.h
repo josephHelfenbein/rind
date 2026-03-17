@@ -30,6 +30,12 @@ namespace rind {
         void resizeHealthbar();
         void addScore(uint32_t score);
 
+        void showHitmarker(const glm::vec3& color) {
+            hitmarkerColor = color;
+            hitmarkerObject->loadTexture();
+            showHitmarkerTime = 0.5f;
+        }
+
     private:
         engine::Camera* camera = nullptr;
         engine::Entity* gunEndPosition = nullptr;
@@ -63,11 +69,14 @@ namespace rind {
         engine::UIObject* healEffectObject = nullptr;
         engine::UIObject* grenadeEmptyIconObject = nullptr;
         engine::UIObject* grenadeFullIconObject = nullptr;
+        engine::UIObject* hitmarkerObject = nullptr;
         ScoreCounter* scoreCounter = nullptr;
 
         bool isDead = false;
 
         float healUIShowTime = 0.0f;
+        float showHitmarkerTime = 0.0f;
+        glm::vec3 hitmarkerColor = glm::vec3(1.0f, 1.0f, 1.0f);
 
         bool inputsDisconnected = false;
         

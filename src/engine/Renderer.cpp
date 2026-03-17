@@ -147,7 +147,7 @@ void engine::Renderer::initWindow() {
 void engine::Renderer::calibrateOpenMP() {
 #if defined(USE_OPENMP)
     const int maxThreads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()) / 2);
-    const int N = 1000;
+    const int N = 100000;
 
     std::vector<glm::vec4> a(N), b(N);
     for (int i = 0; i < N; ++i) {
@@ -158,8 +158,8 @@ void engine::Renderer::calibrateOpenMP() {
 
     int bestThreads = 1;
     double bestTime = std::numeric_limits<double>::max();
-    const int warmupRuns = 50;
-    const int timedRuns = 200;
+    const int warmupRuns = 10;
+    const int timedRuns = 50;
 
     std::vector<int> threadCounts = {1};
     for (int t = 2; t <= maxThreads; t += 2) {
