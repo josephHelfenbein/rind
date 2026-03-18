@@ -151,7 +151,7 @@ namespace engine {
         void createDescriptorSetLayout(engine::Renderer* renderer);
         void createPipeline(engine::Renderer* renderer);
         void createDescriptorPool(engine::Renderer* renderer);
-        void updateDescriptorSets(engine::Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers);
+        void updateDescriptorSets(engine::Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers, int frameIndex = -1);
 
         bool operator==(const GraphicsShader& other) const {
             return name == other.name;

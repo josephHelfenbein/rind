@@ -27,12 +27,51 @@ namespace rind {
         void throwGrenade();
         void damage(float amount) override;
 
+        enum class HintActions {
+            Dash,
+            Heal,
+            Grenade,
+            Jump,
+            Punch
+        };
+        void showKeybindHint(const HintActions& action, const std::string& hint) {
+            std::string texture;
+            if (inputManager->isControllerMode()) {
+                texture = actionTexturesGamepad[action];
+            } else {
+                texture = actionTexturesKeyboard[action];
+            }
+            activeKeybindHint = action;
+            keybindHintObject->setTexture(texture);
+            keybindHintTextObject->setText(hint);
+            keybindHintDuration = 2.8f;
+        }
+        void checkKeybindHint() {
+            std::string texture;
+            if (inputManager->isControllerMode()) {
+                texture = actionTexturesGamepad[activeKeybindHint];
+            } else {
+                texture = actionTexturesKeyboard[activeKeybindHint];
+            }
+            if (keybindHintObject->getTexture() != texture) {
+                keybindHintObject->setTexture(texture);
+            }
+            std::string grenadeTexture;
+            if (inputManager->isControllerMode()) {
+                grenadeTexture = actionTexturesGamepad[HintActions::Grenade];
+            } else {
+                grenadeTexture = actionTexturesKeyboard[HintActions::Grenade];
+            }
+            if (grenadeKeybindHintObject->getTexture() != grenadeTexture) {
+                grenadeKeybindHintObject->setTexture(grenadeTexture);
+            }
+        }
+
         void resizeHealthbar();
         void addScore(uint32_t score);
 
         void showHitmarker(const glm::vec3& color) {
             hitmarkerColor = color;
-            hitmarkerObject->loadTexture();
             showHitmarkerTime = 0.5f;
         }
 
@@ -69,12 +108,35 @@ namespace rind {
         engine::UIObject* healEffectObject = nullptr;
         engine::UIObject* grenadeEmptyIconObject = nullptr;
         engine::UIObject* grenadeFullIconObject = nullptr;
+        engine::UIObject* grenadeKeybindHintObject = nullptr;
         engine::UIObject* hitmarkerObject = nullptr;
         ScoreCounter* scoreCounter = nullptr;
+
+        std::unordered_map<HintActions, std::string> actionTexturesKeyboard = {
+            {HintActions::Dash, "inputs_keyboard_common_shift"},
+            {HintActions::Heal, "inputs_keyboard_mouse_right"},
+            {HintActions::Grenade, "inputs_keyboard_common_q"},
+            {HintActions::Jump, "inputs_keyboard_common_space"},
+            {HintActions::Punch, "inputs_keyboard_common_f"}
+        };
+        std::unordered_map<HintActions, std::string> actionTexturesGamepad = {
+            {HintActions::Dash, "inputs_gamepad_l2"},
+            {HintActions::Heal, "inputs_gamepad_b"},
+            {HintActions::Grenade, "inputs_gamepad_l1"},
+            {HintActions::Jump, "inputs_gamepad_a"},
+            {HintActions::Punch, "inputs_gamepad_r3"}
+        };
+        engine::UIObject* keybindHintObject = nullptr;
+        engine::TextObject* keybindHintTextObject = nullptr;
+        HintActions activeKeybindHint = HintActions::Dash;
+        float keybindHintDuration = 0.0f;
 
         bool isDead = false;
 
         float healUIShowTime = 0.0f;
+        bool inHealZone = false;
+        glm::vec3 healEffectColor = glm::vec3(0.2f, 0.2f, 1.0f);
+
         float showHitmarkerTime = 0.0f;
         glm::vec3 hitmarkerColor = glm::vec3(1.0f, 1.0f, 1.0f);
 

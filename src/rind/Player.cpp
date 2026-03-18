@@ -200,6 +200,14 @@ rind::Player::Player(
             "ui_grenade_empty",
             engine::Corner::BottomLeft
         );
+        grenadeKeybindHintObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, -0.6f, 1.0f)), glm::vec3(80.0f, -120.0f, 0.5f)),
+            "grenadeKeybindHint",
+            glm::vec4(1.0f),
+            "inputs_keyboard_common_q",
+            engine::Corner::BottomLeft
+        );
         grenadeFullIconObject = new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.3f, -0.3f, 1.0f)), glm::vec3(100.0f, -300.0f, 0.0f)),
@@ -212,10 +220,35 @@ rind::Player::Player(
         entityManager->getRenderer()->getInputManager()->registerRecreateSwapChainCallback("playerHealthbarResize", [this]() {
             this->resizeHealthbar();
         });
+        keybindHintObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.75f, -0.75f, 1.0f)), glm::vec3(-80.0f, 80.0f, 1.0f)),
+            "keybindHint",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+            "inputs_keyboard_mouse_right",
+            engine::Corner::TopRight
+        );
+        keybindHintTextObject = new engine::TextObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 1.0f)), glm::vec3(-220.0f, -45.0f, 0.0f)),
+            "keybindHintText",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+            "",
+            "Lato",
+            engine::Corner::TopRight
+        );
         scoreCounter = new ScoreCounter(entityManager, entityManager->getRenderer()->getUIManager());
         particleManager = entityManager->getRenderer()->getParticleManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
         volumetricManager = entityManager->getRenderer()->getVolumetricManager();
+        float messageChoice = dist(rng) * 0.5f + 0.5f;
+        if (messageChoice < 0.33f) {
+            showKeybindHint(HintActions::Dash, "To dash, press");
+        } else if (messageChoice < 0.66f) {
+            showKeybindHint(HintActions::Jump, "To double jump, double tap");
+        } else {
+            showKeybindHint(HintActions::Punch, "To punch, press");
+        }
     }
 
 rind::Player::~Player() {
@@ -308,9 +341,18 @@ void rind::Player::update(float deltaTime) {
             glm::vec3(gunModelScale)
         )
     );
+
+    // grenade cooldown
     float timeSinceLastGrenade = std::chrono::duration<float>(std::chrono::steady_clock::now() - lastGrenadeTime).count();
     float cooldownRatio = std::min(timeSinceLastGrenade / grenadeCooldown, 1.0f);
     grenadeFullIconObject->setUVClip(glm::vec4(0.0f, 0.0f, cooldownRatio, 1.0f));
+    if (cooldownRatio >= 0.99f) {
+        grenadeKeybindHintObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    } else {
+        grenadeKeybindHintObject->setTint(glm::vec4(0.25f, 0.25f, 0.25f, 0.75f));
+    }
+
+    // healthbar update
     if (healthbarObject->getUVClip().z != getHealth() / getMaxHealth()) {
         float dir = getHealth() - getMaxHealth() * healthbarObject->getUVClip().z;
         float changeAmount = deltaTime * 30.0f;
@@ -321,12 +363,22 @@ void rind::Player::update(float deltaTime) {
             healthbarObject->setUVClip(glm::vec4(0.0f, 0.0f, healthbarObject->getUVClip().z + changeAmount / getMaxHealth(), 1.0f));
         }
     }
+
+    // keybind hint
+    if (keybindHintDuration > 0.0f) {
+        checkKeybindHint();
+        float alpha = -(0.01f * std::pow(keybindHintDuration, 5) - (0.64f * keybindHintDuration));
+        keybindHintObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, alpha));
+        keybindHintTextObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, alpha));
+        keybindHintDuration -= deltaTime;
+    }
+
+    // damage effect
     if (cameraShakeIntensity > 0.0f) {
         glm::vec3 randomCameraLoc = glm::vec3(dist(rng), dist(rng), dist(rng)) * cameraShakeIntensity * 0.05f;
         camHolder->setTransform(glm::translate(glm::mat4(1.0f), randomCameraLoc));
         float overlayAlpha = std::clamp(cameraShakeIntensity * 2.0f, std::min(1.0f - (getHealth() / getMaxHealth()), 0.8f), 0.8f);
         damageEffectObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, overlayAlpha));
-        damageEffectObject->loadTexture();
         cameraShakeIntensity -= deltaTime;
     }
     if (heartbeatOffset > 0.0f) {
@@ -336,14 +388,15 @@ void rind::Player::update(float deltaTime) {
             audioManager->playSound("player_heartbeat", 0.3f, 0.1f);
         }
     }
+
+    // heal effect
     if (healUIShowTime > 0.0f) {
         float alpha = -(0.5f * std::pow(healUIShowTime, 5) - (0.5f * healUIShowTime));
-        healEffectObject->setTint(glm::vec4(0.2f, 0.2f, 1.0f, alpha));
-        healEffectObject->loadTexture();
+        healEffectObject->setTint(glm::vec4(healEffectColor, alpha));
         float amount = -(10.0f * std::pow(healUIShowTime, 5) - (10.0f * healUIShowTime));
         particleManager->burstParticles(
             getWorldPosition(),
-            glm::vec3(0.2f, 0.2f, 1.0f),
+            healEffectColor,
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             amount,
             1.5f,
@@ -352,7 +405,7 @@ void rind::Player::update(float deltaTime) {
         );
         particleManager->burstParticles(
             getWorldPosition(),
-            glm::vec3(0.2f, 0.2f, 1.0f),
+            healEffectColor,
             glm::vec3(0.0f, 1.0f, 0.0f) * 2.0f,
             amount,
             1.0f,
@@ -361,18 +414,44 @@ void rind::Player::update(float deltaTime) {
         );
         healUIShowTime -= deltaTime;
     } else {
-        healEffectObject->setTint(glm::vec4(0.2f, 0.2f, 1.0f, 0.0f));
-        healEffectObject->loadTexture();
+        healEffectObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     }
+
+    // hitmarker effect
     if (showHitmarkerTime > 0.0f) {
         float alpha = -(std::pow(2.0f * showHitmarkerTime, 5) - (3.25f * showHitmarkerTime));
         hitmarkerObject->setTint(glm::vec4(hitmarkerColor, alpha));
-        hitmarkerObject->loadTexture();
         showHitmarkerTime -= deltaTime;
     } else {
         hitmarkerObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-        hitmarkerObject->loadTexture();
     }
+
+    // heal zone check
+    static thread_local std::vector<engine::Collider*> candidates;
+    candidates.clear();
+    getEntityManager()->getSpatialGrid().query(getCollider()->getWorldAABB(), candidates);
+    bool foundHealZone = false;
+    for (engine::Collider* collider : candidates) {
+        if (collider->getType() == engine::Entity::EntityType::Trigger) {
+            rind::TempTrigger* trigger = dynamic_cast<rind::TempTrigger*>(collider);
+            if (trigger) {
+                if (engine::Collider::aabbIntersects(getCollider()->getWorldAABB(), trigger->getWorldAABB())) {
+                    inHealZone = true;
+                    healEffectColor = trigger->getColor();
+                    foundHealZone = true;
+                    if (keybindHintDuration <= 0.0f) {
+                        showKeybindHint(HintActions::Heal, "To heal, press");
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    if (!foundHealZone) {
+        inHealZone = false;
+    }
+
+    // gun trail effect
     if (trailFramesRemaining > 0) {
         float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
         glm::vec3 velocityOffset = getVelocity() * deltaTime;
@@ -627,23 +706,12 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     lastShotTime = std::chrono::steady_clock::now();
                 }
             } else if (event.mouseButtonEvent.button == GLFW_MOUSE_BUTTON_RIGHT
-             && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
-            {
-                static thread_local std::vector<engine::Collider*> candidates;
-                candidates.clear();
-                getEntityManager()->getSpatialGrid().query(getCollider()->getWorldAABB(), candidates);
-                for (engine::Collider* collider : candidates) {
-                    if (collider->getType() == engine::Entity::EntityType::Trigger) {
-                        rind::TempTrigger* trigger = dynamic_cast<rind::TempTrigger*>(collider);
-                        if (trigger) {
-                            if (engine::Collider::aabbIntersects(getCollider()->getWorldAABB(), trigger->getWorldAABB())) {
-                                damage(-10.0f); // heals from enemy explosions
-                                lastShotTime = std::chrono::steady_clock::now();
-                                break;
-                            }
-                        }
-                    }
-                }
+             && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)
+             && inHealZone
+            ) {
+                damage(-10.0f); // heals from enemy explosions
+                lastShotTime = std::chrono::steady_clock::now();
+                break;
             }
         } else if (event.type == engine::InputEvent::Type::GamepadButtonPress) {
             if (renderer->isPaused() && event.gamepadButtonEvent.button != GLFW_GAMEPAD_BUTTON_START) {
@@ -666,22 +734,11 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     }
                     break;
                 case GLFW_GAMEPAD_BUTTON_B:
-                    if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)) {
-                        static thread_local std::vector<engine::Collider*> candidates;
-                        candidates.clear();
-                        getEntityManager()->getSpatialGrid().query(getCollider()->getWorldAABB(), candidates);
-                        for (engine::Collider* collider : candidates) {
-                            if (collider->getType() == engine::Entity::EntityType::Trigger) {
-                                rind::TempTrigger* trigger = dynamic_cast<rind::TempTrigger*>(collider);
-                                if (trigger) {
-                                    if (engine::Collider::aabbIntersects(getCollider()->getWorldAABB(), trigger->getWorldAABB())) {
-                                        damage(-10.0f); // heals from enemy explosions
-                                        lastShotTime = std::chrono::steady_clock::now();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                    if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)
+                     && inHealZone
+                    ) {
+                        damage(-10.0f); // heals from enemy explosions
+                        lastShotTime = std::chrono::steady_clock::now();
                     }
                     break;
                 case GLFW_GAMEPAD_BUTTON_LEFT_BUMPER:
@@ -806,7 +863,7 @@ void rind::Player::damage(float amount) {
         else {
             audioManager->playSound("player_heal", 0.4f, 0.4f);
             healUIShowTime = 1.0f;
-            showHitmarker(glm::vec3(0.2f, 0.2f, 1.0f));
+            showHitmarker(glm::clamp(healEffectColor + glm::vec3(0.3f), glm::vec3(0.0f), glm::vec3(1.0f)));
             earlyReturn = true;
         }
     }
@@ -971,8 +1028,10 @@ void rind::Player::shoot() {
             const float damageAmount = 34.0f;
             if (character->getHealth() - damageAmount <= 0.0f) {
                 showHitmarker(glm::vec3(1.0f, 0.2f, 0.2f));
+                audioManager->playSound("hitmarker_death", 0.6f, 0.25f);
             } else {
                 showHitmarker(glm::vec3(1.0f, 1.0f, 1.0f));
+                audioManager->playSound("hitmarker", 0.5f, 0.2f);
             }
             character->damage(damageAmount);
             if (character->getState() == EnemyState::Idle) {

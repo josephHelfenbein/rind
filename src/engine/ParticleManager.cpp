@@ -273,8 +273,11 @@ void engine::ParticleManager::createParticleDescriptorSets() {
 }
 
 void engine::ParticleManager::burstParticles(const glm::vec3& position, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size) {
+    if (particles.size() >= hardCap) return;
     float velLength = glm::length(velocity) + dist(rng) * 0.1f * glm::length(velocity);
-    for (size_t i = 0; i < static_cast<size_t>(count); ++i) {
+    size_t remaining = hardCap - particles.size();
+    size_t spawnCount = std::min(static_cast<size_t>(count), remaining);
+    for (size_t i = 0; i < spawnCount; ++i) {
         float offsetX = dist(rng) * spread * velLength;
         float offsetY = dist(rng) * spread * velLength;
         float offsetZ = dist(rng) * spread * velLength;
@@ -288,6 +291,7 @@ void engine::ParticleManager::burstParticles(const glm::vec3& position, const gl
 }
 
 void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec3& color, float lifetime, float fakeAge) {
+    if (particles.size() >= hardCap) return;
     particles.emplace_back(renderer->getEntityManager(), start, color, glm::vec3(0.0f), lifetime, 1.0f);
     Particle& p = particles.back();
     p.setPrevPosition(dir);

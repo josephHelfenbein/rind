@@ -126,8 +126,8 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
     data->isLoaded = true;
     ma_sound_set_position(&data->sound, position.x, position.y, position.z);
     ma_sound_set_volume(&data->sound, volume);
-    ma_sound_set_min_distance(&data->sound, 5.0f);
-    ma_sound_set_rolloff(&data->sound, 0.5f);
+    ma_sound_set_min_distance(&data->sound, 7.0f);
+    ma_sound_set_rolloff(&data->sound, 0.3f);
     
     if (pitchVariation != 0.0f) {
         float vary = dist(rng) * pitchVariation;

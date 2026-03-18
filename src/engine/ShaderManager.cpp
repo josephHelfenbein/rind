@@ -1603,7 +1603,7 @@ void engine::ShaderManager::resolveRenderGraphShaders() {
     }
 }
 
-void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers) {
+void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers, int frameIndex) {
     int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     VkDevice device = renderer->getDevice();
     const size_t vertexBindings = static_cast<size_t>(std::max(config.vertexBitBindings, 0));
@@ -1638,7 +1638,9 @@ void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vecto
         }
         return false;
     };
-    for (int frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+    int startFrame = (frameIndex >= 0) ? frameIndex : 0;
+    int endFrame = (frameIndex >= 0) ? frameIndex + 1 : MAX_FRAMES_IN_FLIGHT;
+    for (int frame = startFrame; frame < endFrame; ++frame) {
         std::vector<VkDescriptorImageInfo> imageInfos;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkWriteDescriptorSet> descriptorWrites;

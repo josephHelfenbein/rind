@@ -154,6 +154,7 @@ namespace rind {
             if (showHitmarker) {
                 player->showHitmarker(hitmarkerColor);
             }
+            audioManager->playSound3D("grenade_explode", getWorldPosition(), 1.2f, 0.15f);
             volumetricManager->createVolumetric(
                 glm::scale(
                     getWorldTransform(),

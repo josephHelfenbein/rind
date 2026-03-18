@@ -9,9 +9,10 @@ namespace rind {
         TempTrigger(
             engine::EntityManager* entityManager,
             const std::string& name,
+            const glm::vec3& color,
             const glm::mat4& transform,
             float lifetime = 1.0f
-        ) : engine::OBBCollider(entityManager, transform, name), lifetime(lifetime) {
+        ) : engine::OBBCollider(entityManager, transform, name), lifetime(lifetime), color(color) {
             setIsTrigger(true);
         }
 
@@ -22,7 +23,10 @@ namespace rind {
             }
         }
 
+        glm::vec3 getColor() const { return color; }
+
     private:
         float lifetime = 0.5f;
+        glm::vec3 color{1.0f, 1.0f, 1.0f};
     };
 };

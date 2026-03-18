@@ -66,6 +66,7 @@ namespace engine {
         bool isEnabled() const { return enabled; }
         void setEnabled(bool enabled) { this->enabled = enabled; }
         const glm::vec4& getTint() const { return tint; }
+        void setTint(const glm::vec4& tint) { this->tint = tint; }
         const Corner& getAnchorCorner() const { return anchorCorner; }
         glm::vec2 getScale() const;
         const UIType& getType() const { return type; }
@@ -106,7 +107,7 @@ namespace engine {
         void setTransform(const glm::mat4& transform) { this->transform = transform; }
 
         const std::string& getTexture() const { return texture; }
-        void setTexture(const std::string& texture) { this->texture = texture; }
+        void setTexture(const std::string& texture) { this->texture = texture; textureDirtyFrames = -1; }
 
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         void setDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets) { this->descriptorSets = descriptorSets; }
@@ -120,6 +121,8 @@ namespace engine {
         void setParent(UIObject* parent) { this->parent = parent; }
 
         void loadTexture();
+        void loadTextureForFrame(uint32_t frame);
+        bool isTextureDirty() const { return textureDirtyFrames != 0; }
 
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
@@ -161,6 +164,7 @@ namespace engine {
         std::function<void()>* onHover;
         std::function<void()>* onStopHover;
         bool enabled = true;
+        int textureDirtyFrames = 0;
     };
 
     class ButtonObject : public UIObject {

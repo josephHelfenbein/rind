@@ -134,6 +134,31 @@ void engine::UIObject::loadTexture() {
     } else {
         setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
     }
+    textureDirtyFrames = 0;
+}
+
+void engine::UIObject::loadTextureForFrame(uint32_t frame) {
+    if (texture.empty()) {
+        return;
+    }
+    engine::Renderer* renderer = getUIManager()->getRenderer();
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
+    engine::Texture* texture = renderer->getTextureManager()->getTexture(getTexture());
+    if (!texture) {
+        return;
+    }
+    std::vector<Texture*> textures = { texture };
+    std::vector<VkBuffer> buffers;
+    if (!descriptorSets.empty()) {
+        shader->updateDescriptorSets(renderer, descriptorSets, textures, buffers, static_cast<int>(frame));
+    } else {
+        setDescriptorSets(shader->createDescriptorSets(renderer, textures, buffers));
+    }
+    if (textureDirtyFrames < 0) {
+        textureDirtyFrames = renderer->getMaxFramesInFlight() - 1;
+    } else if (textureDirtyFrames > 0) {
+        textureDirtyFrames--;
+    }
 }
 
 engine::ButtonObject::ButtonObject(
@@ -688,6 +713,9 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
 
     auto drawUIObject = [&](UIObject* object, const LayoutRect& rect) -> void {
         if (!object->isEnabled()) return;
+        if (object->isTextureDirty()) {
+            object->loadTextureForFrame(frameIndex);
+        }
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("ui");
         
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);

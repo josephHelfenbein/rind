@@ -289,10 +289,11 @@ void rind::Enemy::damage(float amount) {
         rind::TempTrigger* triggerCollider = new rind::TempTrigger(
             getEntityManager(),
             "enemyExplosionTrigger" + getName(),
+            getTrailColor(),
             glm::scale(glm::translate(getWorldTransform(), glm::vec3(0.0f, 0.5f, 0.0f)), glm::vec3(9.0f, 9.0f, 9.0f)),
             4.0f
         );
-        audioManager->playSound3D("enemy_death", getWorldPosition(), 1.2f, 0.15F);
+        audioManager->playSound3D("enemy_death", getWorldPosition(), 1.2f, 0.15f);
         getEntityManager()->markForDeletion(this);
     }
 }
