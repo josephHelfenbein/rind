@@ -109,6 +109,8 @@ namespace engine {
         const std::vector<glm::mat4>& getJointMatrices() const { return jointMatrices; }
         bool isAnimated() const { return model && model->hasAnimations() && !animState.currentAnimation.empty(); }
         AnimationState& getAnimationState() { return animState; }
+        bool isVisible() const { return visible; }
+        void setVisible(bool visible) { this->visible = visible; }
 
         bool operator==(const Entity& other) const { return this == &other; }
 
@@ -142,6 +144,7 @@ namespace engine {
         std::vector<glm::mat4> globalTransforms;
 
         bool castShadow = true;
+        bool visible = true;
 
         std::vector<Entity*> children;
         Entity* parent = nullptr;

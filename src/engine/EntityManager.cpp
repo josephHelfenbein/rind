@@ -805,8 +805,10 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32
         ShaderManager* shaderManager = renderer->getShaderManager();
         Model* model = entity->getModel();
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("gbuffer");
-        if (model && shader
-            && camera->isAABBInFrustum(model->getAABB(), entity->getWorldTransform())
+        if (model && shader && entity->isVisible()
+         && (camera->isAABBInFrustum(model->getAABB(), entity->getWorldTransform())
+             || entity->isAnimated()
+            )
         ) {
             updateJointMatricesUBO(entity);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);

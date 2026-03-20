@@ -127,9 +127,24 @@ rind::Player::Player(
             true,
             engine::Entity::EntityType::Model
         );
+        playerShadow->setVisible(false);
         playerShadow->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot"));
         playerModel->addChild(playerShadow);
         playerShadow->playAnimation("Run", true, 1.0f);
+        playerArm = new engine::Entity(
+            entityManager,
+            "playerArm",
+            "gbuffer",
+            glm::mat4(1.0f),
+            gunMaterial,
+            true,
+            engine::Entity::EntityType::Model
+        );
+        playerArm->setCastShadow(false);
+        playerArm->setModel(entityManager->getRenderer()->getModelManager()->getModel("robot-arm"));
+        playerModel->addChild(playerArm);
+        playerArm->playAnimation("Run", true, 1.0f);
+        playerArm->setVisible(false);
         inputManager->registerCallback("playerInput", [this](const std::vector<engine::InputEvent>& events) {
             this->registerInput(events);
         });
@@ -293,19 +308,26 @@ void rind::Player::update(float deltaTime) {
     float rotateSpeed = std::abs(getRotateVelocity().y);
     float speed = horizontalSpeed + std::abs(rotateSpeed);
     glm::vec3 rotateVelocity = getRotateVelocity();
-    if (speed > 0.1f) {
+    if (speed > 0.1f && punchTimer <= 0.2f) {
         if (playerModel->getAnimationState().currentAnimation != "Run") {
             playerModel->playAnimation("Run", true, speed / 5.0f);
-            playerShadow->playAnimation("Run", true, speed / 5.0f);
         } else {
             playerModel->getAnimationState().playbackSpeed = speed / 5.0f;
+        }
+        if (playerShadow->getAnimationState().currentAnimation != "Run") {
+            playerShadow->playAnimation("Run", true, speed / 5.0f);
+        } else {
             playerShadow->getAnimationState().playbackSpeed = speed / 5.0f;
         }
-    } else {
-        if (playerModel->getAnimationState().currentAnimation != "Idle") {
-            playerModel->playAnimation("Idle", true, 1.0f);
-            playerShadow->playAnimation("Idle", true, 1.0f);
+        if (playerArm->getAnimationState().currentAnimation != "Run") {
+            playerArm->playAnimation("Run", true, speed / 5.0f);
+        } else {
+            playerArm->getAnimationState().playbackSpeed = speed / 5.0f;
         }
+    } else if (punchTimer <= 0.2f) {
+        playerModel->playAnimation("Idle", true, 1.0f);
+        playerShadow->playAnimation("Idle", true, 1.0f);
+        playerArm->playAnimation("Idle", true, 1.0f);
     }
     if ((rightStickX != 0.0f || rightStickY != 0.0f) && inputManager->getCursorLocked()) {
         float sensitivity = getEntityManager()->getRenderer()->getSettingsManager()->getSettings()->sensitivity;
@@ -449,6 +471,15 @@ void rind::Player::update(float deltaTime) {
     }
     if (!foundHealZone) {
         inHealZone = false;
+    }
+
+    // punch timer
+    if (punchTimer > 0.0f) {
+        punchTimer -= deltaTime;
+        if (punchTimer <= 0.0f) {
+            punchTimer = 0.0f;
+            playerArm->setVisible(false);
+        }
     }
 
     // gun trail effect
@@ -659,6 +690,12 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                         lastGrenadeTime = std::chrono::steady_clock::now();
                     }
                     break;
+                case GLFW_KEY_F:
+                    if ((std::chrono::steady_clock::now() - lastPunchTime) >= std::chrono::duration<float>(punchCooldown)) {
+                        punch();
+                        lastPunchTime = std::chrono::steady_clock::now();
+                    }
+                    break;
                 case GLFW_KEY_SPACE:
                     if (isGrounded()) {
                         jump(8.0f);
@@ -745,6 +782,12 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     if ((std::chrono::steady_clock::now() - lastGrenadeTime) >= std::chrono::duration<float>(grenadeCooldown)) {
                         throwGrenade();
                         lastGrenadeTime = std::chrono::steady_clock::now();
+                    }
+                    break;
+                case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
+                    if ((std::chrono::steady_clock::now() - lastPunchTime) >= std::chrono::duration<float>(punchCooldown)) {
+                        punch();
+                        lastPunchTime = std::chrono::steady_clock::now();
                     }
                     break;
                 default:
@@ -1064,4 +1107,48 @@ void rind::Player::throwGrenade() {
         6.0f
     );
     audioManager->playSound3D("player_throw", gunPos, 0.5f, 0.2f);
+}
+
+void rind::Player::punch() {
+    static thread_local std::vector<engine::Collider*> candidates;
+    candidates.clear();
+    glm::vec3 forward = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    glm::vec3 rayOrigin = getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
+    engine::Collider::Collision hit = engine::Collider::raycastFirst(
+        getEntityManager(),
+        rayOrigin,
+        forward,
+        9.0f,
+        getCollider(),
+        0.1f
+    );
+    playerShadow->playAnimation("Punch", true, 1.0f);
+    playerArm->setVisible(true);
+    playerArm->playAnimation("Punch", true, 1.0f);
+    punchTimer = 0.5f;
+    audioManager->playSound("punch", 0.5f, 0.2f);
+    if (hit.other) {
+        engine::Entity* other = hit.other->getParent();
+        if (other->getType() == engine::Entity::EntityType::Enemy) {
+            rind::Enemy* character = static_cast<rind::Enemy*>(other);
+            const float damageAmount = 50.0f;
+            if (character->getHealth() - damageAmount <= 0.0f) {
+                showHitmarker(glm::vec3(1.0f, 0.2f, 0.2f));
+                audioManager->playSound("hitmarker_death", 0.6f, 0.25f);
+            } else {
+                showHitmarker(glm::vec3(1.0f, 1.0f, 1.0f));
+                audioManager->playSound("hitmarker", 0.5f, 0.2f);
+                if (character->getState() == EnemyState::Idle) {
+                    character->rotateToPlayer();
+                    if (!character->checkVisibilityOfPlayer()) {
+                        character->setWanderTarget(getWorldPosition());
+                        character->wanderTo(getEntityManager()->getRenderer()->getDeltaTime());
+                        audioManager->playSound3D("enemy_track", character->getWorldPosition(), 0.5f, 0.2f);
+                    }
+                }
+            }
+            character->damage(damageAmount);
+            audioManager->playSound("punch_hit", 0.75f, 0.1f);
+        }
+    }
 }

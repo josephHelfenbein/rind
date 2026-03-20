@@ -9,10 +9,11 @@
 rind::FlyingEnemy::FlyingEnemy(
     engine::EntityManager* entityManager,
     rind::Player* player,
+    rind::GameInstance* gameInstance,
     const std::string& name,
     const glm::mat4& transform,
     uint32_t& enemyCount
-) : rind::Enemy(entityManager, player, name, transform, enemyCount) {
+) : rind::Enemy(entityManager, player, gameInstance, name, transform, enemyCount) {
         engine::OBBCollider* box = new engine::OBBCollider(
             entityManager,
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.4f, 0.0f)),

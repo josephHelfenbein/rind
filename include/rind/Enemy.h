@@ -4,6 +4,7 @@
 #include <engine/AudioManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
+#include <rind/GameInstance.h>
 #include <rind/Player.h>
 #include <random>
 
@@ -19,6 +20,7 @@ namespace rind {
         Enemy(
             engine::EntityManager* entityManager,
             rind::Player* player,
+            rind::GameInstance* gameInstance,
             const std::string& name,
             const glm::mat4& transform,
             uint32_t& enemyCount
@@ -51,6 +53,7 @@ namespace rind {
         engine::AudioManager* audioManager = nullptr;
         engine::ParticleManager* particleManager = nullptr;
         engine::VolumetricManager* volumetricManager = nullptr;
+        rind::GameInstance* gameInstance = nullptr;
         uint32_t& enemyCount;
         EnemyState state = EnemyState::Spawning;
         bool firstFrame = true;

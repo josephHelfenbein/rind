@@ -1372,7 +1372,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     for (const Entity* e : nodes) {
                         const std::string& shaderName = e->getShader();
                         const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
-                        if (e->getModel() && isGBufferShader) return true;
+                        if (e->getModel() && isGBufferShader && e->isVisible()) return true;
                         if (self(self, e->getChildren())) return true;
                     }
                     return false;
@@ -1405,7 +1405,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     for (const Entity* e : nodes) {
                         const std::string& shaderName = e->getShader();
                         const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
-                        if (e->getModel() && isGBufferShader) return true;
+                        if (e->getModel() && isGBufferShader && e->isVisible()) return true;
                         if (self(self, e->getChildren())) return true;
                     }
                     return false;

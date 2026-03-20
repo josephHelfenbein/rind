@@ -25,6 +25,7 @@ namespace rind {
         void registerInput(const std::vector<engine::InputEvent>& events);
         void shoot();
         void throwGrenade();
+        void punch();
         void damage(float amount) override;
 
         enum class HintActions {
@@ -86,6 +87,9 @@ namespace rind {
         engine::Entity* playerModel = nullptr;
         engine::Entity* camHolder = nullptr;
         engine::Entity* playerShadow = nullptr;
+        engine::Entity* playerArm = nullptr;
+
+        float punchTimer = 0.0f;
 
         bool canDoubleJump = false;
         bool resetDoubleJump = false;
@@ -147,6 +151,9 @@ namespace rind {
 
         float grenadeCooldown = 4.0f;
         std::chrono::steady_clock::time_point lastGrenadeTime = std::chrono::steady_clock::now();
+
+        float punchCooldown = 0.5f;
+        std::chrono::steady_clock::time_point lastPunchTime = std::chrono::steady_clock::now();
         
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};

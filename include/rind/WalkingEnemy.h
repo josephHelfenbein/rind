@@ -8,6 +8,7 @@ namespace rind {
         WalkingEnemy(
             engine::EntityManager* entityManager,
             rind::Player* player,
+            rind::GameInstance* gameInstance,
             const std::string& name,
             const glm::mat4& transform,
             uint32_t& enemyCount

@@ -8,10 +8,11 @@
 rind::Enemy::Enemy(
     engine::EntityManager* entityManager,
     rind::Player* player,
+    rind::GameInstance* gameInstance,
     const std::string& name,
     const glm::mat4& transform,
     uint32_t& enemyCount
-) : rind::CharacterEntity(entityManager, name, "", transform, {}, engine::Entity::EntityType::Enemy), targetPlayer(player), enemyCount(enemyCount) {
+) : rind::CharacterEntity(entityManager, name, "", transform, {}, engine::Entity::EntityType::Enemy), targetPlayer(player), enemyCount(enemyCount), gameInstance(gameInstance) {
         if (player == nullptr) {
             throw std::runtime_error("Enemy spawned without player reference");
         }
@@ -172,12 +173,13 @@ void rind::Enemy::update(float deltaTime) {
             glm::vec4(0.1f, 0.1f, 0.1f, 0.6f),
             2.0f
         );
-        audioManager->playSound3D("enemy_smoke", getWorldPosition(), 0.8f, 0.5F);
+        audioManager->playSound3D("enemy_smoke", getWorldPosition(), 0.8f, 0.5f);
     }
     float playTalk = dist(rng) + 1.0f;
     if (playTalk > 1.999f) {
-        audioManager->playSound3D("enemy_talk", getWorldPosition(), 0.5f, 0.5F);
+        audioManager->playSound3D("enemy_talk", getWorldPosition(), 0.5f, 0.5f);
     }
+    shootingCooldown = 1.5f / (static_cast<float>(gameInstance->getDifficultyLevel()) + 1.0f);
 }
 
 void rind::Enemy::rotateToPlayer() {
@@ -211,6 +213,7 @@ bool rind::Enemy::checkVisibilityOfPlayer() {
 }
 
 void rind::Enemy::damage(float amount) {
+    if (getHealth() <= 0.0f) return; // already dead, pending deletion
     setHealth(getHealth() - amount);
     if (getHealth() <= 0.0f) {
         targetPlayer->addScore(getScoreWorth());
