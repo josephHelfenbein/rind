@@ -83,6 +83,10 @@ namespace rind {
 
         const float gunModelScale = 0.16f;
         const glm::vec3 gunModelTranslation = glm::vec3(0.55856f, -0.273792f, -0.642208f);
+        glm::quat gunModelInitialQuat = glm::angleAxis(glm::radians(-90.0f), glm::vec3(0,1,0));
+        glm::quat gunModelOverheatedRot = 
+            glm::angleAxis(glm::radians(-60.0f), glm::vec3(0,1,0)) *
+            glm::angleAxis(glm::radians(-40.0f), glm::vec3(1,0,0));
         engine::Entity* gunModel = nullptr;
         engine::Entity* playerModel = nullptr;
         engine::Entity* camHolder = nullptr;
@@ -146,8 +150,14 @@ namespace rind {
 
         bool inputsDisconnected = false;
         
-        float shootingCooldown = 0.2f;
+        float shootingCooldown = 0.1f;
         std::chrono::steady_clock::time_point lastShotTime = std::chrono::steady_clock::now();
+        std::array<std::chrono::steady_clock::time_point, 10> shotTimes; // max 10 shots in 3 seconds for overheat
+        const size_t maxShotTimes = 10;
+        size_t shotTimesFront = 0;
+        size_t shotTimesEnd = 0;
+        float coolingTime = 0.0f;
+        const float maxCoolingTime = 4.0f;
 
         float grenadeCooldown = 4.0f;
         std::chrono::steady_clock::time_point lastGrenadeTime = std::chrono::steady_clock::now();

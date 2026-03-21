@@ -10,6 +10,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/matrix_interpolation.hpp>
 
 rind::Player::Player(
     engine::EntityManager* entityManager,
@@ -60,10 +61,8 @@ rind::Player::Player(
             "lasergun",
             "gbuffer",
             glm::scale(
-                glm::rotate(
-                    glm::translate(glm::mat4(1.0f), gunModelTranslation),
-                    glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)
-                ),
+                glm::translate(glm::mat4(1.0f), gunModelTranslation) *
+                glm::mat4_cast(gunModelInitialQuat),
                 glm::vec3(gunModelScale)
             ),
             gunMaterial,
@@ -334,6 +333,8 @@ void rind::Player::update(float deltaTime) {
         rotate(glm::vec3(0.0f, -rightStickX * sensitivity * 10.0f, -rightStickY * sensitivity * 10.0f));
     }
     rind::CharacterEntity::update(deltaTime);
+
+    // gun momentum effect
     if (currentGunRotOffset != glm::vec3(0.0f)) {
         currentGunRotOffset -= currentGunRotOffset * deltaTime * 8.0f;
     }
@@ -349,20 +350,66 @@ void rind::Player::update(float deltaTime) {
         currentGunLocOffset -= localVelocity * deltaTime * 0.05f;
     }
     currentGunLocOffset = glm::clamp(currentGunLocOffset, glm::vec3(-0.25f, -0.25f, -0.25f), glm::vec3(0.25f, 0.25f, 0.25f));
-    glm::mat4 offsetMat = glm::mat4(1.0f) *
-        glm::rotate(glm::mat4(1.0f), currentGunRotOffset.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::rotate(glm::mat4(1.0f), currentGunRotOffset.x, glm::vec3(1.0f, 0.0f, 0.0f)) *
-        glm::rotate(glm::mat4(1.0f), currentGunRotOffset.z, glm::vec3(0.0f, 0.0f, 1.0f));
-    offsetMat = glm::translate(offsetMat, currentGunLocOffset);
-    gunModel->setTransform(
-        glm::scale(
-            glm::rotate(
-                glm::translate(offsetMat, gunModelTranslation),
-                glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)
+    glm::mat4 offsetMat = 
+        glm::translate(
+            glm::mat4(1.0f) *
+            glm::mat4_cast(
+                glm::angleAxis(currentGunRotOffset.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+                glm::angleAxis(currentGunRotOffset.x, glm::vec3(1.0f, 0.0f, 0.0f)) *
+                glm::angleAxis(currentGunRotOffset.z, glm::vec3(0.0f, 0.0f, 1.0f))
             ),
-            glm::vec3(gunModelScale)
-        )
-    );
+            currentGunLocOffset
+        );
+
+    // gun overheat check
+    if (coolingTime > 0.0f) {
+        coolingTime -= deltaTime;
+        if (coolingTime <= 0.0f) {
+            coolingTime = 0.0f;
+        }
+        // -(sin(pi * x / maxCoolingTime + pi/2))^8 + 1.0f for fast move, pause, fast move
+        float rotateAmount = -std::pow(sinf((std::numbers::pi_v<float> * coolingTime / maxCoolingTime) + (std::numbers::pi_v<float> / 2.0f)), 8.0f) + 1.0f;
+        glm::quat interpRot = glm::slerp(gunModelInitialQuat, gunModelOverheatedRot, rotateAmount);
+        gunModel->setTransform(
+            glm::scale(
+                glm::translate(offsetMat, gunModelTranslation) *
+                glm::mat4_cast(interpRot),
+                glm::vec3(gunModelScale)
+            )
+        );
+    } else {
+        gunModel->setTransform(
+            glm::scale(
+                glm::translate(offsetMat, gunModelTranslation) *
+                glm::mat4_cast(gunModelInitialQuat),
+                glm::vec3(gunModelScale)
+            )
+        );
+
+        // gun overheat data cleanup
+        bool resetShotTimes = false;
+        while (shotTimes[shotTimesFront] < std::chrono::steady_clock::now() - std::chrono::milliseconds(3000)) {
+            shotTimesFront = (shotTimesFront + 1) % maxShotTimes;
+            if (shotTimesFront == shotTimesEnd) {
+                resetShotTimes = true;
+                break;
+            }
+        }
+        if (resetShotTimes) {
+            shotTimesFront = 0;
+            shotTimesEnd = 0;
+        }
+    }
+    // gun overheat smoke effect
+    float smokeThreshold;
+    if (coolingTime > 1e-6f) {
+        smokeThreshold = (45.0f / maxCoolingTime) * coolingTime * deltaTime; // 0.0f to 45.0f * deltaTime
+    } else {
+        smokeThreshold = 25.0f * deltaTime * static_cast<float>((shotTimesEnd + maxShotTimes - shotTimesFront) % maxShotTimes) / static_cast<float>(maxShotTimes);
+        // 0.0f to 25.0f * deltaTime * (1.0f - (1.0f/maxShotTimes))
+    }
+    float smokeChance = (dist(rng) * 0.5f) + 0.5f; // 0 to 1
+    bool spawnSmoke = smokeChance < smokeThreshold;
 
     // grenade cooldown
     float timeSinceLastGrenade = std::chrono::duration<float>(std::chrono::steady_clock::now() - lastGrenadeTime).count();
@@ -388,20 +435,26 @@ void rind::Player::update(float deltaTime) {
 
     // keybind hint
     if (keybindHintDuration > 0.0f) {
+        keybindHintDuration -= deltaTime;
+        if (keybindHintDuration < 0.0f) {
+            keybindHintDuration = 0.0f;
+        }
         checkKeybindHint();
         float alpha = -(0.01f * std::pow(keybindHintDuration, 5) - (0.64f * keybindHintDuration));
         keybindHintObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, alpha));
         keybindHintTextObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, alpha));
-        keybindHintDuration -= deltaTime;
     }
 
     // damage effect
     if (cameraShakeIntensity > 0.0f) {
+        cameraShakeIntensity -= deltaTime;
+        if (cameraShakeIntensity < 0.0f) {
+            cameraShakeIntensity = 0.0f;
+        }
         glm::vec3 randomCameraLoc = glm::vec3(dist(rng), dist(rng), dist(rng)) * cameraShakeIntensity * 0.05f;
         camHolder->setTransform(glm::translate(glm::mat4(1.0f), randomCameraLoc));
         float overlayAlpha = std::clamp(cameraShakeIntensity * 2.0f, std::min(1.0f - (getHealth() / getMaxHealth()), 0.8f), 0.8f);
         damageEffectObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, overlayAlpha));
-        cameraShakeIntensity -= deltaTime;
     }
     if (heartbeatOffset > 0.0f) {
         lastHeartbeat += deltaTime;
@@ -413,6 +466,10 @@ void rind::Player::update(float deltaTime) {
 
     // heal effect
     if (healUIShowTime > 0.0f) {
+        healUIShowTime -= deltaTime;
+        if (healUIShowTime < 0.0f) {
+            healUIShowTime = 0.0f;
+        }
         float alpha = -(0.5f * std::pow(healUIShowTime, 5) - (0.5f * healUIShowTime));
         healEffectObject->setTint(glm::vec4(healEffectColor, alpha));
         float amount = -(10.0f * std::pow(healUIShowTime, 5) - (10.0f * healUIShowTime));
@@ -434,16 +491,18 @@ void rind::Player::update(float deltaTime) {
             2.0f,
             0.4f
         );
-        healUIShowTime -= deltaTime;
     } else {
         healEffectObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     }
 
     // hitmarker effect
     if (showHitmarkerTime > 0.0f) {
+        showHitmarkerTime -= deltaTime;
+        if (showHitmarkerTime < 0.0f) {
+            showHitmarkerTime = 0.0f;
+        }
         float alpha = -(std::pow(2.0f * showHitmarkerTime, 5) - (3.25f * showHitmarkerTime));
         hitmarkerObject->setTint(glm::vec4(hitmarkerColor, alpha));
-        showHitmarkerTime -= deltaTime;
     } else {
         hitmarkerObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     }
@@ -482,22 +541,46 @@ void rind::Player::update(float deltaTime) {
         }
     }
 
-    // gun trail effect
+    // gun trail effect and overheat smoke
+    glm::vec3 velocityOffset = getVelocity() * deltaTime;
+    glm::vec3 gunEndWorldPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
+    glm::vec3 playerWorldPos = getWorldPosition();
+    glm::vec3 gunOffsetFromPlayer = gunEndWorldPos - playerWorldPos;
+    glm::quat yawDelta = glm::angleAxis(rotateVelocity.y * deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::vec3 gunAfterYaw = playerWorldPos + velocityOffset + (yawDelta * gunOffsetFromPlayer);
+    glm::vec3 playerRight = glm::normalize(glm::vec3(getWorldTransform()[0]));
+    glm::quat pitchDelta = glm::angleAxis(rotateVelocity.x * deltaTime, yawDelta * playerRight);
+    glm::vec3 gunModelWorldPos = glm::vec3(gunModel->getWorldTransform()[3]);
+    glm::vec3 predictedGunModelPos = playerWorldPos + velocityOffset + (yawDelta * (gunModelWorldPos - playerWorldPos));
+    glm::vec3 gunOffsetFromGunModel = gunAfterYaw - predictedGunModelPos;
+    glm::vec3 currentGunEndPos = predictedGunModelPos + (pitchDelta * gunOffsetFromGunModel);
+    glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    if (spawnSmoke) {
+        glm::vec3 gunDir = glm::normalize(glm::vec3(gunEndPosition->getWorldTransform()[2]));
+        volumetricManager->createVolumetric(
+            glm::scale(
+                glm::translate(glm::mat4(1.0f), gunEndWorldPos - gunDir * smokeChance * 2.0f),
+                glm::vec3(0.1f, 0.1f, 0.1f)
+            ),
+            glm::scale(
+                glm::translate(glm::mat4(1.0f), gunEndWorldPos - gunDir * smokeChance * 2.0f),
+                glm::vec3(1.0f, 1.0f, 1.0f)
+            ),
+            glm::vec4(0.2f, 0.2f, 0.2f, 3.0f),
+            0.3f
+        );
+        particleManager->burstParticles(
+            gunEndWorldPos - gunDir * smokeChance * 2.0f,
+            trailColor,
+            gunDir * 0.5f + glm::vec3((dist(rng) - 0.5f) * 0.5f, (dist(rng) - 0.5f) * 0.5f, (dist(rng) - 0.5f) * 0.5f),
+            5,
+            0.3f,
+            0.5f,
+            0.3f
+        );
+        audioManager->playSound("smoke", 0.5f, 0.5f);
+    }
     if (trailFramesRemaining > 0) {
-        float deltaTime = getEntityManager()->getRenderer()->getDeltaTime();
-        glm::vec3 velocityOffset = getVelocity() * deltaTime;
-        glm::vec3 gunEndWorldPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
-        glm::vec3 playerWorldPos = getWorldPosition();
-        glm::vec3 gunOffsetFromPlayer = gunEndWorldPos - playerWorldPos;
-        glm::quat yawDelta = glm::angleAxis(rotateVelocity.y * deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::vec3 gunAfterYaw = playerWorldPos + velocityOffset + (yawDelta * gunOffsetFromPlayer);
-        glm::vec3 playerRight = glm::normalize(glm::vec3(getWorldTransform()[0]));
-        glm::quat pitchDelta = glm::angleAxis(rotateVelocity.x * deltaTime, yawDelta * playerRight);
-        glm::vec3 gunModelWorldPos = glm::vec3(gunModel->getWorldTransform()[3]);
-        glm::vec3 predictedGunModelPos = playerWorldPos + velocityOffset + (yawDelta * (gunModelWorldPos - playerWorldPos));
-        glm::vec3 gunOffsetFromGunModel = gunAfterYaw - predictedGunModelPos;
-        glm::vec3 currentGunEndPos = predictedGunModelPos + (pitchDelta * gunOffsetFromGunModel);
-        glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
         if (trailFramesRemaining == maxTrailFrames) {
             volumetricManager->createVolumetric(
                 glm::scale(
@@ -997,6 +1080,17 @@ void rind::Player::damage(float amount) {
 }
 
 void rind::Player::shoot() {
+    if (coolingTime > 1e-6f) {
+        return;
+    }
+    shotTimes[shotTimesEnd] = std::chrono::steady_clock::now();
+    shotTimesEnd = (shotTimesEnd + 1) % maxShotTimes;
+    if (shotTimesEnd == shotTimesFront) { // gun overheated
+        coolingTime = maxCoolingTime;
+        shotTimesFront = 0;
+        shotTimesEnd = 0;
+        return;
+    }
     glm::vec3 rayDir = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     particleManager->burstParticles(

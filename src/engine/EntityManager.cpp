@@ -67,8 +67,11 @@ engine::Model* engine::Entity::getModel() const {
 }
 
 void engine::Entity::updateWorldTransform(const glm::mat4& parentWorld) {
-    worldTransform = parentWorld * transform;
-    ++transformGeneration;
+    glm::mat4 newWorldTransform = parentWorld * transform;
+    if (newWorldTransform != worldTransform) {
+        worldTransform = newWorldTransform;
+        ++transformGeneration;
+    }
 }
 
 glm::vec3 engine::Entity::getWorldPosition() const {

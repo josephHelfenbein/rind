@@ -27,8 +27,8 @@ struct PushConstants {
 
 static const float MAX_STEP_SCALE = 4.0;
 static const float THRESHOLD = 0.01;
-static const float LOD_NEAR = 2.0;
-static const float LOD_FAR = 10.0;
+static const float LOD_NEAR = 4.0;
+static const float LOD_FAR = 20.0;
 
 float hash3(float3 p) {
     p = frac(p * float3(443.897, 441.423, 437.195));
