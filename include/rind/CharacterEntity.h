@@ -44,7 +44,7 @@ namespace rind {
 
         const glm::vec3& getRotateVelocity() const { return rotateVelocity; }
 
-        engine::Collider::Collision willCollide(const glm::mat4& deltaTransform);
+        engine::Collider::Collision willCollide(const glm::vec3& worldOffset);
         bool isGrounded() const { return grounded || groundedTimer <= coyoteTime; }
 
     private:

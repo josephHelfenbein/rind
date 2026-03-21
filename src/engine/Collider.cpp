@@ -648,7 +648,8 @@ void engine::ConvexHullCollider::setVertsFromModel(const std::vector<glm::vec3>&
 }
 
 bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
-    glm::mat4 transform = getWorldTransform() * deltaTransform;
+    glm::mat4 transform = getWorldTransform();
+    transform[3] += glm::vec4(glm::vec3(deltaTransform[3]), 0.0f); // world-space translation
     auto cornersA = Collider::buildOBBCorners(transform, halfSize);
     AABB thisAABB = Collider::aabbFromCorners(cornersA);
     AABB otherAABB = other.getWorldAABB();
@@ -720,7 +721,8 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
     glm::vec3 centerA;
 
     if (hasDelta) {
-        glm::mat4 transform = getWorldTransform() * deltaTransform;
+        glm::mat4 transform = getWorldTransform();
+        transform[3] += glm::vec4(glm::vec3(deltaTransform[3]), 0.0f); // world-space translation
         cornersAStorage = Collider::buildOBBCorners(transform, halfSize);
         axesAStorage = {
             Collider::normalizeOrZero(glm::vec3(transform[0])),
