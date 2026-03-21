@@ -11,6 +11,8 @@
 #include <engine/ModelManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
+#include <engine/LightManager.h>
+#include <engine/IrradianceManager.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
 
@@ -34,6 +36,8 @@ namespace rind {
         std::unique_ptr<engine::ModelManager> modelManager;
         std::unique_ptr<engine::ParticleManager> particleManager;
         std::unique_ptr<engine::VolumetricManager> volumetricManager;
+        std::unique_ptr<engine::LightManager> lightManager;
+        std::unique_ptr<engine::IrradianceManager> irradianceManager;
         std::unique_ptr<engine::AudioManager> audioManager;
         std::unique_ptr<engine::SettingsManager> settingsManager;
 

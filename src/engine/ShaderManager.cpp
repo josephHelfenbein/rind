@@ -1,7 +1,8 @@
 #include <engine/ShaderManager.h>
 #include <engine/Renderer.h>
 #include <engine/Camera.h>
-#include <engine/Light.h>
+#include <engine/LightManager.h>
+#include <engine/IrradianceManager.h>
 #include <engine/SettingsManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
@@ -693,10 +694,10 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     {
                         .binding = 0,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
-                            EntityManager* entityManager = renderer->getEntityManager();
-                            auto& lightsBuffers = entityManager->getLightsBuffers();
+                            LightManager* lightManager = renderer->getLightManager();
+                            auto& lightsBuffers = lightManager->getLightsBuffers();
                             if (lightsBuffers.size() < renderer->getMaxFramesInFlight()) {
-                                entityManager->createLightsUBO();
+                                lightManager->createLightsUBO();
                             }
                             if (i >= lightsBuffers.size() || lightsBuffers[i] == VK_NULL_HANDLE) {
                                 std::cout << "Warning: Lights UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
@@ -709,10 +710,10 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     {
                         .binding = 1,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
-                            EntityManager* entityManager = renderer->getEntityManager();
-                            auto& irradianceProbesBuffers = entityManager->getIrradianceProbesBuffers();
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            auto& irradianceProbesBuffers = irradianceManager->getIrradianceProbesBuffers();
                             if (irradianceProbesBuffers.size() < renderer->getMaxFramesInFlight()) {
-                                entityManager->createIrradianceProbesUBO();
+                                irradianceManager->createIrradianceProbesUBO();
                             }
                             if (i >= irradianceProbesBuffers.size() || irradianceProbesBuffers[i] == VK_NULL_HANDLE) {
                                 std::cout << "Warning: Irradiance UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
@@ -734,13 +735,13 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                             auto* textureManager = renderer->getTextureManager();
                             Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_shadow_cube") : nullptr;
                             VkImageView fallbackView = (fallbackTex && fallbackTex->imageView != VK_NULL_HANDLE) ? fallbackTex->imageView : VK_NULL_HANDLE;
-                            auto& lights = renderer->getEntityManager()->getLights();
+                            auto& lights = renderer->getLightManager()->getLights();
                             for (uint32_t c = 0; c < count; ++c) {
                                 VkImageView viewToBind = fallbackView;
                                 if (c < lights.size()) {
-                                    Light* light = lights[c];
-                                    if (light && light->getShadowImageView() != VK_NULL_HANDLE) {
-                                        viewToBind = light->getShadowImageView();
+                                    Light& light = lights[c];
+                                    if (light.getShadowImageView() != VK_NULL_HANDLE) {
+                                        viewToBind = light.getShadowImageView();
                                     }
                                 }
                                 imageInfos.push_back({

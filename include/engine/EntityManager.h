@@ -12,8 +12,6 @@
 
 namespace engine {
     class Camera;
-    class Light;
-    class IrradianceProbe;
     class Collider;
     class Entity {
     public:
@@ -21,8 +19,6 @@ namespace engine {
             Generic,
             Camera,
             Static,
-            Light,
-            IrradianceProbe,
             Collider,
             Trigger,
             Empty,
@@ -203,39 +199,16 @@ namespace engine {
         void setCamera(Camera* camera) { this->camera = camera; }
         Camera* getCamera() const { return camera; }
 
-        void addLight(Light* light) {
-            lights.push_back(light);
-        }
-        void addIrradianceProbe(IrradianceProbe* probe) {
-            irradianceProbes.push_back(probe);
-            irradianceBakingPending = true;
-        }
         void addCollider(Collider* collider);
         void removeCollider(Collider* collider);
         void addDynamicCollider(Collider* collider);
         void removeDynamicCollider(Collider* collider);
-        const std::vector<Light*>& getLights() const { return lights; }
-        const std::vector<IrradianceProbe*>& getIrradianceProbes() const { return irradianceProbes; }
-        void createLightsUBO();
-        void createIrradianceProbesUBO();
-        void updateLightsUBO(uint32_t frameIndex);
-        void updateIrradianceProbesUBO(uint32_t frameIndex);
-        std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
-        std::vector<VkBuffer>& getIrradianceProbesBuffers() { return irradianceBuffers; }
+        
         std::vector<Collider*>& getColliders() { return colliders; }
         std::vector<Collider*>& getDynamicColliders() { return dynamicColliders; }
         SpatialGrid& getSpatialGrid() { return spatialGrid; }
         void rebuildSpatialGrid();
         void updateDynamicColliders();
-        void createAllShadowMaps();
-        void createAllIrradianceMaps();
-        void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
-        void renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame);
-        void bakeIrradianceMaps(VkCommandBuffer commandBuffer);
-        void recordIrradianceReadback(VkCommandBuffer commandBuffer);
-        void processIrradianceSH();
-        bool needsIrradianceBaking() const { return irradianceBakingPending; }
-        void setIrradianceBakingPending(bool pending) { irradianceBakingPending = pending; }
         void markTexturesDirty() { textureLoadDirty = true; }
         VkBuffer getDummySkinningBuffer() const { return dummySkinningBuffer; }
 
@@ -258,23 +231,13 @@ namespace engine {
         std::vector<Entity*> movableEntities;
         std::vector<Collider*> colliders;
         std::vector<Collider*> dynamicColliders;
-        std::vector<Light*> lights;
-        std::vector<IrradianceProbe*> irradianceProbes;
         std::vector<Entity*> pendingDeletions;
         std::vector<std::pair<std::string, Entity*>> pendingAdditions;
         SpatialGrid spatialGrid{10.0f};
         bool spatialGridDirty = true;
         bool textureLoadDirty = false;
-        bool irradianceBakingPending = false;
 
-        std::vector<VkBuffer> lightsBuffers;
-        std::vector<VkDeviceMemory> lightsBuffersMemory;
-        std::vector<void*> lightBuffersMapped;
         Camera* camera = nullptr;
-
-        std::vector<VkBuffer> irradianceBuffers;
-        std::vector<VkDeviceMemory> irradianceBuffersMemory;
-        std::vector<void*> irradianceBuffersMapped;
 
         VkBuffer dummySkinningBuffer = VK_NULL_HANDLE;
         VkDeviceMemory dummySkinningBufferMemory = VK_NULL_HANDLE;

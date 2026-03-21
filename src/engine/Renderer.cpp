@@ -10,8 +10,8 @@
 #include <engine/SceneManager.h>
 #include <engine/ModelManager.h>
 #include <engine/Camera.h>
-#include <engine/Light.h>
-#include <engine/IrradianceProbe.h>
+#include <engine/LightManager.h>
+#include <engine/IrradianceManager.h>
 #include <engine/io.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
@@ -226,7 +226,7 @@ void engine::Renderer::initVulkan() {
     shaderManager->resolveRenderGraphShaders();
     createAttachmentResources();
     shaderManager->loadAllShaders();
-    entityManager->createLightsUBO();
+    lightManager->createLightsUBO();
     textureManager->init();
     ensureFallback2DTexture();
     ensureFallbackShadowCubeTexture();
@@ -237,8 +237,8 @@ void engine::Renderer::initVulkan() {
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
-    entityManager->createAllShadowMaps();
-    entityManager->createAllIrradianceMaps();
+    lightManager->createAllShadowMaps();
+    irradianceManager->createAllIrradianceMaps();
     createPostProcessDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
@@ -263,21 +263,21 @@ void engine::Renderer::drawFrame() {
     entityManager->processPendingDeletions();
     entityManager->processPendingAdditions();
     if (shadowMapRecreationPending) {
-        entityManager->createAllShadowMaps();
+        lightManager->createAllShadowMaps();
         vkDeviceWaitIdle(device);
         createPostProcessDescriptorSets();
         shadowMapRecreationPending = false;
     }
-    if (entityManager->needsIrradianceBaking()) {
+    if (irradianceManager->needsIrradianceBaking()) {
         entityManager->loadTextures();
-        entityManager->createAllIrradianceMaps();
+        irradianceManager->createAllIrradianceMaps();
         VkCommandBuffer cmdBuffer = beginSingleTimeCommands();
-        entityManager->bakeIrradianceMaps(cmdBuffer);
-        entityManager->recordIrradianceReadback(cmdBuffer);
+        irradianceManager->bakeIrradianceMaps(cmdBuffer);
+        irradianceManager->recordIrradianceReadback(cmdBuffer);
         endSingleTimeCommands(cmdBuffer);
-        entityManager->processIrradianceSH();
+        irradianceManager->processIrradianceSH();
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            entityManager->updateIrradianceProbesUBO(i);
+            irradianceManager->updateIrradianceProbesUBO(i);
         }
         vkDeviceWaitIdle(device);
         createPostProcessDescriptorSets();
@@ -384,10 +384,10 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
         audioManager->updateListener(pos, fwd, up);
     }
-    entityManager->renderShadows(commandBuffer, currentFrame);
-    entityManager->renderDynamicIrradiance(commandBuffer, currentFrame);
-    entityManager->updateLightsUBO(currentFrame);
-    entityManager->updateIrradianceProbesUBO(currentFrame);
+    lightManager->renderShadows(commandBuffer, currentFrame);
+    irradianceManager->renderDynamicIrradiance(commandBuffer, currentFrame);
+    lightManager->updateLightsUBO(currentFrame);
+    irradianceManager->updateIrradianceProbesUBO(currentFrame);
 
     for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
         auto& node = renderGraph[nodeIdx];

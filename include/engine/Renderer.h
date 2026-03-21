@@ -38,6 +38,8 @@ namespace engine {
         void registerAudioManager(class AudioManager* audioManager) { this->audioManager = audioManager; }
         void registerSettingsManager(class SettingsManager* settingsManager) { this->settingsManager = settingsManager; }
         void registerVolumetricManager(class VolumetricManager* volumetricManager) { this->volumetricManager = volumetricManager; }
+        void registerLightManager(class LightManager* lightManager) { this->lightManager = lightManager; }
+        void registerIrradianceManager(class IrradianceManager* irradianceManager) { this->irradianceManager = irradianceManager; }
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -49,6 +51,8 @@ namespace engine {
         class AudioManager* getAudioManager() { return audioManager; }
         class SettingsManager* getSettingsManager() { return settingsManager; }
         class VolumetricManager* getVolumetricManager() { return volumetricManager; }
+        class LightManager* getLightManager() { return lightManager; }
+        class IrradianceManager* getIrradianceManager() { return irradianceManager; }
 
         void toggleLockCursor(bool lock);
         bool isPaused() const { return paused; }
@@ -260,6 +264,8 @@ namespace engine {
         class AudioManager* audioManager;
         class SettingsManager* settingsManager;
         class VolumetricManager* volumetricManager;
+        class LightManager* lightManager;
+        class IrradianceManager* irradianceManager;
 
         UIObject* hoveredObject = nullptr;
         bool clicking = false;

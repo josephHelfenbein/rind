@@ -1,8 +1,8 @@
 #include <rind/GameInstance.h>
 
 #include <engine/Camera.h>
-#include <engine/Light.h>
-#include <engine/IrradianceProbe.h>
+#include <engine/LightManager.h>
+#include <engine/IrradianceManager.h>
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
@@ -21,6 +21,8 @@ rind::GameInstance::GameInstance() {
         engine::EntityManager* entityManager = renderer->getEntityManager();
         engine::ModelManager* modelManager = renderer->getModelManager();
         engine::SceneManager* sceneManager = renderer->getSceneManager();
+        engine::LightManager* lightManager = renderer->getLightManager();
+        engine::IrradianceManager* irradianceManager = renderer->getIrradianceManager();
         engine::UIObject* logoObject = new engine::UIObject(
             uiManager,
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, -0.5f, 1.0f)), glm::vec3(0.0f, -200.0f, 0.0f)),
@@ -141,37 +143,30 @@ rind::GameInstance::GameInstance() {
             engine::Entity::EntityType::Static
         );
         playerEntity->setModel(playerModel);
-        engine::Light* sceneLight = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "titleLight",
             glm::translate(glm::mat4(1.0f), glm::vec3(-3.0f, 1.5f, -4.0f)),
             glm::vec3(1.0f, 0.5f, 0.5f),
             0.25f,
-            30.0f,
-            false
+            30.0f
         );
-        engine::Light* sceneLight2 = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "titleLight2",
             glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 1.0f, 1.0f)),
             glm::vec3(0.5f, 0.5f, 1.0f),
             0.75f,
-            15.0f,
-            false
+            15.0f
         );
-        engine::Light* sceneLight3 = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "titleLight3",
             glm::translate(glm::mat4(1.0f), glm::vec3(-30.0f, 2.0f, 0.0f)),
             glm::vec3(1.0f, 1.0f, 1.0f),
             2.0f,
-            200.0f,
-            false
+            200.0f
         );
         for (int i = -2; i <= 2; i++) {
             for (int j = -2; j <= 2; j++) {
-                engine::IrradianceProbe* probe = new engine::IrradianceProbe(
-                    entityManager,
+                irradianceManager->addIrradianceProbe(
                     "titleProbe" + std::to_string(i) + std::to_string(j),
                     glm::translate(glm::mat4(1.0f), glm::vec3(i * 6.0f, 1.0f, j * 6.0f)),
                     10.0f
@@ -187,6 +182,8 @@ rind::GameInstance::GameInstance() {
         engine::ModelManager* modelManager = renderer->getModelManager();
         engine::SceneManager* sceneManager = renderer->getSceneManager();
         engine::EntityManager* entityManager = renderer->getEntityManager();
+        engine::LightManager* lightManager = renderer->getLightManager();
+        engine::IrradianceManager* irradianceManager = renderer->getIrradianceManager();
         engine::UIManager* uiManager = renderer->getUIManager();
         std::vector<std::string> rockMaterial = {
             "materials_rock_albedo",
@@ -304,22 +301,28 @@ rind::GameInstance::GameInstance() {
             entityManager,
             "lightObject1",
             "gbuffer",
-            glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(13.5296f, -13.3857f, -0.136268f))),
+            glm::translate(
+                glm::scale(
+                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(13.5296f, -13.3857f, -0.136268f))
+            ),
             lightMaterial,
             false,
             engine::Entity::EntityType::Static
         );
         lightObject1->setModel(lightModel);
-        engine::Light* light = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "light1",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+            glm::translate(
+                glm::scale(
+                    glm::mat4(1.0f),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(13.5296f, -13.3857f, -0.136268f))
+            ),
             glm::vec3(1.0f),
             5.0f,
-            150.0f,
-            false
+            150.0f
         );
-        lightObject1->addChild(light);
         
         engine::ConvexHullCollider* lightCollider = new engine::ConvexHullCollider(
             entityManager,
@@ -338,22 +341,29 @@ rind::GameInstance::GameInstance() {
             entityManager,
             "lightObject2",
             "gbuffer",
-            glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(13.5296f, 13.6124f, -0.136268f))),
+            glm::translate(
+                glm::scale(
+                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(13.5296f, 13.6124f, -0.136268f))
+            ),
             lightMaterial,
             false,
             engine::Entity::EntityType::Static
         );
         lightObject2->setModel(lightModel);
-        engine::Light* light2 = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "light2",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+            glm::translate(
+                glm::scale(
+                    glm::mat4(1.0f),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(13.5296f, 13.6124f, -0.136268f))
+            ),
             glm::vec3(1.0f),
             5.0f,
-            150.0f,
-            false
+            150.0f
         );
-        lightObject2->addChild(light2);
 
         engine::ConvexHullCollider* light2Collider = new engine::ConvexHullCollider(
             entityManager,
@@ -371,22 +381,29 @@ rind::GameInstance::GameInstance() {
             entityManager,
             "lightObject3",
             "gbuffer",
-            glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(-13.365f, 13.6124f, -0.136268f))),
+            glm::translate(
+                glm::scale(
+                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(-13.365f, 13.6124f, -0.136268f))
+            ),
             lightMaterial,
             false,
             engine::Entity::EntityType::Static
         );
         lightObject3->setModel(lightModel);
-        engine::Light* light3 = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "light3",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+            glm::translate(
+                glm::scale(
+                    glm::mat4(1.0f),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(-13.365f, 13.6124f, -0.136268f))
+            ),
             glm::vec3(1.0f),
             5.0f,
-            150.0f,
-            false
+            150.0f
         );
-        lightObject3->addChild(light3);
 
         engine::ConvexHullCollider* light3Collider = new engine::ConvexHullCollider(
             entityManager,
@@ -404,22 +421,29 @@ rind::GameInstance::GameInstance() {
             entityManager,
             "lightObject4",
             "gbuffer",
-            glm::translate(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)), engine::blenderRemap(glm::vec3(-13.365f, -13.3857f, -0.136268f))),
+            glm::translate(
+                glm::scale(
+                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(-13.365f, -13.3857f, -0.136268f))
+            ),
             lightMaterial,
             false,
             engine::Entity::EntityType::Static
         );
         lightObject4->setModel(lightModel);
-        engine::Light* light4 = new engine::Light(
-            entityManager,
+        lightManager->addLight(
             "light4",
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+            glm::translate(
+                glm::scale(
+                    glm::mat4(1.0f),
+                    glm::vec3(1.5f, 1.5f, 1.5f)
+                ), engine::blenderRemap(glm::vec3(-13.365f, -13.3857f, -0.136268f))
+            ),
             glm::vec3(1.0f),
             5.0f,
-            150.0f,
-            false
+            150.0f
         );
-        lightObject4->addChild(light4);
 
         engine::ConvexHullCollider* light4Collider = new engine::ConvexHullCollider(
             entityManager,
@@ -472,8 +496,7 @@ rind::GameInstance::GameInstance() {
 
         for (int i = -3; i <= 3; ++i) {
             for (int j = -3; j <= 3; ++j) {
-                engine::IrradianceProbe* probe = new engine::IrradianceProbe(
-                    entityManager,
+                irradianceManager->addIrradianceProbe(
                     "gameProbe" + std::to_string(i) + std::to_string(j),
                     glm::translate(glm::mat4(1.0f), glm::vec3(i * 8.0f, 5.0f, j * 8.0f)),
                     8.0f
@@ -492,6 +515,8 @@ rind::GameInstance::GameInstance() {
     scenes.emplace_back(std::make_unique<engine::Scene>(mainGameScene));
 
     entityManager = std::make_unique<engine::EntityManager>(renderer.get());
+    lightManager = std::make_unique<engine::LightManager>(renderer.get());
+    irradianceManager = std::make_unique<engine::IrradianceManager>(renderer.get());
     inputManager = std::make_unique<engine::InputManager>(renderer.get());
     sceneManager = std::make_unique<engine::SceneManager>(renderer.get(), std::move(scenes));
     textureManager = std::make_unique<engine::TextureManager>(renderer.get(), "src/assets/textures/");
@@ -517,6 +542,8 @@ rind::GameInstance::GameInstance() {
 rind::GameInstance::~GameInstance() {
     entityManager->clear();
     uiManager->clear();
+    lightManager->clear();
+    irradianceManager->clear();
     particleManager->clear();
     volumetricManager->clear();
 }

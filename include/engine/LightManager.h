@@ -5,22 +5,17 @@
 #include <glm/glm.hpp>
 
 namespace engine {
-    class Light : public Entity {
+    class LightManager;
+    class Light {
     public:
         Light(
-            EntityManager* entityManager,
+            LightManager* lightManager,
             const std::string& name,
             const glm::mat4& transform,
             const glm::vec3& color,
             float intensity,
-            float radius,
-            bool isMovable = false
-        ) : Entity(entityManager, name, "", transform, {}, isMovable, EntityType::Light), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)) {
-                entityManager->addLight(this);
-                lightIdx = entityManager->getLights().size() - 1;
-                createShadowMaps(entityManager->getRenderer());
-            }
-        ~Light();
+            float radius
+        );
 
         glm::vec3 getColor() const { return color; }
         void setColor(const glm::vec3& color) { this->color = color; }
@@ -36,7 +31,10 @@ namespace engine {
 
         void updateLightIdx(uint32_t newIdx) { lightIdx = newIdx; }
 
+        bool shadowMapReady() const { return hasShadowMap; }
         uint32_t getShadowMapSize() const { return shadowMapSize; }
+        LightManager* getLightManager() const { return lightManager; }
+        glm::vec3 getWorldPosition() const { return glm::vec3(transform[3]); }
 
         PointLight getPointLightData();
         VkImageView getShadowImageView() const { return shadowDepthImageView; }
@@ -45,6 +43,7 @@ namespace engine {
         void bakeShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
         void renderShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame);
         bool isBaked() const { return shadowBaked; }
+        void destroyShadowResources(VkDevice device);
 
     private:
         glm::vec3 color;
@@ -52,6 +51,8 @@ namespace engine {
         float radius;
         glm::mat4 shadowProj;
         uint32_t shadowMapSize = 2048;
+
+        glm::mat4 transform;
 
         glm::mat4 viewProjs[6];
         uint32_t lightIdx = 0xFFFFFFFF; // idx in EntityManager's light list
@@ -73,6 +74,31 @@ namespace engine {
         bool shadowBaked = false;
         bool bakedImageReady = false;
 
-        void destroyShadowResources(VkDevice device);
+        LightManager* lightManager;
+    };
+
+    class LightManager {
+    public:
+        LightManager(Renderer* renderer);
+        ~LightManager();
+        void clear();
+
+        void addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius);
+        void unregisterLight(uint32_t lightIdx);
+        std::vector<Light>& getLights() { return lights; }
+        void createLightsUBO();
+        void updateLightsUBO(uint32_t frameIndex);
+        void createAllShadowMaps();
+        void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
+        std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
+
+        Renderer* getRenderer() const { return renderer; }
+
+    private:
+        Renderer* renderer;
+        std::vector<Light> lights;
+        std::vector<VkBuffer> lightsBuffers;
+        std::vector<VkDeviceMemory> lightsBuffersMemory;
+        std::vector<void*> lightBuffersMapped;
     };
 }

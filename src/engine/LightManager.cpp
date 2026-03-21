@@ -1,4 +1,4 @@
-#include <engine/Light.h>
+#include <engine/LightManager.h>
 
 #ifndef GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -7,12 +7,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-engine::Light::~Light() {
-    Renderer* renderer = getEntityManager()->getRenderer();
-    if (renderer && hasShadowMap) {
-        destroyShadowResources(renderer->getDevice());
-    }
-}
+engine::Light::Light(
+    LightManager* lightManager,
+    const std::string& name,
+    const glm::mat4& transform,
+    const glm::vec3& color,
+    float intensity,
+    float radius
+) : lightManager(lightManager), transform(transform), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)) {}
 
 engine::PointLight engine::Light::getPointLightData() {
     glm::vec3 worldPos = getWorldPosition();
@@ -225,8 +227,6 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
 
 static std::unordered_set<engine::Entity::EntityType> notShadowTypes = {
     engine::Entity::EntityType::Camera,
-    engine::Entity::EntityType::Light,
-    engine::Entity::EntityType::IrradianceProbe,
     engine::Entity::EntityType::Collider,
     engine::Entity::EntityType::Empty
 };
@@ -462,3 +462,107 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     shadowBaked = false;
     bakedImageReady = false;
 }
+
+engine::LightManager::LightManager(engine::Renderer* renderer) : renderer(renderer) {
+    renderer->registerLightManager(this);
+}
+
+engine::LightManager::~LightManager() {
+    clear();
+    VkDevice device = renderer->getDevice();
+    for (size_t i = 0; i < lightBuffersMapped.size(); ++i) {
+        if (lightBuffersMapped[i] != nullptr && i < lightsBuffersMemory.size() && lightsBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, lightsBuffersMemory[i]);
+            lightBuffersMapped[i] = nullptr;
+        }
+    }
+    for (size_t i = 0; i < lightsBuffers.size(); ++i) {
+        if (lightsBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, lightsBuffers[i], nullptr);
+        }
+        if (i < lightsBuffersMemory.size() && lightsBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, lightsBuffersMemory[i], nullptr);
+        }
+    }
+    lightsBuffers.clear();
+    lightsBuffersMemory.clear();
+    lightBuffersMapped.clear();
+}
+
+void engine::LightManager::addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius) {
+    lights.emplace_back(this, name, transform, color, intensity, radius);
+    Light& newLight = lights.back();
+    newLight.updateLightIdx(lights.size() - 1);
+    newLight.createShadowMaps(renderer);
+}
+
+void engine::LightManager::unregisterLight(uint32_t lightIdx) {
+    if (lightIdx >= lights.size()) {
+        return;
+    }
+    Light& light = lights[lightIdx];
+    if (light.shadowMapReady()) {
+        light.destroyShadowResources(renderer->getDevice());
+    }
+    lights.erase(lights.begin() + lightIdx);
+    for (size_t i = lightIdx; i < lights.size(); ++i) {
+        lights[i].updateLightIdx(static_cast<uint32_t>(i));
+    }
+}
+
+void engine::LightManager::clear() {
+    for (Light& light : lights) {
+        if (light.shadowMapReady()) {
+            light.destroyShadowResources(renderer->getDevice());
+        }
+    }
+    lights.clear();
+}
+
+void engine::LightManager::createLightsUBO() {
+    const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
+    lightsBuffers.resize(frames, VK_NULL_HANDLE);
+    lightsBuffersMemory.resize(frames, VK_NULL_HANDLE);
+    lightBuffersMapped.resize(frames, nullptr);
+    for (size_t frame = 0; frame < frames; ++frame) {
+        std::tie(lightsBuffers[frame], lightsBuffersMemory[frame]) = renderer->createBuffer(
+            sizeof(LightsUBO),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(renderer->getDevice(), lightsBuffersMemory[frame], 0, sizeof(LightsUBO), 0, &lightBuffersMapped[frame]);
+    }
+}
+
+void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
+    if (lightsBuffers.size() < static_cast<size_t>(renderer->getFramesInFlight())) {
+        createLightsUBO();
+    }
+    if (frameIndex >= lightsBuffers.size() || lightsBuffers[frameIndex] == VK_NULL_HANDLE) {
+        std::cout << std::format("Warning: Lights UBO buffer unavailable for frame {}. Skipping lights update.\n", frameIndex);
+        return;
+    }
+    LightsUBO* gpuData = static_cast<LightsUBO*>(lightBuffersMapped[frameIndex]);
+    std::vector<Light>& lights = getLights();
+    size_t count = std::min(lights.size(), static_cast<size_t>(64));
+    for (size_t i = 0; i < count; ++i) {
+        gpuData->pointLights[i] = lights[i].getPointLightData();
+    }
+    gpuData->numPointLights = glm::uvec4(count, 0, 0, 0);
+}
+
+void engine::LightManager::createAllShadowMaps() {
+    vkDeviceWaitIdle(renderer->getDevice());
+    std::vector<Light>& lights = getLights();
+    for (auto& light : lights) {
+        light.createShadowMaps(renderer, true);
+    }
+}
+
+void engine::LightManager::renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    std::vector<Light>& lights = getLights();
+    for (auto& light : lights) {
+        light.renderShadowMap(renderer, commandBuffer, currentFrame);
+    }
+}
+

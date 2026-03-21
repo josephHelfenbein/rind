@@ -1,23 +1,21 @@
-#include <engine/IrradianceProbe.h>
+#include <engine/IrradianceManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/ParticleManager.h>
+#include <engine/Camera.h>
 #include <cmath>
 #include <limits>
 #include <functional>
 #include <glm/gtc/matrix_transform.hpp>
 
 engine::IrradianceProbe::IrradianceProbe(
-    EntityManager* entityManager,
+    IrradianceManager* irradianceManager,
     const std::string& name,
     const glm::mat4& transform,
     float radius
-) : Entity(entityManager, name, "", transform, {}, false, EntityType::IrradianceProbe), radius(radius) {
-        entityManager->addIrradianceProbe(this);
-        createCubemaps(entityManager->getRenderer());
-    }
+) : irradianceManager(irradianceManager), transform(transform), radius(radius) {}
 
-engine::IrradianceProbe::~IrradianceProbe() {
-    VkDevice device = getEntityManager()->getRenderer()->getDevice();
+void engine::IrradianceProbe::destroy() {
+    VkDevice device = irradianceManager->getRenderer()->getDevice();
     for (uint32_t i = 0; i < 6; ++i) {
         if (bakedCubemapFaceViews[i] != VK_NULL_HANDLE) {
             vkDestroyImageView(device, bakedCubemapFaceViews[i], nullptr);
@@ -47,7 +45,7 @@ engine::IrradianceProbe::~IrradianceProbe() {
     if (cubemapSampler != VK_NULL_HANDLE) {
         vkDestroySampler(device, cubemapSampler, nullptr);
     }
-    cleanupComputeResources(getEntityManager()->getRenderer());
+    cleanupComputeResources(irradianceManager->getRenderer());
 }
 
 void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
@@ -269,7 +267,7 @@ void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer co
         6
     );
     
-    glm::vec3 probePos = getWorldPosition();
+    glm::vec3 probePos = glm::vec3(transform[3]);
     glm::mat4 cubeProj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius);
     for (int i = 0; i < 6; ++i) {
         viewProjs[i] = cubeProj * glm::lookAt(probePos, probePos + faces[i].dir, faces[i].up);
@@ -740,9 +738,114 @@ void engine::IrradianceProbe::processSHProjection(Renderer* renderer) {
 
 engine::IrradianceProbeData engine::IrradianceProbe::getProbeData() const {
     IrradianceProbeData data;
-    data.position = glm::vec4(getWorldPosition(), radius);
+    data.position = glm::vec4(glm::vec3(transform[3]), radius);
     for (int i = 0; i < 9; ++i) {
         data.shCoeffs[i] = glm::vec4(shCoeffs[i], 0.0f);
     }
     return data;
+}
+
+engine::IrradianceManager::IrradianceManager(Renderer* renderer) : renderer(renderer) {
+    renderer->registerIrradianceManager(this);
+}
+
+engine::IrradianceManager::~IrradianceManager() {
+    for (IrradianceProbe& probe : irradianceProbes) {
+        probe.destroy();
+    }
+    VkDevice device = renderer->getDevice();
+    for (size_t i = 0; i < irradianceBuffers.size(); ++i) {
+        if (irradianceBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, irradianceBuffers[i], nullptr);
+        }
+        if (i < irradianceBuffersMemory.size() && irradianceBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, irradianceBuffersMemory[i], nullptr);
+        }
+    }
+    irradianceBuffers.clear();
+    irradianceBuffersMemory.clear();
+    irradianceBuffersMapped.clear();
+    irradianceProbes.clear();
+}
+
+void engine::IrradianceManager::clear() {
+    for (IrradianceProbe& probe : irradianceProbes) {
+        probe.destroy();
+    }
+    irradianceProbes.clear();
+}
+
+void engine::IrradianceManager::createIrradianceProbesUBO() {
+    const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
+    irradianceBuffers.resize(frames, VK_NULL_HANDLE);
+    irradianceBuffersMemory.resize(frames, VK_NULL_HANDLE);
+    irradianceBuffersMapped.resize(frames, nullptr);
+    for (size_t frame = 0; frame < frames; ++frame) {
+        std::tie(irradianceBuffers[frame], irradianceBuffersMemory[frame]) = renderer->createBuffer(
+            sizeof(IrradianceProbesUBO),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(renderer->getDevice(), irradianceBuffersMemory[frame], 0, sizeof(IrradianceProbesUBO), 0, &irradianceBuffersMapped[frame]);
+    }
+}
+
+void engine::IrradianceManager::updateIrradianceProbesUBO(uint32_t frameIndex) {
+    if (irradianceBuffers.size() < static_cast<size_t>(renderer->getFramesInFlight())) {
+        createIrradianceProbesUBO();
+    }
+    if (frameIndex >= irradianceBuffers.size() || irradianceBuffers[frameIndex] == VK_NULL_HANDLE) {
+        std::cout << std::format("Warning: Irradiance Probes UBO buffer unavailable for frame {}. Skipping irradiance probes update.\n", frameIndex);
+        return;
+    }
+    IrradianceProbesUBO* irradianceProbesUBO = static_cast<IrradianceProbesUBO*>(irradianceBuffersMapped[frameIndex]);
+    std::vector<IrradianceProbe>& probes = getIrradianceProbes();
+    size_t count = std::min(probes.size(), static_cast<size_t>(32));
+    for (size_t i = 0; i < count; ++i) {
+        irradianceProbesUBO->probes[i] = probes[i].getProbeData();
+    }
+    irradianceProbesUBO->numProbes = glm::uvec4(count, 0, 0, 0);
+}
+
+void engine::IrradianceManager::createAllIrradianceMaps() {
+    vkDeviceWaitIdle(renderer->getDevice());
+    std::vector<IrradianceProbe>& probes = getIrradianceProbes();
+    for (auto& probe : probes) {
+        probe.createCubemaps(renderer);
+    }
+}
+
+void engine::IrradianceManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer) {
+    std::vector<IrradianceProbe>& probes = getIrradianceProbes();
+    for (auto& probe : probes) {
+        probe.bakeCubemap(renderer, commandBuffer);
+    }
+}
+
+void engine::IrradianceManager::recordIrradianceReadback(VkCommandBuffer commandBuffer) {
+    for (auto& probe : getIrradianceProbes()) {
+        probe.copyBakedToDynamic(renderer, commandBuffer);
+        probe.dispatchSHCompute(renderer, commandBuffer);
+    }
+}
+
+void engine::IrradianceManager::renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    engine::Camera* camera = renderer->getEntityManager()->getCamera();
+    if (!camera) return;
+    for (auto& probe : getIrradianceProbes()) {
+        probe.processSHProjection(renderer);
+    }
+    for (auto& probe : getIrradianceProbes()) {
+        if (camera->isSphereInFrustum(probe.getWorldPosition(), probe.getRadius())) {
+            probe.renderDynamicCubemap(renderer, commandBuffer, currentFrame);
+            probe.dispatchSHCompute(renderer, commandBuffer);
+        }
+    }
+}
+
+void engine::IrradianceManager::processIrradianceSH() {
+    for (auto& probe : getIrradianceProbes()) {
+        probe.processSHProjection(renderer);
+    }
+    irradianceBakingPending = false;
 }
