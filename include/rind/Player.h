@@ -132,7 +132,7 @@ namespace rind {
             {HintActions::Heal, "inputs_gamepad_b"},
             {HintActions::Grenade, "inputs_gamepad_l1"},
             {HintActions::Jump, "inputs_gamepad_a"},
-            {HintActions::Punch, "inputs_gamepad_r3"}
+            {HintActions::Punch, "inputs_gamepad_r1"}
         };
         engine::UIObject* keybindHintObject = nullptr;
         engine::TextObject* keybindHintTextObject = nullptr;

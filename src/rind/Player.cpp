@@ -867,7 +867,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                         lastGrenadeTime = std::chrono::steady_clock::now();
                     }
                     break;
-                case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
+                case GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER:
                     if ((std::chrono::steady_clock::now() - lastPunchTime) >= std::chrono::duration<float>(punchCooldown)) {
                         punch();
                         lastPunchTime = std::chrono::steady_clock::now();
@@ -921,7 +921,8 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     rightStickY = event.gamepadAxisEvent.value;
                     break;
                 case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
-                    if (event.gamepadAxisEvent.value > 0.5f
+                    if (!renderer->isPaused()
+                     && event.gamepadAxisEvent.value > 0.5f
                      && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
                     {
                         shoot();

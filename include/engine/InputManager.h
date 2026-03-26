@@ -59,6 +59,9 @@ namespace engine {
                     fakeControllerCursor = glm::dvec2(ww / 2.0, wh / 2.0);
                     renderer->getUIManager()->setFakeCursorPosition(fakeControllerCursor);
                 }
+            } else {
+                renderer->getUIManager()->setCursorEnabled(false);
+                fakeCursorPressing = false;
             }
         }
         bool getUIFocused() const { return isUIFocused; }
