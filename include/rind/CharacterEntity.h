@@ -34,7 +34,10 @@ namespace rind {
         const glm::vec3& getPressed() const { return pressed; }
         const glm::vec3& getVelocity() const { return velocity; }
         void setVelocity(const glm::vec3& velocity) { this->velocity = velocity; }
-        void setGravityEnabled(bool enabled) { gravity = enabled ? 9.81f : 0.0f; }
+        void setGravityEnabled(bool enabled) { gravityEnabled = enabled; }
+        void setGravity(float gravity) { this->gravity = gravity; }
+        void setJumpSpeed(float jumpSpeed) { this->jumpSpeed = jumpSpeed; }
+        void setMoveSpeed(float moveSpeed) { this->moveSpeed = moveSpeed; }
 
         void setCollider(engine::OBBCollider* collider) { this->collider = collider; }
         engine::OBBCollider* getCollider() const { return collider; }
@@ -56,13 +59,14 @@ namespace rind {
         glm::vec3 dashVelocity = glm::vec3(0.0f); // persistent dash impulse that decays
         engine::OBBCollider* collider = nullptr;
         engine::Entity* head = nullptr;
-        const float moveSpeed = 10.0f;
+        float moveSpeed = 10.0f;
         const float dashDecayRate = 8.0f; // how fast dash velocity decays
-        const float jumpSpeed = 1.5f;
+        float jumpSpeed = 1.5f;
         const float coyoteTime = 0.10f;
         glm::vec3 rotateVelocity = glm::vec3(0.0f);
         const float groundedNormalThreshold = 0.5f; // normals with y > threshold count as ground
         float gravity = 20.0f;
+        bool gravityEnabled = true;
         bool grounded = false;
         float groundedTimer = 1.0f;
     };

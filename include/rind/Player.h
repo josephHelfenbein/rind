@@ -4,6 +4,7 @@
 #include <engine/InputManager.h>
 #include <engine/Camera.h>
 #include <rind/ScoreCounter.h>
+#include <rind/StatusEffect.h>
 #include <chrono>
 
 namespace rind {
@@ -76,6 +77,24 @@ namespace rind {
             showHitmarkerTime = 0.5f;
         }
 
+        void setStatusEffect(const StatusEffect& status) {
+            setJumpSpeed(status.jumpSpeed);
+            setMoveSpeed(status.moveSpeed);
+            setGravity(status.gravity);
+            hasStatus = true;
+            statusResetTime = status.resetTime;
+            statusTextObject->setText(status.statusText);
+            statusEffectOverlayObject->setTint(glm::vec4(status.overlayColor, 1.0f));
+            currentStatusEffect = status;
+        }
+        float getStatusRemaining() const {
+            if (!hasStatus) return 0.0f;
+            return statusResetTime;
+        }
+        bool statusEnabled() const {
+            return hasStatus;
+        }
+
     private:
         engine::Camera* camera = nullptr;
         engine::Entity* gunEndPosition = nullptr;
@@ -114,6 +133,7 @@ namespace rind {
         engine::UIObject* healthbarEmptyObject = nullptr;
         engine::UIObject* damageEffectObject = nullptr;
         engine::UIObject* healEffectObject = nullptr;
+        engine::UIObject* statusEffectOverlayObject = nullptr;
         engine::UIObject* grenadeEmptyIconObject = nullptr;
         engine::UIObject* grenadeFullIconObject = nullptr;
         engine::UIObject* grenadeKeybindHintObject = nullptr;
@@ -140,6 +160,11 @@ namespace rind {
         float keybindHintDuration = 0.0f;
 
         bool isDead = false;
+
+        float statusResetTime = 0.0f;
+        bool hasStatus = false;
+        StatusEffect currentStatusEffect = mainStatusEffect;
+        engine::TextObject* statusTextObject = nullptr;
 
         float healUIShowTime = 0.0f;
         bool inHealZone = false;

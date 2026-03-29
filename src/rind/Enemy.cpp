@@ -216,6 +216,12 @@ void rind::Enemy::damage(float amount) {
     if (getHealth() <= 0.0f) return; // already dead, pending deletion
     setHealth(getHealth() - amount);
     if (getHealth() <= 0.0f) {
+        float statusChance = (dist(rng) * 0.5f) + 0.5f; // 0 to 1
+        if (statusChance <= 0.1f // 10% chance
+         && !targetPlayer->statusEnabled()) { // status effect not already enabled
+            float randomValue = (dist(rng) * 0.5f) + 0.5f; // 0 to 1
+            targetPlayer->setStatusEffect(getRandomStatusEffect(randomValue));
+        }
         targetPlayer->addScore(getScoreWorth());
         volumetricManager->createVolumetric(
             glm::scale(

@@ -74,7 +74,7 @@ void rind::CharacterEntity::updateMovement(float deltaTime) {
         }
     }
     if (!grounded || velocity.y > 0.0f) {
-        velocity.y -= gravity * deltaTime;
+        velocity.y -= gravityEnabled ? gravity * deltaTime : 0.0f;
     }
     const float totalMoveLength = glm::length(velocity * deltaTime);
     uint32_t steps;

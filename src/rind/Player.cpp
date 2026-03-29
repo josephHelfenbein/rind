@@ -190,6 +190,13 @@ rind::Player::Player(
             glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
             "ui_heal_overlay"
         );
+        statusEffectOverlayObject = new engine::UIObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f)),
+            "statusEffectOverlay",
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
+            "ui_heal_effectoverlay"
+        );
         engine::UIObject* crosshair = new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
@@ -251,6 +258,15 @@ rind::Player::Player(
             "Lato",
             engine::Corner::TopRight
         );
+        statusTextObject = new engine::TextObject(
+            entityManager->getRenderer()->getUIManager(),
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 1.0f)), glm::vec3(0.0f, -150.0f, 0.0f)),
+            "statusText",
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+            "",
+            "Lato",
+            engine::Corner::Top
+        );
         scoreCounter = new ScoreCounter(entityManager, entityManager->getRenderer()->getUIManager());
         particleManager = entityManager->getRenderer()->getParticleManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
@@ -293,6 +309,9 @@ void rind::Player::resizeHealthbar() {
         glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f))
     );
     healEffectObject->setTransform(
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f))
+    );
+    statusEffectOverlayObject->setTransform(
         glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(widthScale, heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, 2.0f))
     );
 }
@@ -461,6 +480,24 @@ void rind::Player::update(float deltaTime) {
         if (lastHeartbeat >= heartbeatOffset) {
             lastHeartbeat = 0.0f;
             audioManager->playSound("player_heartbeat", 0.3f, 0.1f);
+        }
+    }
+
+    // status effect
+    if (hasStatus) {
+        statusResetTime -= deltaTime;
+        if (statusResetTime < 0.0f) {
+            setStatusEffect(mainStatusEffect);
+            statusResetTime = 0.0f;
+            hasStatus = false;
+            statusTextObject->setText("");
+            statusEffectOverlayObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+            currentStatusEffect = mainStatusEffect;
+        } else {
+            float& x = statusResetTime;
+            float& a = currentStatusEffect.resetTime;
+            float alpha = 0.22f * (2.0f * x / a) * sinf(12.0f / (1.8f / a * x + 0.2f)) + sqrtf(6.0f * x / a) - powf(1.2f / a * x, 3.0f);
+            statusEffectOverlayObject->setTint(glm::vec4(currentStatusEffect.overlayColor, alpha));
         }
     }
 
