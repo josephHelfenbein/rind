@@ -77,7 +77,7 @@ namespace rind {
             showHitmarkerTime = 0.5f;
         }
 
-        void setStatusEffect(const StatusEffect& status) {
+        void setStatusEffect(const StatusEffect& status, bool isMain = false) {
             setJumpSpeed(status.jumpSpeed);
             setMoveSpeed(status.moveSpeed);
             setGravity(status.gravity);
@@ -86,6 +86,9 @@ namespace rind {
             statusTextObject->setText(status.statusText);
             statusEffectOverlayObject->setTint(glm::vec4(status.overlayColor, 1.0f));
             currentStatusEffect = status;
+            if (!isMain) {
+                audioManager->playSound("status_effect", 0.5f, 0.2f);
+            }
         }
         float getStatusRemaining() const {
             if (!hasStatus) return 0.0f;
@@ -113,6 +116,10 @@ namespace rind {
         engine::Entity* playerArm = nullptr;
 
         float punchTimer = 0.0f;
+        const engine::AABB punchHitbox{
+            .min = glm::vec3(-0.5f, -0.5f, -6.5f),
+            .max = glm::vec3(0.5f, 0.5f, 0.0f)
+        };
 
         bool canDoubleJump = false;
         bool resetDoubleJump = false;

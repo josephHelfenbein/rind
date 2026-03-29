@@ -203,13 +203,14 @@ bool rind::Enemy::checkVisibilityOfPlayer() {
     if (!targetPlayer) {
         return false;
     }
-    engine::AABB playerAABB = targetPlayer->getCollider()->getWorldAABB();
-    std::array<glm::vec3, 8> corners = engine::Collider::getCornersFromAABB(visionBox);
-    for (auto& corner : corners) {
-        corner = glm::vec3(getWorldTransform() * glm::vec4(corner, 1.0f));
+    const glm::mat4 invEnemyWorld = glm::inverse(getWorldTransform());
+    engine::AABB playerWorldAABB = targetPlayer->getCollider()->getWorldAABB();
+    std::array<glm::vec3, 8> playerCorners = engine::Collider::getCornersFromAABB(playerWorldAABB);
+    for (auto& corner : playerCorners) {
+        corner = glm::vec3(invEnemyWorld * glm::vec4(corner, 1.0f));
     }
-    engine::AABB enemyVisionBox = engine::Collider::aabbFromCorners(corners);
-    return engine::Collider::aabbIntersects(enemyVisionBox, playerAABB);
+    engine::AABB playerLocalAABB = engine::Collider::aabbFromCorners(playerCorners);
+    return engine::Collider::aabbIntersects(visionBox, playerLocalAABB);
 }
 
 void rind::Enemy::damage(float amount) {

@@ -487,7 +487,7 @@ void rind::Player::update(float deltaTime) {
     if (hasStatus) {
         statusResetTime -= deltaTime;
         if (statusResetTime < 0.0f) {
-            setStatusEffect(mainStatusEffect);
+            setStatusEffect(mainStatusEffect, true);
             statusResetTime = 0.0f;
             hasStatus = false;
             statusTextObject->setText("");
@@ -496,7 +496,7 @@ void rind::Player::update(float deltaTime) {
         } else {
             float& x = statusResetTime;
             float& a = currentStatusEffect.resetTime;
-            float alpha = 0.22f * (2.0f * x / a) * sinf(12.0f / (1.8f / a * x + 0.2f)) + sqrtf(6.0f * x / a) - powf(1.2f / a * x, 3.0f);
+            float alpha = 0.3f * ((2.0f * x / a) * sinf(12.0f / (1.8f / a * x + 0.2f)) + sqrtf(6.0f * x / a) - powf(1.2f / a * x, 3.0f));
             statusEffectOverlayObject->setTint(glm::vec4(currentStatusEffect.overlayColor, alpha));
         }
     }
@@ -1242,28 +1242,54 @@ void rind::Player::throwGrenade() {
 }
 
 void rind::Player::punch() {
-    static thread_local std::vector<engine::Collider*> candidates;
-    candidates.clear();
-    glm::vec3 forward = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
-    glm::vec3 rayOrigin = getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f);
-    engine::Collider::Collision hit = engine::Collider::raycastFirst(
-        getEntityManager(),
-        rayOrigin,
-        forward,
-        9.0f,
-        getCollider(),
-        0.1f
-    );
     playerShadow->playAnimation("Punch", true, 1.0f);
     playerArm->setVisible(true);
     playerArm->playAnimation("Punch", true, 1.0f);
     punchTimer = 0.5f;
     audioManager->playSound("punch", 0.5f, 0.2f);
-    if (hit.other) {
-        engine::Entity* other = hit.other->getParent();
-        if (other->getType() == engine::Entity::EntityType::Enemy) {
+    const glm::mat4 cameraWorld = camera->getWorldTransform();
+    const glm::mat4 invCameraWorld = glm::inverse(cameraWorld);
+    glm::vec3 forward = -glm::normalize(glm::vec3(cameraWorld[2]));
+    std::array<glm::vec3, 8> corners = engine::Collider::getCornersFromAABB(punchHitbox);
+    for (auto& corner : corners) {
+        corner = glm::vec3(cameraWorld * glm::vec4(corner, 1.0f));
+    }
+    engine::AABB hitboxAABB = engine::Collider::aabbFromCorners(corners);
+    static thread_local std::vector<engine::Collider*> candidates;
+    candidates.clear();
+    getEntityManager()->getSpatialGrid().query(hitboxAABB, candidates);
+    for (auto& candidate : candidates) {
+        if (candidate == getCollider()) {
+            continue;
+        }
+        engine::Entity* other = candidate->getParent();
+        if (other && other->getType() == engine::Entity::EntityType::Enemy) {
+            engine::AABB candidateWorldAABB = candidate->getWorldAABB();
+            std::array<glm::vec3, 8> candidateCorners = engine::Collider::getCornersFromAABB(candidateWorldAABB);
+            for (auto& corner : candidateCorners) {
+                corner = glm::vec3(invCameraWorld * glm::vec4(corner, 1.0f));
+            }
+            engine::AABB candidateLocalAABB = engine::Collider::aabbFromCorners(candidateCorners);
+            if (!engine::Collider::aabbIntersects(punchHitbox, candidateLocalAABB)) {
+                continue;
+            }
             rind::Enemy* character = static_cast<rind::Enemy*>(other);
             const float damageAmount = 50.0f;
+            particleManager->burstParticles(
+                character->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f),
+                glm::vec3(1.0f, 0.5f, 0.15f),
+                -forward * 5.0f,
+                500,
+                2.0f,
+                1.0f,
+                0.5f
+            );
+            glm::vec3 toEnemy = character->getWorldPosition() - getWorldPosition();
+            float distance = glm::dot(toEnemy, toEnemy);
+            glm::quat inverseRotation = glm::inverse(glm::quat_cast(getWorldTransform()));
+            toEnemy = -(inverseRotation * toEnemy);
+            toEnemy.y = -toEnemy.y;
+            dash(toEnemy, distance);
             if (character->getHealth() - damageAmount <= 0.0f) {
                 showHitmarker(glm::vec3(1.0f, 0.2f, 0.2f));
                 audioManager->playSound("hitmarker_death", 0.6f, 0.25f);
