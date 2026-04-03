@@ -710,9 +710,6 @@ void engine::ShaderManager::createDefaultShaders() {
                 .workgroupSizeX = 8,
                 .workgroupSizeY = 8,
                 .workgroupSizeZ = 1,
-                .getDispatchLayerCount = [getActiveShadowLayers](Renderer* renderer, ComputeShader*) {
-                    return getActiveShadowLayers(renderer);
-                },
                 .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
@@ -733,6 +730,9 @@ void engine::ShaderManager::createDefaultShaders() {
                             &pc
                         );
                     }
+                },
+                .getDispatchLayerCount = [getActiveShadowLayers](Renderer* renderer, ComputeShader*) {
+                    return getActiveShadowLayers(renderer);
                 },
                 .inputBindings = {
                     {

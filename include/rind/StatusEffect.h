@@ -33,16 +33,16 @@ namespace rind {
         .overlayColor = glm::vec3(0.5f, 1.0f, 0.5f)
     };
     static const StatusEffect damageBoostStatusEffect{
-        .strengthMultiplier = 1.5f,
         .statusText = "DAMAGE BOOST",
         .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
-        .overlayColor = glm::vec3(1.0f, 0.5f, 1.0f)
+        .overlayColor = glm::vec3(1.0f, 0.5f, 1.0f),
+        .strengthMultiplier = 1.5f
     };
     static const StatusEffect armorBoostStatusEffect{
-        .protectionMultiplier = 1.5f,
         .statusText = "ARMOR BOOST",
         .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
-        .overlayColor = glm::vec3(0.5f, 1.0f, 1.0f)
+        .overlayColor = glm::vec3(0.5f, 1.0f, 1.0f),
+        .protectionMultiplier = 1.5f
     };
     static const StatusEffect slowMoveStatusEffect{
         .moveSpeed = 5.0f,
@@ -51,28 +51,28 @@ namespace rind {
         .overlayColor = glm::vec3(0.5f, 0.5f, 0.5f)
     };
     static const StatusEffect anchorStatusEffect{
-        .moveSpeed = 2.0f,
         .jumpSpeed = 0.5f,
+        .moveSpeed = 2.0f,
         .gravity = 30.0f,
-        .strengthMultiplier = 0.5f,
-        .protectionMultiplier = 0.5f,
         .statusText = "ANCHOR",
         .textColor = glm::vec3(1.0f, 0.65f, 0.6f),
-        .overlayColor = glm::vec3(0.25f, 0.25f, 0.25f)
+        .overlayColor = glm::vec3(0.25f, 0.25f, 0.25f),
+        .strengthMultiplier = 0.5f,
+        .protectionMultiplier = 0.5f
     };
     static const StatusEffect weakStatusEffect{
-        .strengthMultiplier = 0.75f,
-        .protectionMultiplier = 0.75f,
         .statusText = "WEAKNESS",
         .textColor = glm::vec3(1.0f, 0.65f, 0.6f),
-        .overlayColor = glm::vec3(0.5f, 0.25f, 0.25f)
+        .overlayColor = glm::vec3(0.5f, 0.25f, 0.25f),
+        .strengthMultiplier = 0.75f,
+        .protectionMultiplier = 0.75f
     };
     static const StatusEffect fragileStatusEffect{
-        .strengthMultiplier = 0.5f,
-        .protectionMultiplier = 0.5f,
         .statusText = "FRAGILITY",
         .textColor = glm::vec3(1.0f, 0.65f, 0.6f),
-        .overlayColor = glm::vec3(0.25f, 0.25f, 0.25f)
+        .overlayColor = glm::vec3(0.25f, 0.25f, 0.25f),
+        .strengthMultiplier = 0.5f,
+        .protectionMultiplier = 0.5f
     };
     static std::vector<StatusEffect> statusEffects{
         fastMoveStatusEffect,
