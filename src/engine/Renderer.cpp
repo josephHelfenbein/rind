@@ -215,14 +215,7 @@ void engine::Renderer::initVulkan() {
     createNearestSampler();
     createCommandPool();
     shaderManager->loadSMAATextures();
-    std::vector<GraphicsShader> defaultShaders = shaderManager->createDefaultShaders();
-    for (auto& shader : defaultShaders) {
-        shaderManager->addGraphicsShader(std::move(shader));
-    }
-    std::vector<ComputeShader> defaultComputeShaders = shaderManager->createDefaultComputeShaders();
-    for (auto& shader : defaultComputeShaders) {
-        shaderManager->addComputeShader(std::move(shader));
-    }
+    shaderManager->createDefaultShaders();
     shaderManager->resolveRenderGraphShaders();
     createAttachmentResources();
     shaderManager->loadAllShaders();
@@ -453,62 +446,36 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
         if (node.passInfo->images.has_value()) {
             for (auto& image : node.passInfo->images.value()) {
                 const bool isDepth = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
-                const VkImageAspectFlags aspect = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+                const bool isStorage = (image.usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
+                const VkImageAspectFlags aspect = isDepth
+                    ? VK_IMAGE_ASPECT_DEPTH_BIT
+                    : VK_IMAGE_ASPECT_COLOR_BIT;
                 const VkImageLayout attachmentLayout = isDepth
                     ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                     : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-                VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-                VkAccessFlags2 srcAccess = VK_ACCESS_2_NONE;
-                if (image.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                    srcStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-                    srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-                } else if (image.currentLayout == attachmentLayout) {
-                    srcStage = isDepth
-                        ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
-                        : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-                    srcAccess = isDepth
-                        ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
-                        : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-                }
-
-                preBarriers.push_back({
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                    .srcStageMask = srcStage,
-                    .srcAccessMask = srcAccess,
-                    .dstStageMask = isDepth
-                        ? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
-                        : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    .dstAccessMask = isDepth
-                        ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
-                        : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                    .oldLayout = image.currentLayout,
-                    .newLayout = attachmentLayout,
-                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .image = image.image,
-                    .subresourceRange = {
-                        .aspectMask = aspect,
-                        .baseMipLevel = 0,
-                        .levelCount = image.mipLevels,
-                        .baseArrayLayer = 0,
-                        .layerCount = image.arrayLayers
+                if (isStorage) {
+                    VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+                    VkAccessFlags2 srcAccess = VK_ACCESS_2_NONE;
+                    if (image.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                        srcStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+                    } else if (image.currentLayout == attachmentLayout) {
+                        srcStage = isDepth
+                            ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
+                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                        srcAccess = isDepth
+                            ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
                     }
-                });
-                const bool isSampled = (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0;
-                if (isSampled) {
-                    postBarriers.push_back({
+                    preBarriers.push_back({
                         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                        .srcStageMask = isDepth
-                            ? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
-                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                        .srcAccessMask = isDepth
-                            ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
-                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                        .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                        .oldLayout = attachmentLayout,
-                        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .srcStageMask = srcStage,
+                        .srcAccessMask = srcAccess,
+                        .dstStageMask = node.storageWriteStage,
+                        .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+                        .oldLayout = image.currentLayout,
+                        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
                         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .image = image.image,
@@ -520,9 +487,96 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                             .layerCount = image.arrayLayers
                         }
                     });
-                    image.currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    if (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT){
+                        postBarriers.push_back({
+                            .srcStageMask = node.storageWriteStage,
+                            .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+                            .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                            .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+                            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .image = image.image,
+                            .subresourceRange = {
+                                .aspectMask = aspect,
+                                .baseMipLevel = 0,
+                                .levelCount = image.mipLevels,
+                                .baseArrayLayer = 0,
+                                .layerCount = image.arrayLayers
+                            }
+                        });
+                        image.currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    } else {
+                        image.currentLayout = VK_IMAGE_LAYOUT_GENERAL;
+                    }
                 } else {
-                    image.currentLayout = attachmentLayout;
+                    VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+                    VkAccessFlags2 srcAccess = VK_ACCESS_2_NONE;
+                    if (image.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                        srcStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+                    } else if (image.currentLayout == attachmentLayout) {
+                        srcStage = isDepth
+                            ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
+                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                        srcAccess = isDepth
+                            ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                    }
+
+                    preBarriers.push_back({
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                        .srcStageMask = srcStage,
+                        .srcAccessMask = srcAccess,
+                        .dstStageMask = isDepth
+                            ? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        .dstAccessMask = isDepth
+                            ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                        .oldLayout = image.currentLayout,
+                        .newLayout = attachmentLayout,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = image.image,
+                        .subresourceRange = {
+                            .aspectMask = aspect,
+                            .baseMipLevel = 0,
+                            .levelCount = image.mipLevels,
+                            .baseArrayLayer = 0,
+                            .layerCount = image.arrayLayers
+                        }
+                    });
+                    const bool isSampled = (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0;
+                    if (isSampled) {
+                        postBarriers.push_back({
+                            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                            .srcStageMask = isDepth
+                                ? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+                                : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            .srcAccessMask = isDepth
+                                ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+                                : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                            .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                            .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                            .oldLayout = attachmentLayout,
+                            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .image = image.image,
+                            .subresourceRange = {
+                                .aspectMask = aspect,
+                                .baseMipLevel = 0,
+                                .levelCount = image.mipLevels,
+                                .baseArrayLayer = 0,
+                                .layerCount = image.arrayLayers
+                            }
+                        });
+                        image.currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    } else {
+                        image.currentLayout = attachmentLayout;
+                    }
                 }
             }
         }
@@ -557,55 +611,59 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                 legacyBarriers.data()
             );
         }
-        VkRenderingInfo renderingInfo = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = {
-                .offset = {0, 0},
-                .extent = swapChainExtent
-            },
-            .layerCount = 1
-        };
+        const bool usesRendering = node.usesRendering;
+        VkRenderingInfo renderingInfo{};
         VkRenderingAttachmentInfo swapColor{};
-        if (node.passInfo->usesSwapchain) {
-            swapColor = {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = swapChainImageViews[imageIndex],
-                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue = { .color = {0.0f, 0.0f, 0.0f, 1.0f} }
+        if (usesRendering) {
+            renderingInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {
+                    .offset = {0, 0},
+                    .extent = swapChainExtent
+                },
+                .layerCount = 1
             };
-            renderingInfo.colorAttachmentCount = 1;
-            renderingInfo.pColorAttachments = &swapColor;
-        } else {
-            renderingInfo.colorAttachmentCount = static_cast<uint32_t>(node.passInfo->colorAttachments.size());
-            renderingInfo.pColorAttachments = node.passInfo->colorAttachments.data();
-            renderingInfo.pDepthAttachment = node.passInfo->hasDepthAttachment ? &node.passInfo->depthAttachment.value() : nullptr;
-            if (node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
-                const auto& firstImage = (*node.passInfo->images)[0];
-                const uint32_t divider = firstImage.resolutionDivider > 0 ? firstImage.resolutionDivider : 1;
-                renderingInfo.renderArea.extent = {
-                    .width = firstImage.width == 0 ? swapChainExtent.width / divider : firstImage.width,
-                    .height = firstImage.height == 0 ? swapChainExtent.height / divider : firstImage.height
+            if (node.passInfo->usesSwapchain) {
+                swapColor = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = swapChainImageViews[imageIndex],
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = { .color = {0.0f, 0.0f, 0.0f, 1.0f} }
                 };
+                renderingInfo.colorAttachmentCount = 1;
+                renderingInfo.pColorAttachments = &swapColor;
+            } else {
+                renderingInfo.colorAttachmentCount = static_cast<uint32_t>(node.passInfo->colorAttachments.size());
+                renderingInfo.pColorAttachments = node.passInfo->colorAttachments.data();
+                renderingInfo.pDepthAttachment = node.passInfo->hasDepthAttachment ? &node.passInfo->depthAttachment.value() : nullptr;
+                if (node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
+                    const auto& firstImage = (*node.passInfo->images)[0];
+                    const uint32_t divider = firstImage.resolutionDivider > 0 ? firstImage.resolutionDivider : 1;
+                    renderingInfo.renderArea.extent = {
+                        .width = firstImage.width == 0 ? swapChainExtent.width / divider : firstImage.width,
+                        .height = firstImage.height == 0 ? swapChainExtent.height / divider : firstImage.height
+                    };
+                }
             }
-        }
 
-        fpCmdBeginRendering(commandBuffer, &renderingInfo);
-        VkViewport viewport = {
-            .x = static_cast<float>(renderingInfo.renderArea.offset.x),
-            .y = static_cast<float>(renderingInfo.renderArea.offset.y),
-            .width = static_cast<float>(renderingInfo.renderArea.extent.width),
-            .height = static_cast<float>(renderingInfo.renderArea.extent.height),
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f
-        };
-        VkRect2D scissor = {
-            .offset = renderingInfo.renderArea.offset,
-            .extent = renderingInfo.renderArea.extent
-        };
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            fpCmdBeginRendering(commandBuffer, &renderingInfo);
+            VkViewport viewport = {
+                .x = static_cast<float>(renderingInfo.renderArea.offset.x),
+                .y = static_cast<float>(renderingInfo.renderArea.offset.y),
+                .width = static_cast<float>(renderingInfo.renderArea.extent.width),
+                .height = static_cast<float>(renderingInfo.renderArea.extent.height),
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f
+            };
+            VkRect2D scissor = {
+                .offset = renderingInfo.renderArea.offset,
+                .extent = renderingInfo.renderArea.extent
+            };
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        }
 
         const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
 
@@ -618,13 +676,20 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                 std::cout << "[record] executing custom render function for pass" << std::endl;
             }
             node.customRenderFunc(this, commandBuffer, currentFrame);
+        } else if (!node.computeShaders.empty() && !node.usesRendering) {
+            if (DEBUG_RENDER_LOGS) {
+                std::cout << "[record] dispatching compute pass" << std::endl;
+            }
+            dispatchComputePass(commandBuffer, node);
         } else if (node.is2D) {
             if (DEBUG_RENDER_LOGS) {
                 std::cout << "[record] rendering generic 2D pass" << std::endl;
             }
             draw2DPass(commandBuffer, node);
         }
-        fpCmdEndRendering(commandBuffer);
+        if (usesRendering) {
+            fpCmdEndRendering(commandBuffer);
+        }
 
         if (DEBUG_RENDER_LOGS) {
             std::cout << "[record] end pass " << node.passInfo->name << std::endl;
@@ -697,6 +762,64 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
             std::cout << "[draw2DPass] shader=" << shader->name << " has NO descriptor sets" << std::endl;
         }
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    }
+}
+
+void engine::Renderer::dispatchComputePass(VkCommandBuffer commandBuffer, RenderNode& node) {
+    if (node.computeShaders.empty()) {
+        return;
+    }
+    VkExtent2D extent = swapChainExtent;
+    uint32_t width = extent.width;
+    uint32_t height = extent.height;
+    uint32_t layers = 1;
+    if (node.passInfo && node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
+        const auto& img = node.passInfo->images->at(0);
+        const uint32_t divider = img.resolutionDivider > 0 ? img.resolutionDivider : 1;
+        width = img.width == 0 ? width / divider : img.width;
+        height = img.height == 0 ? height / divider : img.height;
+        layers = img.arrayLayers > 0 ? img.arrayLayers : 1;
+    }
+    if (width == 0 || height == 0) {
+        return;
+    }
+    for (ComputeShader* shader : node.computeShaders) {
+        if (!shader || shader->pipeline == VK_NULL_HANDLE) {
+            continue;
+        }
+        if (shader->descriptorSets.empty()) {
+            continue;
+        }
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, shader->pipeline);
+        if (shader->config.fillPushConstants) {
+            shader->config.fillPushConstants(this, shader, commandBuffer);
+        }
+        uint32_t dsIndex = currentFrame;
+        if (dsIndex >= shader->descriptorSets.size()) {
+            dsIndex = static_cast<uint32_t>(shader->descriptorSets.size() - 1);
+        }
+        vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            shader->pipelineLayout,
+            0,
+            1,
+            &shader->descriptorSets[dsIndex],
+            0,
+            nullptr
+        );
+        uint32_t wgX = shader->config.workgroupSizeX == 0 ? 1u : shader->config.workgroupSizeX;
+        uint32_t wgY = shader->config.workgroupSizeY == 0 ? 1u : shader->config.workgroupSizeY;
+        uint32_t wgZ = shader->config.workgroupSizeZ == 0 ? 1u : shader->config.workgroupSizeZ;
+        uint32_t groupX = (width + wgX - 1) / wgX;
+        uint32_t groupY = (height + wgY - 1) / wgY;
+        uint32_t dispatchLayers = 1;
+        if (shader->config.getDispatchLayerCount) {
+            dispatchLayers = std::max(1u, shader->config.getDispatchLayerCount(this, shader));
+        }
+        dispatchLayers = std::min(dispatchLayers, layers);
+        uint32_t groupZ = (dispatchLayers + wgZ - 1) / wgZ;
+        vkCmdDispatch(commandBuffer, groupX, groupY, groupZ);
     }
 }
 
@@ -795,7 +918,10 @@ void engine::Renderer::createLogicalDevice() {
     }
     VkPhysicalDeviceFeatures deviceFeatures = {
         .sampleRateShading = VK_TRUE,
-        .samplerAnisotropy = VK_TRUE
+        .samplerAnisotropy = VK_TRUE,
+        .fragmentStoresAndAtomics = VK_TRUE,
+        .shaderStorageImageReadWithoutFormat = VK_TRUE,
+        .shaderStorageImageWriteWithoutFormat = VK_TRUE
     };
     VkPhysicalDeviceVulkan13Features vulkan13Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -999,6 +1125,17 @@ void engine::Renderer::resetPostProcessDescriptorPools() {
         }
         shader->descriptorSets.clear();
     }
+
+    auto computeShaders = shaderManager->getComputeShaders();
+    for (const auto& shaderCopy : computeShaders) {
+        if (shaderCopy.config.inputBindings.empty()) continue;
+        auto shader = shaderManager->getComputeShader(shaderCopy.name);
+        if (!shader) continue;
+        if (shader->descriptorPool != VK_NULL_HANDLE) {
+            vkResetDescriptorPool(device, shader->descriptorPool, 0);
+        }
+        shader->descriptorSets.clear();
+    }
 }
 
 void engine::Renderer::resetPerObjectDescriptorPools() {
@@ -1017,13 +1154,33 @@ void engine::Renderer::resetPerObjectDescriptorPools() {
 }
 
 VkImageView engine::Renderer::getPassImageView(const std::string& shaderName, const std::string& attachmentName) {
-    auto shader = shaderManager->getGraphicsShader(shaderName);
-    if (!shader || !shader->config.passInfo || !shader->config.passInfo->images.has_value()) {
-        return VK_NULL_HANDLE;
-    }
-    for (const auto& img : shader->config.passInfo->images.value()) {
-        if (img.name == attachmentName) {
-            return img.imageView;
+    if (shaderManager) {
+        const auto& renderGraph = shaderManager->getRenderGraph();
+        for (const auto& node : renderGraph) {
+            bool nameMatch = false;
+            for (const auto& nodeName : node.shaderNames) {
+                if (nodeName == shaderName) {
+                    nameMatch = true;
+                    break;
+                }
+            }
+            if (!nameMatch || !node.passInfo || !node.passInfo->images.has_value()) {
+                continue;
+            }
+            for (const auto& img : node.passInfo->images.value()) {
+                if (img.name == attachmentName) {
+                    return img.imageView;
+                }
+            }
+        }
+
+        auto shader = shaderManager->getGraphicsShader(shaderName);
+        if (shader && shader->config.passInfo && shader->config.passInfo->images.has_value()) {
+            for (const auto& img : shader->config.passInfo->images.value()) {
+                if (img.name == attachmentName) {
+                    return img.imageView;
+                }
+            }
         }
     }
     return VK_NULL_HANDLE;
@@ -1573,12 +1730,11 @@ void engine::Renderer::createAttachmentResources() {
             }
         }
     };
-    std::vector<GraphicsShader> shaders = shaderManager->getGraphicsShaders();
+    const auto& passes = shaderManager->getRenderPasses();
     managedRenderPasses.clear();
-    managedRenderPasses.reserve(shaders.size());
+    managedRenderPasses.reserve(passes.size());
     std::unordered_set<PassInfo*> processedPasses;
-    for (auto& shader : shaders) {
-        auto renderPassPtr = shader.config.passInfo;
+    for (const auto& renderPassPtr : passes) {
         if (!renderPassPtr) {
             continue;
         }
@@ -1632,24 +1788,44 @@ void engine::Renderer::createAttachmentResources() {
             image.currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
             const bool isDepthAttachment = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
-            VkImageAspectFlags aspectMask = isDepthAttachment ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+            const bool isColorAttachment = (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
+            VkImageAspectFlags aspectMask = isDepthAttachment
+                ? VK_IMAGE_ASPECT_DEPTH_BIT
+                : VK_IMAGE_ASPECT_COLOR_BIT;
             if (isDepthAttachment && hasStencilComponent(image.format)) {
                 aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
             }
 
-            image.imageView = createImageView(
-                image.image,
-                image.format,
-                aspectMask,
-                image.mipLevels,
-                VK_IMAGE_VIEW_TYPE_2D,
-                image.arrayLayers
-            );
+            if (image.arrayLayers > 1) {
+                image.imageView = createImageView(
+                    image.image,
+                    image.format,
+                    aspectMask,
+                    image.mipLevels,
+                    VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+                    image.arrayLayers
+                );
+            } else {
+                image.imageView = createImageView(
+                    image.image,
+                    image.format,
+                    aspectMask,
+                    image.mipLevels,
+                    VK_IMAGE_VIEW_TYPE_2D,
+                    image.arrayLayers
+                );
+            }
+
+            VkImageLayout targetLayout = isDepthAttachment ?
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL :
+                isColorAttachment
+                    ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                    : VK_IMAGE_LAYOUT_GENERAL;
 
             VkRenderingAttachmentInfo attachmentInfo = {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
                 .imageView = image.imageView,
-                .imageLayout = isDepthAttachment ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .imageLayout = targetLayout,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                 .clearValue = image.clearValue
@@ -1659,7 +1835,7 @@ void engine::Renderer::createAttachmentResources() {
                 renderPass.hasDepthAttachment = true;
                 renderPass.depthAttachmentFormat = image.format;
                 renderPass.depthAttachment = attachmentInfo;
-            } else {
+            } else if (isColorAttachment) {
                 renderPass.attachmentFormats.push_back(image.format);
                 renderPass.colorAttachments.push_back(attachmentInfo);
             }
@@ -2031,28 +2207,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     }
                     continue;
                 }
-                auto sourceShader = shaderManager->getGraphicsShader(binding.sourceShaderName);
-                if (!sourceShader) {
-                    std::cout << "Warning: Source shader '" << binding.sourceShaderName << "' for binding " << binding.binding << " in shader '" << shader->name << "' not found.\n";
-                    continue;
-                }
-
-                auto renderPass = sourceShader->config.passInfo;
-                if (!renderPass || !renderPass->images.has_value()) {
-                    std::cout << "Warning: Render pass for shader '" << binding.sourceShaderName << "' has no images.\n";
-                    continue;
-                }
-
-                VkImageView imageView = VK_NULL_HANDLE;
-                for (const auto& img : renderPass->images.value()) {
-                    if (img.name == binding.attachmentName) {
-                        imageView = img.imageView;
-                        break;
-                    }
-                }
-
+                VkImageView imageView = getPassImageView(binding.sourceShaderName, binding.attachmentName);
                 if (imageView == VK_NULL_HANDLE) {
-                    std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found in shader '" << binding.sourceShaderName << "'.\n";
+                    std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found for shader '" << binding.sourceShaderName << "'.\n";
                     continue;
                 }
 
@@ -2175,6 +2332,237 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                                   << " count=" << descriptorCount
                                   << std::endl;
                     }
+                }
+            }
+        }
+
+        if (!descriptorWrites.empty()) {
+            vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
+    }
+
+    createComputeDescriptorSets();
+}
+
+void engine::Renderer::createComputeDescriptorSets() {
+    auto shaders = shaderManager->getComputeShaders();
+    for (const auto& shaderCopy : shaders) {
+        if (shaderCopy.config.inputBindings.empty()) continue;
+        auto shader = shaderManager->getComputeShader(shaderCopy.name);
+        if (!shader) continue;
+
+        if (shader->descriptorPool != VK_NULL_HANDLE) {
+            VkResult poolReset = vkResetDescriptorPool(device, shader->descriptorPool, 0);
+            if (poolReset != VK_SUCCESS) {
+                throw std::runtime_error("Failed to reset descriptor pool for compute shader '" + shader->name + "'!");
+            }
+        }
+
+        shader->descriptorSets.clear();
+
+        const int computeBindings = std::max(shader->config.computeBitBindings, 0);
+        auto getComputeType = [&](int index) {
+            if (!shader->config.computeDescriptorTypes.empty() && static_cast<size_t>(index) < shader->config.computeDescriptorTypes.size()) {
+                return shader->config.computeDescriptorTypes[static_cast<size_t>(index)];
+            }
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        };
+        auto getComputeCount = [&](int index) {
+            if (!shader->config.computeDescriptorCounts.empty() && shader->config.computeDescriptorCounts.size() == static_cast<size_t>(computeBindings)) {
+                return std::max(shader->config.computeDescriptorCounts[static_cast<size_t>(index)], 1u);
+            }
+            return 1u;
+        };
+
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader->descriptorSetLayout);
+        VkDescriptorSetAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = shader->descriptorPool,
+            .descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+            .pSetLayouts = layouts.data()
+        };
+
+        shader->descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(device, &allocInfo, shader->descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate descriptor sets for compute shader '" + shader->name + "'!");
+        }
+
+        size_t maxImageInfosPerFrame = 0;
+        for (int binding = 0; binding < computeBindings; ++binding) {
+            VkDescriptorType type = getComputeType(binding);
+            if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+                type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+                maxImageInfosPerFrame += getComputeCount(binding);
+            }
+        }
+
+        std::vector<VkDescriptorImageInfo> imageInfos;
+        imageInfos.reserve(MAX_FRAMES_IN_FLIGHT * maxImageInfosPerFrame + 4u);
+
+        std::vector<VkDescriptorBufferInfo> bufferInfos;
+        bufferInfos.reserve(MAX_FRAMES_IN_FLIGHT * static_cast<size_t>(std::max(computeBindings, 1)));
+
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
+        descriptorWrites.reserve(MAX_FRAMES_IN_FLIGHT * static_cast<size_t>(computeBindings + 2));
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            std::vector<bool> bindingWritten(static_cast<size_t>(computeBindings), false);
+            VkSampler samplerToUse = mainTextureSampler;
+
+            for (const auto& binding : shader->config.inputBindings) {
+                if (binding.bufferProvider) {
+                    VkDescriptorBufferInfo info = binding.bufferProvider(this, i);
+                    if (info.buffer == VK_NULL_HANDLE) {
+                        continue;
+                    }
+                    bufferInfos.push_back(info);
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = binding.binding,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = binding.descriptorType,
+                        .pBufferInfo = &bufferInfos.back()
+                    });
+                    if (binding.binding < static_cast<uint32_t>(computeBindings)) {
+                        bindingWritten[binding.binding] = true;
+                    }
+                    continue;
+                }
+
+                if (!binding.textureName.empty()) {
+                    Texture* tex = textureManager ? textureManager->getTexture(binding.textureName) : nullptr;
+                    if (!tex) {
+                        std::cout << "Warning: Texture '" << binding.textureName << "' not found for compute shader '" << shader->name << "'\n";
+                        continue;
+                    }
+                    const size_t startIndex = imageInfos.size();
+                    if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER) {
+                        imageInfos.push_back({ .sampler = tex->imageSampler != VK_NULL_HANDLE ? tex->imageSampler : mainTextureSampler });
+                    } else {
+                        imageInfos.push_back({
+                            .sampler = (binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE,
+                            .imageView = tex->imageView,
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = binding.binding,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = binding.descriptorType,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    if (binding.binding < static_cast<uint32_t>(computeBindings)) {
+                        bindingWritten[binding.binding] = true;
+                    }
+                    continue;
+                }
+
+                if (binding.imageArrayProvider) {
+                    uint32_t descriptorCount = 1;
+                    if (binding.binding < static_cast<uint32_t>(computeBindings)) {
+                        descriptorCount = getComputeCount(static_cast<int>(binding.binding));
+                    }
+                    const size_t startIndex = imageInfos.size();
+                    binding.imageArrayProvider(this, i, descriptorCount, imageInfos);
+                    if (imageInfos.size() > startIndex) {
+                        descriptorWrites.push_back({
+                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet = shader->descriptorSets[i],
+                            .dstBinding = binding.binding,
+                            .dstArrayElement = 0,
+                            .descriptorCount = static_cast<uint32_t>(imageInfos.size() - startIndex),
+                            .descriptorType = binding.descriptorType,
+                            .pImageInfo = &imageInfos[startIndex]
+                        });
+                        if (binding.binding < static_cast<uint32_t>(computeBindings)) {
+                            bindingWritten[binding.binding] = true;
+                        }
+                    }
+                    continue;
+                }
+
+                if (!binding.sourceShaderName.empty() && !binding.attachmentName.empty()) {
+                    VkImageView imageView = getPassImageView(binding.sourceShaderName, binding.attachmentName);
+                    if (imageView == VK_NULL_HANDLE) {
+                        std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found for shader '" << binding.sourceShaderName << "'.\n";
+                        continue;
+                    }
+
+                    const size_t startIndex = imageInfos.size();
+                    VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+                        layout = VK_IMAGE_LAYOUT_GENERAL;
+                    }
+                    imageInfos.push_back({
+                        .sampler = (binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE,
+                        .imageView = imageView,
+                        .imageLayout = layout
+                    });
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = binding.binding,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = binding.descriptorType,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    if (binding.binding < static_cast<uint32_t>(computeBindings)) {
+                        bindingWritten[binding.binding] = true;
+                    }
+                }
+            }
+
+            for (int binding = 0; binding < computeBindings; ++binding) {
+                if (bindingWritten[static_cast<size_t>(binding)]) continue;
+                VkDescriptorType type = getComputeType(binding);
+                uint32_t descriptorCount = getComputeCount(binding);
+                const size_t startIndex = imageInfos.size();
+
+                if (type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        imageInfos.push_back({ .sampler = samplerToUse });
+                        samplerToUse = mainTextureSampler;
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = static_cast<uint32_t>(binding),
+                        .dstArrayElement = 0,
+                        .descriptorCount = descriptorCount,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
+                    continue;
+                }
+
+                if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+                    Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_white_2d") : nullptr;
+                    if (!fallbackTex || fallbackTex->imageView == VK_NULL_HANDLE || fallbackTex->image == VK_NULL_HANDLE) {
+                        std::cout << "Warning: No fallback texture available for compute shader '" << shader->name << "' binding " << binding << ".\n";
+                        continue;
+                    }
+                    for (uint32_t c = 0; c < descriptorCount; ++c) {
+                        imageInfos.push_back({
+                            .sampler = (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) ? mainTextureSampler : VK_NULL_HANDLE,
+                            .imageView = fallbackTex->imageView,
+                            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                        });
+                    }
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = shader->descriptorSets[i],
+                        .dstBinding = static_cast<uint32_t>(binding),
+                        .dstArrayElement = 0,
+                        .descriptorCount = descriptorCount,
+                        .descriptorType = type,
+                        .pImageInfo = &imageInfos[startIndex]
+                    });
                 }
             }
         }

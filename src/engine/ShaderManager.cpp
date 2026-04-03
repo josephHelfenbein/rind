@@ -38,6 +38,25 @@ engine::ShaderManager::ShaderManager(
 engine::ShaderManager::~ShaderManager() {
     std::unordered_set<PassInfo*> processedPasses;
     VkDevice device = renderer->getDevice();
+    auto destroyPassImages = [&](PassInfo* pass) {
+        if (!pass || !pass->images.has_value()) {
+            return;
+        }
+        for (auto& image : pass->images.value()) {
+            if (image.imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, image.imageView, nullptr);
+                image.imageView = VK_NULL_HANDLE;
+            }
+            if (image.image != VK_NULL_HANDLE) {
+                vkDestroyImage(device, image.image, nullptr);
+                image.image = VK_NULL_HANDLE;
+            }
+            if (image.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(device, image.memory, nullptr);
+                image.memory = VK_NULL_HANDLE;
+            }
+        }
+    };
     for (auto& shader : graphicsShaders) {
         if (shader->pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, shader->pipeline, nullptr);
@@ -54,23 +73,14 @@ engine::ShaderManager::~ShaderManager() {
         if (shader->config.passInfo) {
             PassInfo* pass = shader->config.passInfo.get();
             if (processedPasses.insert(pass).second) {
-                if (pass->images.has_value()) {
-                    for (auto& image : pass->images.value()) {
-                        if (image.imageView != VK_NULL_HANDLE) {
-                            vkDestroyImageView(device, image.imageView, nullptr);
-                            image.imageView = VK_NULL_HANDLE;
-                        }
-                        if (image.image != VK_NULL_HANDLE) {
-                            vkDestroyImage(device, image.image, nullptr);
-                            image.image = VK_NULL_HANDLE;
-                        }
-                        if (image.memory != VK_NULL_HANDLE) {
-                            vkFreeMemory(device, image.memory, nullptr);
-                            image.memory = VK_NULL_HANDLE;
-                        }
-                    }
-                }
+                destroyPassImages(pass);
             }
+        }
+    }
+    for (auto& passPtr : renderPasses) {
+        PassInfo* pass = passPtr.get();
+        if (processedPasses.insert(pass).second) {
+            destroyPassImages(pass);
         }
     }
     for (auto& shader : computeShaders) {
@@ -234,9 +244,8 @@ namespace {
     };
 }
 
-std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders() {
-    std::vector<GraphicsShader> shaders;
-
+void engine::ShaderManager::createDefaultShaders() {
+    renderPasses.clear();
     auto shaderPath = [&](const std::string& baseName) {
         auto mapped = getShaderFilePath(baseName);
         if (!mapped.empty()) return mapped;
@@ -247,6 +256,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto gbufferPass = std::make_shared<PassInfo>();
     gbufferPass->name = "GBuffer";
     gbufferPass->usesSwapchain = false;
+    renderPasses.push_back(gbufferPass);
     
     // GBuffer Images
     {
@@ -282,41 +292,70 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         gbufferPass->images = images;
     }
 
-    // Lighting Pass
-    auto lightingPass = std::make_shared<PassInfo>();
-    lightingPass->name = "LightingPass";
-    lightingPass->usesSwapchain = false;
+    // Shadow Pass
+    auto shadowPass = std::make_shared<PassInfo>();
+    shadowPass->name = "ShadowPass";
+    shadowPass->usesSwapchain = false;
+    shadowPass->hasDepthAttachment = true;
+    shadowPass->depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
+    renderPasses.push_back(shadowPass);
+
+    // Shadow Image Pass
+    auto shadowImagePass = std::make_shared<PassInfo>();
+    shadowImagePass->name = "ShadowImagePass";
+    shadowImagePass->usesSwapchain = false;
+    renderPasses.push_back(shadowImagePass);
     {
         std::vector<PassImage> images;
         images.push_back({
-            .name = "SceneColor",
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+            .name = "ShadowImage",
+            .clearValue = { .color = { {1.0f} } },
+            .format = VK_FORMAT_R16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .arrayLayers = 64 // max shadow-casting lights
         });
-        lightingPass->images = images;
+        shadowImagePass->images = images;
     }
 
-    // SSR Pass
-    auto ssrPass = std::make_shared<PassInfo>();
-    ssrPass->name = "SSRPass";
-    ssrPass->usesSwapchain = false;
+    // Shadow Image Pass Horizontal
+    auto shadowImageBlurPassH = std::make_shared<PassInfo>();
+    shadowImageBlurPassH->name = "ShadowImageBlurPassH";
+    shadowImageBlurPassH->usesSwapchain = false;
+    renderPasses.push_back(shadowImageBlurPassH);
     {
         std::vector<PassImage> images;
         images.push_back({
-            .name = "SceneColor",
-            .resolutionDivider = 2, // half
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+            .name = "ShadowImageBlurHColor",
+            .clearValue = { .color = { {1.0f} } },
+            .format = VK_FORMAT_R16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .arrayLayers = 64
         });
-        ssrPass->images = images;
+        shadowImageBlurPassH->images = images;
+    }
+
+    // Shadow Image Pass Vertical
+    auto shadowImageBlurPassV = std::make_shared<PassInfo>();
+    shadowImageBlurPassV->name = "ShadowImageBlurPassV";
+    shadowImageBlurPassV->usesSwapchain = false;
+    renderPasses.push_back(shadowImageBlurPassV);
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "ShadowImageBlurVColor",
+            .clearValue = { .color = { {1.0f} } },
+            .format = VK_FORMAT_R16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .arrayLayers = 64
+        });
+        shadowImageBlurPassV->images = images;
     }
 
     // Particle Pass
     auto particlePass = std::make_shared<PassInfo>();
     particlePass->name = "ParticlePass";
     particlePass->usesSwapchain = false;
+    renderPasses.push_back(particlePass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -334,11 +373,21 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     simpleParticlePass->usesSwapchain = false;
     simpleParticlePass->hasDepthAttachment = false;
     simpleParticlePass->attachmentFormats = { VK_FORMAT_R16G16B16A16_SFLOAT };
+    renderPasses.push_back(simpleParticlePass);
+
+    // Irradiance Pass
+    auto irradiancePass = std::make_shared<PassInfo>();
+    irradiancePass->name = "IrradiancePass";
+    irradiancePass->usesSwapchain = false;
+    irradiancePass->hasDepthAttachment = false;
+    irradiancePass->attachmentFormats = { VK_FORMAT_R16G16B16A16_SFLOAT };
+    renderPasses.push_back(irradiancePass);
 
     // Volumetric Pass
     auto volumetricPass = std::make_shared<PassInfo>();
     volumetricPass->name = "VolumetricPass";
     volumetricPass->usesSwapchain = false;
+    renderPasses.push_back(volumetricPass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -355,6 +404,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto aoPass = std::make_shared<PassInfo>();
     aoPass->name = "AOPass";
     aoPass->usesSwapchain = false;
+    renderPasses.push_back(aoPass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -367,10 +417,44 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         aoPass->images = images;
     }
 
+    // Lighting Pass
+    auto lightingPass = std::make_shared<PassInfo>();
+    lightingPass->name = "LightingPass";
+    lightingPass->usesSwapchain = false;
+    renderPasses.push_back(lightingPass);
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SceneColor",
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        lightingPass->images = images;
+    }
+
+    // SSR Pass
+    auto ssrPass = std::make_shared<PassInfo>();
+    ssrPass->name = "SSRPass";
+    ssrPass->usesSwapchain = false;
+    renderPasses.push_back(ssrPass);
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "SceneColor",
+            .resolutionDivider = 2, // half
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        ssrPass->images = images;
+    }
+
     // Bloom Pass
     auto bloomPass = std::make_shared<PassInfo>();
     bloomPass->name = "BloomPass";
     bloomPass->usesSwapchain = false;
+    renderPasses.push_back(bloomPass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -387,6 +471,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto bloomBlurPassH = std::make_shared<PassInfo>();
     bloomBlurPassH->name = "BloomBlurPassH";
     bloomBlurPassH->usesSwapchain = false;
+    renderPasses.push_back(bloomBlurPassH);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -402,6 +487,8 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     // Bloom Blur Pass Vertical
     auto bloomBlurPassV = std::make_shared<PassInfo>();
     bloomBlurPassV->name = "BloomBlurPassV";
+    bloomBlurPassV->usesSwapchain = false;
+    renderPasses.push_back(bloomBlurPassV);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -418,6 +505,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto combinePass = std::make_shared<PassInfo>();
     combinePass->name = "CombinePass";
     combinePass->usesSwapchain = false;
+    renderPasses.push_back(combinePass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -433,6 +521,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto smaaEdgePass = std::make_shared<PassInfo>();
     smaaEdgePass->name = "SMAAEdgePass";
     smaaEdgePass->usesSwapchain = false;
+    renderPasses.push_back(smaaEdgePass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -448,6 +537,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto smaaWeightPass = std::make_shared<PassInfo>();
     smaaWeightPass->name = "SMAAWeightPass";
     smaaWeightPass->usesSwapchain = false;
+    renderPasses.push_back(smaaWeightPass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -463,6 +553,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto smaaBlendPass = std::make_shared<PassInfo>();
     smaaBlendPass->name = "SMAABlendPass";
     smaaBlendPass->usesSwapchain = false;
+    renderPasses.push_back(smaaBlendPass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -478,6 +569,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
     auto uiPass = std::make_shared<PassInfo>();
     uiPass->name = "UIPass";
     uiPass->usesSwapchain = false;
+    renderPasses.push_back(uiPass);
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -489,105 +581,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         uiPass->images = images;
     }
 
-    // Shadow Pass
-    auto shadowPass = std::make_shared<PassInfo>();
-    shadowPass->name = "ShadowPass";
-    shadowPass->usesSwapchain = false;
-    shadowPass->hasDepthAttachment = true;
-    shadowPass->depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
-
-    // Shadow Shader
-    {
-        GraphicsShader shader = {
-            .name = "shadow",
-            .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .config = {
-                .poolMultiplier = 512,
-                .vertexBitBindings = 1,
-                .fragmentBitBindings = 0,
-                .vertexDescriptorCounts = { 1 },
-                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
-                .cullMode = VK_CULL_MODE_NONE,
-                .depthWrite = true,
-                .depthCompare = VK_COMPARE_OP_LESS,
-                .enableDepth = true,
-                .passInfo = shadowPass,
-                .colorAttachmentCount = 0,
-                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
-                    bindings.resize(2);
-                    bindings = {
-                        { .binding = 0, .stride = sizeof(Vertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX },
-                        { .binding = 1, .stride = sizeof(SkinnedVertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX }
-                    };
-                    attributes.resize(3);
-                    attributes = {
-                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
-                        { .location = 1, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, joints) },
-                        { .location = 2, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, weights) }
-                    };
-                }
-            }
-        };
-        shader.config.setPushConstant<ShadowPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
-    }
-
-    // Irradiance Pass
-    auto irradiancePass = std::make_shared<PassInfo>();
-    irradiancePass->name = "IrradiancePass";
-    irradiancePass->usesSwapchain = false;
-    irradiancePass->hasDepthAttachment = false;
-    irradiancePass->attachmentFormats = { VK_FORMAT_R16G16B16A16_SFLOAT };
-
-    // Irradiance Shader
-    {
-        GraphicsShader shader = {
-            .name = "irradiance",
-            .vertex = { shaderPath("irradiance.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("irradiance.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
-            .config = {
-                .poolMultiplier = 512,
-                .vertexBitBindings = 1,
-                .fragmentBitBindings = 5,
-                .vertexDescriptorCounts = { 1 },
-                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
-                .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1
-                },
-                .fragmentDescriptorTypes = {
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLER
-                },
-                .cullMode = VK_CULL_MODE_NONE,
-                .depthWrite = false,
-                .depthCompare = VK_COMPARE_OP_ALWAYS,
-                .enableDepth = false,
-                .passInfo = irradiancePass,
-                .colorAttachmentCount = 1,
-                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
-                    bindings.resize(1);
-                    bindings = {
-                        { .binding = 0, .stride = sizeof(Vertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX }
-                    };
-                    attributes.resize(3);
-                    attributes = {
-                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
-                        { .location = 2, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, texCoord) },
-                        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
-                    };
-                }
-            }
-        };
-        shader.config.setPushConstant<IrradianceBakePC>(VK_SHADER_STAGE_VERTEX_BIT);
-        shaders.push_back(shader);
-    }
 
     auto mainPass = std::make_shared<PassInfo>();
     mainPass->name = "Main";
     mainPass->usesSwapchain = true;
+    renderPasses.push_back(mainPass);
 
     // GBuffer
     {
@@ -598,7 +596,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .config = {
                 .poolMultiplier = 512,
                 .vertexBitBindings = 1,
-                .fragmentBitBindings = 5, 
+                .fragmentBitBindings = 5,
                 .vertexDescriptorCounts = { 1 },
                 .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
                 .fragmentDescriptorCounts = {
@@ -635,46 +633,92 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<GBufferPC>(VK_SHADER_STAGE_VERTEX_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
-    // Lighting
+    // Shadow Shader
     {
         GraphicsShader shader = {
-            .name = "lighting",
-            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .name = "shadow",
+            .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .config = {
-                .vertexBitBindings = 2,
-                .fragmentBitBindings = 8,
-                .vertexDescriptorCounts = { 1, 1 },
-                .vertexDescriptorTypes = {
+                .poolMultiplier = 512,
+                .vertexBitBindings = 1,
+                .fragmentBitBindings = 0,
+                .vertexDescriptorCounts = { 1 },
+                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = true,
+                .depthCompare = VK_COMPARE_OP_LESS,
+                .enableDepth = true,
+                .passInfo = shadowPass,
+                .colorAttachmentCount = 0,
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(2);
+                    bindings = {
+                        { .binding = 0, .stride = sizeof(Vertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX },
+                        { .binding = 1, .stride = sizeof(SkinnedVertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX }
+                    };
+                    attributes.resize(3);
+                    attributes = {
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
+                        { .location = 1, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, joints) },
+                        { .location = 2, .binding = 1, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(SkinnedVertex, weights) }
+                    };
+                }
+            }
+        };
+        shader.config.setPushConstant<ShadowPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        addGraphicsShader(std::move(shader));
+    }
+
+    auto getActiveShadowLayers = [](Renderer* renderer) -> uint32_t {
+        uint32_t activeShadowLayers = 0;
+        if (engine::LightManager* lightManager = renderer->getLightManager()) {
+            auto& lights = lightManager->getLights();
+            for (uint32_t i = 0; i < static_cast<uint32_t>(lights.size()) && i < 64u; ++i) {
+                engine::Light& light = lights[i];
+                if (light.getShadowImageView() == VK_NULL_HANDLE) {
+                    continue;
+                }
+                ++activeShadowLayers;
+                if (activeShadowLayers >= 64u) {
+                    break;
+                }
+            }
+        }
+        return activeShadowLayers;
+    };
+
+    // Shadow Image Compute
+    {
+        ComputeShader shader = {
+            .name = "shadowimage",
+            .compute = { shaderPath("shadowimage.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
+            .config = {
+                .poolMultiplier = 1,
+                .computeBitBindings = 6,
+                .computeDescriptorCounts = { 1, 1, 1, 64, 1, 1 },
+                .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                },
-                .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1, 1, 64, 1
-                },
-                .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .cullMode = VK_CULL_MODE_NONE,
-                .depthWrite = false,
-                .enableDepth = false,
-                .passInfo = lightingPass,
-                .colorAttachmentCount = 1,
-                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                .workgroupSizeX = 8,
+                .workgroupSizeY = 8,
+                .workgroupSizeZ = 1,
+                .getDispatchLayerCount = [getActiveShadowLayers](Renderer* renderer, ComputeShader*) {
+                    return getActiveShadowLayers(renderer);
+                },
+                .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
-                        uint32_t shadowSamples = pow(2, 1 + static_cast<int>(renderer->getSettingsManager()->getSettings()->shadowQuality));
-                        LightingPC pc = {
+                        // 1, 2, 4, 8
+                        uint32_t shadowSamples = pow(2, static_cast<int>(renderer->getSettingsManager()->getSettings()->shadowQuality));
+                        ShadowImagePC pc = {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
                             .camPos = camera->getWorldPosition(),
@@ -685,7 +729,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                             shader->pipelineLayout,
                             shader->config.pushConstantRange.stageFlags,
                             0,
-                            sizeof(LightingPC),
+                            sizeof(ShadowImagePC),
                             &pc
                         );
                     }
@@ -707,110 +751,218 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                         },
                         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                     },
+                    { 1, "gbuffer", "Depth" },
+                    { 2, "gbuffer", "Normal" },
                     {
-                        .binding = 1,
-                        .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
-                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
-                            auto& irradianceProbesBuffers = irradianceManager->getIrradianceProbesBuffers();
-                            if (irradianceProbesBuffers.size() < renderer->getMaxFramesInFlight()) {
-                                irradianceManager->createIrradianceProbesUBO();
-                            }
-                            if (i >= irradianceProbesBuffers.size() || irradianceProbesBuffers[i] == VK_NULL_HANDLE) {
-                                std::cout << "Warning: Irradiance UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
-                                return VkDescriptorBufferInfo{};
-                            }
-                            return VkDescriptorBufferInfo{irradianceProbesBuffers[i], 0, sizeof(IrradianceProbesUBO)};
-                        },
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                    },
-                    { 2, "gbuffer", "Albedo" },
-                    { 3, "gbuffer", "Normal" },
-                    { 4, "gbuffer", "Material" },
-                    { 5, "gbuffer", "Depth" },
-                    { 6, "particle", "ParticleColor" },
-                    { 7, "volumetric", "VolumetricColor" },
-                    {
-                        .binding = 8,
-                        .imageArrayProvider = [](Renderer* renderer, size_t frame, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
+                        .binding = 3,
+                        .imageArrayProvider = [](Renderer* renderer, size_t, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
                             auto* textureManager = renderer->getTextureManager();
                             Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_shadow_cube") : nullptr;
                             VkImageView fallbackView = (fallbackTex && fallbackTex->imageView != VK_NULL_HANDLE) ? fallbackTex->imageView : VK_NULL_HANDLE;
                             auto& lights = renderer->getLightManager()->getLights();
-                            for (uint32_t c = 0; c < count; ++c) {
-                                VkImageView viewToBind = fallbackView;
-                                if (c < lights.size()) {
-                                    Light& light = lights[c];
-                                    if (light.getShadowImageView() != VK_NULL_HANDLE) {
-                                        viewToBind = light.getShadowImageView();
-                                    }
+
+                            const size_t startIdx = imageInfos.size();
+                            imageInfos.resize(startIdx + count, {
+                                .sampler = VK_NULL_HANDLE,
+                                .imageView = fallbackView,
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                            });
+
+                            const uint32_t lightCount = static_cast<uint32_t>(std::min<size_t>(lights.size(), count));
+                            uint32_t shadowLayer = 0;
+                            for (uint32_t i = 0; i < lightCount && shadowLayer < count; ++i) {
+                                Light& light = lights[i];
+                                if (light.getShadowImageView() != VK_NULL_HANDLE) {
+                                    imageInfos[startIdx + shadowLayer].imageView = light.getShadowImageView();
+                                    ++shadowLayer;
                                 }
-                                imageInfos.push_back({
-                                    .sampler = VK_NULL_HANDLE,
-                                    .imageView = viewToBind,
-                                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                });
                             }
                         },
                         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 4,
+                        .sourceShaderName = "shadowimage",
+                        .attachmentName = "ShadowImage",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                     }
                 }
             }
         };
-        shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        shader.config.setPushConstant<ShadowImagePC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
     }
 
-    // SSR
+    // Shadow Image Blur Horizontal
     {
-        GraphicsShader shader = {
-            .name = "ssr",
-            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("ssr.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+        ComputeShader shader = {
+            .name = "shadowimageblurh",
+            .compute = { shaderPath("blurarray.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
             .config = {
-                .vertexBitBindings = 0,
-                .fragmentBitBindings = 4,
-                .fragmentDescriptorCounts = {
-                    1, 1, 1, 1
+                .poolMultiplier = 1,
+                .computeBitBindings = 6,
+                .computeDescriptorCounts = {
+                    1, 1, 1, 1, 1, 1
                 },
-                .fragmentDescriptorTypes = {
+                .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLER
+                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                 },
-                .cullMode = VK_CULL_MODE_NONE,
-                .depthWrite = false,
-                .enableDepth = false,
-                .passInfo = ssrPass,
-                .colorAttachmentCount = 1,
-                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    engine::Camera* camera = renderer->getEntityManager()->getCamera();
-                    if (camera) {
-                        SSRPC pc = {
-                            .view = camera->getViewMatrix(),
-                            .proj = camera->getProjectionMatrix(),
-                            .invView = camera->getInvViewMatrix(),
-                            .invProj = camera->getInvProjectionMatrix()
-                        };
-                        vkCmdPushConstants(
-                            cmd,
-                            shader->pipelineLayout,
-                            shader->config.pushConstantRange.stageFlags,
-                            0,
-                            sizeof(SSRPC),
-                            &pc
-                        );
+                .workgroupSizeX = 8,
+                .workgroupSizeY = 8,
+                .workgroupSizeZ = 1,
+                .fillPushConstants = [getActiveShadowLayers](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
+                    uint32_t activeShadowLayers = getActiveShadowLayers(renderer);
+                    engine::BlurArrayPC pc = {
+                        .invProj = glm::mat4(1.0f),
+                        .blurDirection = 0,
+                        .taps = 2,
+                        .layerCount = activeShadowLayers
+                    };
+                    if (engine::Camera* camera = renderer->getEntityManager()->getCamera()) {
+                        pc.invProj = camera->getInvProjectionMatrix();
                     }
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurArrayPC), &pc);
+                },
+                .getDispatchLayerCount = [getActiveShadowLayers](Renderer* renderer, ComputeShader*) {
+                    return getActiveShadowLayers(renderer);
                 },
                 .inputBindings = {
-                    { 0, "lighting", "SceneColor" },
-                    { 1, "gbuffer", "Depth" },
-                    { 2, "gbuffer", "Normal" }
+                    {
+                        .binding = 0,
+                        .sourceShaderName = "shadowimage",
+                        .attachmentName = "ShadowImage",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 1,
+                        .sourceShaderName = "gbuffer",
+                        .attachmentName = "Depth",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 2,
+                        .sourceShaderName = "gbuffer",
+                        .attachmentName = "Normal",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 3,
+                        .sourceShaderName = "shadowimageblurh",
+                        .attachmentName = "ShadowImageBlurHColor",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                    },
+                    {
+                        .binding = 5,
+                        .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
+                            LightManager* lightManager = renderer->getLightManager();
+                            auto& lightsBuffers = lightManager->getLightsBuffers();
+                            if (lightsBuffers.size() < renderer->getMaxFramesInFlight()) {
+                                lightManager->createLightsUBO();
+                            }
+                            if (i >= lightsBuffers.size() || lightsBuffers[i] == VK_NULL_HANDLE) {
+                                std::cout << "Warning: Lights UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{lightsBuffers[i], 0, sizeof(LightsUBO)};
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    }
                 }
             }
         };
-        shader.config.setPushConstant<SSRPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        shader.config.setPushConstant<engine::BlurArrayPC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
+    }
+
+    // Shadow Image Blur Vertical
+    {
+        ComputeShader shader = {
+            .name = "shadowimageblurv",
+            .compute = { shaderPath("blurarray.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
+            .config = {
+                .poolMultiplier = 1,
+                .computeBitBindings = 6,
+                .computeDescriptorCounts = {
+                    1, 1, 1, 1, 1, 1
+                },
+                .computeDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                },
+                .workgroupSizeX = 8,
+                .workgroupSizeY = 8,
+                .workgroupSizeZ = 1,
+                .fillPushConstants = [getActiveShadowLayers](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
+                    uint32_t activeShadowLayers = getActiveShadowLayers(renderer);
+                    engine::BlurArrayPC pc = {
+                        .invProj = glm::mat4(1.0f),
+                        .blurDirection = 1,
+                        .taps = 2,
+                        .layerCount = activeShadowLayers
+                    };
+                    if (engine::Camera* camera = renderer->getEntityManager()->getCamera()) {
+                        pc.invProj = camera->getInvProjectionMatrix();
+                    }
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurArrayPC), &pc);
+                },
+                .getDispatchLayerCount = [getActiveShadowLayers](Renderer* renderer, ComputeShader*) {
+                    return getActiveShadowLayers(renderer);
+                },
+                .inputBindings = {
+                    {
+                        .binding = 0,
+                        .sourceShaderName = "shadowimageblurh",
+                        .attachmentName = "ShadowImageBlurHColor",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 1,
+                        .sourceShaderName = "gbuffer",
+                        .attachmentName = "Depth",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 2,
+                        .sourceShaderName = "gbuffer",
+                        .attachmentName = "Normal",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 3,
+                        .sourceShaderName = "shadowimageblurv",
+                        .attachmentName = "ShadowImageBlurVColor",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                    },
+                    {
+                        .binding = 5,
+                        .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
+                            LightManager* lightManager = renderer->getLightManager();
+                            auto& lightsBuffers = lightManager->getLightsBuffers();
+                            if (lightsBuffers.size() < renderer->getMaxFramesInFlight()) {
+                                lightManager->createLightsUBO();
+                            }
+                            if (i >= lightsBuffers.size() || lightsBuffers[i] == VK_NULL_HANDLE) {
+                                std::cout << "Warning: Lights UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{lightsBuffers[i], 0, sizeof(LightsUBO)};
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    }
+                }
+            }
+        };
+        shader.config.setPushConstant<engine::BlurArrayPC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
     }
 
     // AO
@@ -864,7 +1016,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<AOPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // Particle
@@ -901,7 +1053,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<ParticlePC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // Simple Particle
@@ -931,7 +1083,69 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<SimpleParticlePC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
+    }
+
+    // Spherical Harmonics Projection
+    {
+        ComputeShader shader = {
+            .name = "sh",
+            .compute = { shaderPath("sh.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
+            .config = {
+                .poolMultiplier = 64,
+                .computeBitBindings = 1,
+                .storageImageCount = 0,
+                .storageBufferCount = 1
+            }
+        };
+        shader.config.setPushConstant<SHPC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
+    }
+
+    // Irradiance Shader
+    {
+        GraphicsShader shader = {
+            .name = "irradiance",
+            .vertex = { shaderPath("irradiance.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("irradiance.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .poolMultiplier = 512,
+                .vertexBitBindings = 1,
+                .fragmentBitBindings = 5,
+                .vertexDescriptorCounts = { 1 },
+                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .depthCompare = VK_COMPARE_OP_ALWAYS,
+                .enableDepth = false,
+                .passInfo = irradiancePass,
+                .colorAttachmentCount = 1,
+                .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
+                    bindings.resize(1);
+                    bindings = {
+                        { .binding = 0, .stride = sizeof(Vertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX }
+                    };
+                    attributes.resize(3);
+                    attributes = {
+                        { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, pos) },
+                        { .location = 2, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, texCoord) },
+                        { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
+                    };
+                }
+            }
+        };
+        shader.config.setPushConstant<IrradianceBakePC>(VK_SHADER_STAGE_VERTEX_BIT);
+        addGraphicsShader(std::move(shader));
     }
 
     // Volumetric
@@ -977,7 +1191,157 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<VolumetricPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
+    }
+
+    // Lighting
+    {
+        GraphicsShader shader = {
+            .name = "lighting",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 2,
+                .fragmentBitBindings = 8,
+                .vertexDescriptorCounts = { 1, 1 },
+                .vertexDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                },
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1, 1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = lightingPass,
+                .colorAttachmentCount = 1,
+                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    engine::Camera* camera = renderer->getEntityManager()->getCamera();
+                    if (camera) {
+                        LightingPC pc = {
+                            .invView = camera->getInvViewMatrix(),
+                            .invProj = camera->getInvProjectionMatrix(),
+                            .camPos = camera->getWorldPosition()
+                        };
+                        vkCmdPushConstants(
+                            cmd,
+                            shader->pipelineLayout,
+                            shader->config.pushConstantRange.stageFlags,
+                            0,
+                            sizeof(LightingPC),
+                            &pc
+                        );
+                    }
+                },
+                .inputBindings = {
+                    {
+                        .binding = 0,
+                        .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
+                            LightManager* lightManager = renderer->getLightManager();
+                            auto& lightsBuffers = lightManager->getLightsBuffers();
+                            if (lightsBuffers.size() < renderer->getMaxFramesInFlight()) {
+                                lightManager->createLightsUBO();
+                            }
+                            if (i >= lightsBuffers.size() || lightsBuffers[i] == VK_NULL_HANDLE) {
+                                std::cout << "Warning: Lights UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{lightsBuffers[i], 0, sizeof(LightsUBO)};
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    },
+                    {
+                        .binding = 1,
+                        .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            auto& irradianceProbesBuffers = irradianceManager->getIrradianceProbesBuffers();
+                            if (irradianceProbesBuffers.size() < renderer->getMaxFramesInFlight()) {
+                                irradianceManager->createIrradianceProbesUBO();
+                            }
+                            if (i >= irradianceProbesBuffers.size() || irradianceProbesBuffers[i] == VK_NULL_HANDLE) {
+                                std::cout << "Warning: Irradiance UBO buffer missing for frame " << i << " after ensure. Skipping descriptor write.\n";
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{irradianceProbesBuffers[i], 0, sizeof(IrradianceProbesUBO)};
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    },
+                    { 2, "gbuffer", "Albedo" },
+                    { 3, "gbuffer", "Normal" },
+                    { 4, "gbuffer", "Material" },
+                    { 5, "gbuffer", "Depth" },
+                    { 6, "particle", "ParticleColor" },
+                    { 7, "volumetric", "VolumetricColor" },
+                    { 8, "shadowimageblurv", "ShadowImageBlurVColor" }
+                }
+            }
+        };
+        shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        addGraphicsShader(std::move(shader));
+    }
+
+    // SSR
+    {
+        GraphicsShader shader = {
+            .name = "ssr",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("ssr.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 4,
+                .fragmentDescriptorCounts = {
+                    1, 1, 1, 1
+                },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = ssrPass,
+                .colorAttachmentCount = 1,
+                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    engine::Camera* camera = renderer->getEntityManager()->getCamera();
+                    if (camera) {
+                        SSRPC pc = {
+                            .view = camera->getViewMatrix(),
+                            .proj = camera->getProjectionMatrix(),
+                            .invView = camera->getInvViewMatrix(),
+                            .invProj = camera->getInvProjectionMatrix()
+                        };
+                        vkCmdPushConstants(
+                            cmd,
+                            shader->pipelineLayout,
+                            shader->config.pushConstantRange.stageFlags,
+                            0,
+                            sizeof(SSRPC),
+                            &pc
+                        );
+                    }
+                },
+                .inputBindings = {
+                    { 0, "lighting", "SceneColor" },
+                    { 1, "gbuffer", "Depth" },
+                    { 2, "gbuffer", "Normal" }
+                }
+            }
+        };
+        shader.config.setPushConstant<SSRPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        addGraphicsShader(std::move(shader));
     }
 
     // Bloom
@@ -1006,15 +1370,15 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 }
             }
         };
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // Bloom Blur Horizontal
     {
         GraphicsShader shader = {
-            .name = "hblur",
+            .name = "bloomblurh",
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("hblur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .fragment = { shaderPath("blur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
@@ -1030,20 +1394,28 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .passInfo = bloomBlurPassH,
                 .colorAttachmentCount = 1,
+                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    engine::BlurPC pc = {
+                        .blurDirection = 0,
+                        .taps = 8
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurPC), &pc);
+                },
                 .inputBindings = {
                     { 0, "bloom", "BloomColor" }
                 }
             }
         };
-        shaders.push_back(shader);
+        shader.config.setPushConstant<engine::BlurPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        addGraphicsShader(std::move(shader));
     }
 
     // Bloom Blur Vertical
     {
         GraphicsShader shader = {
-            .name = "vblur",
+            .name = "bloomblurv",
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("vblur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .fragment = { shaderPath("blur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
@@ -1059,12 +1431,20 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                 .enableDepth = false,
                 .passInfo = bloomBlurPassV,
                 .colorAttachmentCount = 1,
+                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    engine::BlurPC pc = {
+                        .blurDirection = 1,
+                        .taps = 4
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurPC), &pc);
+                },
                 .inputBindings = {
-                    { 0, "hblur", "BloomBlurHColor" }
+                    { 0, "bloomblurh", "BloomBlurHColor" }
                 }
             }
         };
-        shaders.push_back(shader);
+        shader.config.setPushConstant<engine::BlurPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        addGraphicsShader(std::move(shader));
     }
 
     // UI
@@ -1103,7 +1483,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // Text
@@ -1142,7 +1522,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // Combine
@@ -1173,11 +1553,11 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
                     { 0, "lighting", "SceneColor" },
                     { 1, "ssr", "SceneColor" },
                     { 2, "ao", "AOColor" },
-                    { 3, "vblur", "BloomBlurVColor" }
+                    { 3, "bloomblurv", "BloomBlurVColor" }
                 }
             }
         };
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // SMAA Edge Detection
@@ -1223,7 +1603,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // SMAA Blending Weight Calculation
@@ -1274,7 +1654,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // SMAA Neighborhood Blending
@@ -1315,7 +1695,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     // Composite
@@ -1357,7 +1737,7 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        shaders.push_back(shader);
+        addGraphicsShader(std::move(shader));
     }
 
     renderGraph.nodes = {
@@ -1398,6 +1778,39 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             }
         },
         {
+            .is2D = false,
+            .passInfo = shadowImagePass.get(),
+            .shaderNames = { "shadowimage" },
+            .usesRendering = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .skipCondition = [](Renderer* renderer) {
+                auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
+                    for (const Entity* e : nodes) {
+                        const std::string& shaderName = e->getShader();
+                        const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
+                        if (e->getModel() && isGBufferShader && e->isVisible()) return true;
+                        if (self(self, e->getChildren())) return true;
+                    }
+                    return false;
+                };
+                return !hasRenderable3D(hasRenderable3D, renderer->getEntityManager()->getRootEntities());
+            }
+        },
+        {
+            .is2D = true,
+            .passInfo = shadowImageBlurPassH.get(),
+            .shaderNames = { "shadowimageblurh" },
+            .usesRendering = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        },
+        {
+            .is2D = true,
+            .passInfo = shadowImageBlurPassV.get(),
+            .shaderNames = { "shadowimageblurv" },
+            .usesRendering = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        },
+        {
             .is2D = true,
             .passInfo = lightingPass.get(),
             .shaderNames = { "lighting" },
@@ -1435,12 +1848,12 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
         {
             .is2D = true,
             .passInfo = bloomBlurPassH.get(),
-            .shaderNames = { "hblur" }
+            .shaderNames = { "bloomblurh" }
         },
         {
             .is2D = true,
             .passInfo = bloomBlurPassV.get(),
-            .shaderNames = { "vblur" }
+            .shaderNames = { "bloomblurv" }
         },
         {
             .is2D = true,
@@ -1512,8 +1925,6 @@ std::vector<engine::GraphicsShader> engine::ShaderManager::createDefaultShaders(
             .shaderNames = { "composite" }
         }
     };
-
-    return shaders;
 }
 
 void engine::ShaderManager::loadSMAATextures() {
@@ -1551,34 +1962,6 @@ void engine::ShaderManager::loadSMAATextures() {
     createSMAATexture("smaa_search", searchTexBytes, SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, SEARCHTEX_SIZE, VK_FORMAT_R8_UNORM);
 }
 
-std::vector<engine::ComputeShader> engine::ShaderManager::createDefaultComputeShaders() {
-    std::vector<ComputeShader> shaders;
-
-    auto shaderPath = [&](const std::string& baseName) {
-        auto mapped = getShaderFilePath(baseName);
-        if (!mapped.empty()) return mapped;
-        return (std::filesystem::path(shaderDirectory) / baseName).string();
-    };
-
-    // Spherical Harmonics Projection
-    {
-        ComputeShader shader = {
-            .name = "sh",
-            .compute = { shaderPath("sh.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
-            .config = {
-                .poolMultiplier = 64,
-                .computeBitBindings = 1,
-                .storageImageCount = 0,
-                .storageBufferCount = 1
-            }
-        };
-        shader.config.setPushConstant<SHPC>(VK_SHADER_STAGE_COMPUTE_BIT);
-        shaders.push_back(shader);
-    }
-
-    return shaders;
-}
-
 std::vector<engine::RenderNode>& engine::ShaderManager::getRenderGraph() {
     return renderGraph.nodes;
 }
@@ -1587,17 +1970,30 @@ const std::vector<engine::RenderNode>& engine::ShaderManager::getRenderGraph() c
     return renderGraph.nodes;
 }
 
+const std::vector<std::shared_ptr<engine::PassInfo>>& engine::ShaderManager::getRenderPasses() const {
+    return renderPasses;
+}
+
 void engine::ShaderManager::resolveRenderGraphShaders() {
     for (auto& node : renderGraph.nodes) {
         node.shaders.clear();
+        node.computeShaders.clear();
         for (const auto& shaderName : node.shaderNames) {
+            bool found = false;
             auto it = graphicsShaderMap.find(shaderName);
             if (it != graphicsShaderMap.end()) {
                 node.shaders.insert(it->second);
                 if (!node.passInfo && it->second->config.passInfo) {
                     node.passInfo = it->second->config.passInfo.get();
                 }
-            } else {
+                found = true;
+            }
+            auto computeIt = computeShaderMap.find(shaderName);
+            if (computeIt != computeShaderMap.end()) {
+                node.computeShaders.insert(computeIt->second);
+                found = true;
+            }
+            if (!found) {
                 std::cout << "Warning: Render graph shader '" << shaderName << "' not found.\n";
             }
         }
@@ -1836,19 +2232,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
             }
             size_t startIndex = imageInfos.size();
             if (inputBinding) {
-                ShaderManager* sm = renderer->getShaderManager();
-                GraphicsShader* sourceShader = sm ? sm->getGraphicsShader(inputBinding->sourceShaderName) : nullptr;
-                VkImageView imageView = VK_NULL_HANDLE;
-                
-                if (sourceShader && sourceShader->config.passInfo && sourceShader->config.passInfo->images.has_value()) {
-                    for (auto& img : sourceShader->config.passInfo->images.value()) {
-                        if (img.name == inputBinding->attachmentName) {
-                            imageView = img.imageView;
-                            break;
-                        }
-                    }
-                }
-                
+                VkImageView imageView = renderer->getPassImageView(inputBinding->sourceShaderName, inputBinding->attachmentName);
                 if (imageView == VK_NULL_HANDLE) {
                     throw std::runtime_error("Failed to resolve inputBinding: shader='" + inputBinding->sourceShaderName + 
                                            "' attachment='" + inputBinding->attachmentName + "' for binding " + std::to_string(bindingIndex));
@@ -2018,39 +2402,68 @@ void engine::ComputeShader::createDescriptorSetLayout(engine::Renderer* renderer
     const int totalStorageBufferBindings = std::max(config.storageBufferCount, 0);
     const int totalComputeBindings = std::max(config.computeBitBindings, 0);
     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    bindings.reserve(static_cast<size_t>(totalStorageImageBindings + totalStorageBufferBindings + totalComputeBindings));
+    if (!config.computeDescriptorTypes.empty()) {
+        bindings.reserve(static_cast<size_t>(totalComputeBindings));
+    } else {
+        bindings.reserve(static_cast<size_t>(totalStorageImageBindings + totalStorageBufferBindings + totalComputeBindings));
+    }
     VkShaderStageFlags stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     uint32_t currentBinding = 0;
-    for (int i = 0; i < config.storageImageCount; ++i) {
-        VkDescriptorSetLayoutBinding storageImageBinding = {
-            .binding = currentBinding++,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            .descriptorCount = 1,
-            .stageFlags = stageFlags,
-            .pImmutableSamplers = nullptr
+    if (!config.computeDescriptorTypes.empty()) {
+        auto getComputeType = [&](int index) {
+            if (static_cast<size_t>(index) < config.computeDescriptorTypes.size()) {
+                return config.computeDescriptorTypes[static_cast<size_t>(index)];
+            }
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         };
-        bindings.push_back(storageImageBinding);
-    }
-    for (int i = 0; i < config.storageBufferCount; ++i) {
-        VkDescriptorSetLayoutBinding storageBufferBinding = {
-            .binding = currentBinding++,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = stageFlags,
-            .pImmutableSamplers = nullptr
+        auto getComputeCount = [&](int index) {
+            if (!config.computeDescriptorCounts.empty() && config.computeDescriptorCounts.size() == static_cast<size_t>(totalComputeBindings)) {
+                return std::max(config.computeDescriptorCounts[static_cast<size_t>(index)], 1u);
+            }
+            return 1u;
         };
-        bindings.push_back(storageBufferBinding);
-    }
-    for (int offset = 0; offset < config.computeBitBindings; ++offset) {
-        uint32_t descriptorCount = 1;
-        VkDescriptorSetLayoutBinding computeLayoutBinding = {
-            .binding = currentBinding++,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = descriptorCount,
-            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-            .pImmutableSamplers = nullptr
-        };
-        bindings.push_back(computeLayoutBinding);
+        for (int i = 0; i < totalComputeBindings; ++i) {
+            VkDescriptorSetLayoutBinding computeLayoutBinding = {
+                .binding = currentBinding++,
+                .descriptorType = getComputeType(i),
+                .descriptorCount = getComputeCount(i),
+                .stageFlags = stageFlags,
+                .pImmutableSamplers = nullptr
+            };
+            bindings.push_back(computeLayoutBinding);
+        }
+    } else {
+        for (int i = 0; i < config.storageImageCount; ++i) {
+            VkDescriptorSetLayoutBinding storageImageBinding = {
+                .binding = currentBinding++,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                .descriptorCount = 1,
+                .stageFlags = stageFlags,
+                .pImmutableSamplers = nullptr
+            };
+            bindings.push_back(storageImageBinding);
+        }
+        for (int i = 0; i < config.storageBufferCount; ++i) {
+            VkDescriptorSetLayoutBinding storageBufferBinding = {
+                .binding = currentBinding++,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = stageFlags,
+                .pImmutableSamplers = nullptr
+            };
+            bindings.push_back(storageBufferBinding);
+        }
+        for (int offset = 0; offset < config.computeBitBindings; ++offset) {
+            uint32_t descriptorCount = 1;
+            VkDescriptorSetLayoutBinding computeLayoutBinding = {
+                .binding = currentBinding++,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = descriptorCount,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = nullptr
+            };
+            bindings.push_back(computeLayoutBinding);
+        }
     }
     VkDescriptorSetLayoutCreateInfo layoutInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -2339,26 +2752,47 @@ void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
 void engine::ComputeShader::createDescriptorPool(Renderer* renderer) {
     int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     std::vector<VkDescriptorPoolSize> poolSizes;
-    if (config.storageImageCount > 0) {
-        VkDescriptorPoolSize storageImagePoolSize = {
-            .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            .descriptorCount = static_cast<uint32_t>(config.storageImageCount * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+    if (!config.computeDescriptorTypes.empty()) {
+        std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
+        auto getComputeCount = [&](size_t index) {
+            if (!config.computeDescriptorCounts.empty() && config.computeDescriptorCounts.size() == static_cast<size_t>(config.computeBitBindings)) {
+                return std::max(config.computeDescriptorCounts[index], 1u);
+            }
+            return 1u;
         };
-        poolSizes.push_back(storageImagePoolSize);
-    }
-    if (config.storageBufferCount > 0) {
-        VkDescriptorPoolSize storageBufferPoolSize = {
-            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = static_cast<uint32_t>(config.storageBufferCount * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
-        };
-        poolSizes.push_back(storageBufferPoolSize);
-    }
-    if (config.computeBitBindings > 0) {
-        VkDescriptorPoolSize computePoolSize = {
-            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = static_cast<uint32_t>(config.computeBitBindings * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
-        };
-        poolSizes.push_back(computePoolSize);
+        for (size_t i = 0; i < static_cast<size_t>(config.computeBitBindings); ++i) {
+            VkDescriptorType type = config.computeDescriptorTypes[i];
+            uint32_t count = getComputeCount(i) * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier;
+            typeCounts[type] += count;
+        }
+        for (const auto& [type, count] : typeCounts) {
+            poolSizes.push_back({
+                .type = type,
+                .descriptorCount = count
+            });
+        }
+    } else {
+        if (config.storageImageCount > 0) {
+            VkDescriptorPoolSize storageImagePoolSize = {
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                .descriptorCount = static_cast<uint32_t>(config.storageImageCount * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+            };
+            poolSizes.push_back(storageImagePoolSize);
+        }
+        if (config.storageBufferCount > 0) {
+            VkDescriptorPoolSize storageBufferPoolSize = {
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = static_cast<uint32_t>(config.storageBufferCount * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+            };
+            poolSizes.push_back(storageBufferPoolSize);
+        }
+        if (config.computeBitBindings > 0) {
+            VkDescriptorPoolSize computePoolSize = {
+                .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = static_cast<uint32_t>(config.computeBitBindings * MAX_FRAMES_IN_FLIGHT * config.poolMultiplier)
+            };
+            poolSizes.push_back(computePoolSize);
+        }
     }
     VkDescriptorPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,

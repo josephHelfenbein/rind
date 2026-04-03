@@ -147,6 +147,8 @@ namespace engine {
         void resetPostProcessDescriptorPools();
         void resetPerObjectDescriptorPools();
         void createPostProcessDescriptorSets();
+        void createComputeDescriptorSets();
+        void dispatchComputePass(VkCommandBuffer commandBuffer, RenderNode& node);
         VkImageView getPassImageView(const std::string& shaderName, const std::string& attachmentName);
 
         VkDevice getDevice() const { return device; }

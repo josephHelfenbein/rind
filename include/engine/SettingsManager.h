@@ -20,7 +20,7 @@ namespace engine {
             uint32_t aaMode = 1; // 0 = none, 1 = FXAA, 2 = SMAA
             uint32_t screenMode = 0; // 0 = windowed, 1 = borderless, 2 = fullscreen
             float fpsLimit = 0.0f;
-            float shadowQuality = 2.0f; // 0=512 2 samples, 1=1024 4 samples, 2=2048 8 samples, 3=2048 16 samples
+            float shadowQuality = 2.0f; // 0=256 1 sample, 1=512 2 samples, 2=1024 4 samples, 3=1024 8 samples
             float sensitivity = 0.003f;
             float masterVolume = 1.0f;
             bool ssrEnabled = true;

@@ -4,6 +4,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #endif
 #include <engine/SettingsManager.h>
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -15,6 +16,35 @@ engine::Light::Light(
     float intensity,
     float radius
 ) : lightManager(lightManager), transform(transform), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)) {}
+
+void engine::Light::setColor(const glm::vec3& color) {
+    this->color = color;
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
+}
+
+void engine::Light::setIntensity(float intensity) {
+    this->intensity = intensity;
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
+}
+
+void engine::Light::setRadius(float radius) {
+    this->radius = radius;
+    shadowProj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius);
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
+}
+
+void engine::Light::updateLightIdx(uint32_t newIdx) {
+    lightIdx = newIdx;
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
+}
 
 engine::PointLight engine::Light::getPointLightData() {
     glm::vec3 worldPos = getWorldPosition();
@@ -37,7 +67,8 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
         destroyShadowResources(renderer->getDevice());
     }
     float settingsValue = renderer->getSettingsManager()->getSettings()->shadowQuality;
-    shadowMapSize = static_cast<uint32_t>(pow(2, 9 + std::min(static_cast<int>(settingsValue), 2)));
+     // 256, 512, 1024, 1024
+    shadowMapSize = static_cast<uint32_t>(pow(2, 8 + std::min(static_cast<int>(settingsValue), 2)));
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
     std::tie(shadowDepthImage, shadowDepthMemory) = renderer->createImage(
@@ -113,6 +144,9 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
     }
     
     hasShadowMap = true;
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
 }
 
 void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuffer) {
@@ -461,6 +495,9 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     shadowImageReady = false;
     shadowBaked = false;
     bakedImageReady = false;
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
 }
 
 engine::LightManager::LightManager(engine::Renderer* renderer) : renderer(renderer) {
@@ -494,6 +531,8 @@ void engine::LightManager::addLight(const std::string& name, const glm::mat4& tr
     Light& newLight = lights.back();
     newLight.updateLightIdx(lights.size() - 1);
     newLight.createShadowMaps(renderer);
+    renderer->createComputeDescriptorSets();
+    markLightsDirty();
 }
 
 void engine::LightManager::unregisterLight(uint32_t lightIdx) {
@@ -508,6 +547,8 @@ void engine::LightManager::unregisterLight(uint32_t lightIdx) {
     for (size_t i = lightIdx; i < lights.size(); ++i) {
         lights[i].updateLightIdx(static_cast<uint32_t>(i));
     }
+    renderer->createComputeDescriptorSets();
+    markLightsDirty();
 }
 
 void engine::LightManager::clear() {
@@ -517,6 +558,18 @@ void engine::LightManager::clear() {
         }
     }
     lights.clear();
+    markLightsDirty();
+}
+
+void engine::LightManager::markLightsDirty() {
+    const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
+    if (lightsDirty.size() != frames) {
+        lightsDirty.assign(frames, 1u);
+        return;
+    }
+    for (size_t i = 0; i < frames; ++i) {
+        lightsDirty[i] = 1u;
+    }
 }
 
 void engine::LightManager::createLightsUBO() {
@@ -524,6 +577,7 @@ void engine::LightManager::createLightsUBO() {
     lightsBuffers.resize(frames, VK_NULL_HANDLE);
     lightsBuffersMemory.resize(frames, VK_NULL_HANDLE);
     lightBuffersMapped.resize(frames, nullptr);
+    lightsDirty.assign(frames, 1u);
     for (size_t frame = 0; frame < frames; ++frame) {
         std::tie(lightsBuffers[frame], lightsBuffersMemory[frame]) = renderer->createBuffer(
             sizeof(LightsUBO),
@@ -542,13 +596,53 @@ void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
         std::cout << std::format("Warning: Lights UBO buffer unavailable for frame {}. Skipping lights update.\n", frameIndex);
         return;
     }
+    if (lightsDirty.size() < lightsBuffers.size()) {
+        lightsDirty.assign(lightsBuffers.size(), 1u);
+    }
+    if (lightsDirty[frameIndex] == 0u) {
+        return;
+    }
     LightsUBO* gpuData = static_cast<LightsUBO*>(lightBuffersMapped[frameIndex]);
     std::vector<Light>& lights = getLights();
     size_t count = std::min(lights.size(), static_cast<size_t>(64));
-    for (size_t i = 0; i < count; ++i) {
-        gpuData->pointLights[i] = lights[i].getPointLightData();
+
+    PointLight defaultLight = {};
+    defaultLight.positionRadius.w = 1.0f;
+    defaultLight.shadowData = glm::uvec4(0xFFFFFFFFu, 0u, 0u, 0u);
+    for (size_t i = 0; i < 64; ++i) {
+        gpuData->pointLights[i] = defaultLight;
     }
-    gpuData->numPointLights = glm::uvec4(count, 0, 0, 0);
+
+    std::array<PointLight, 64> deferredLights{};
+    size_t deferredCount = 0;
+    uint32_t shadowLayerCount = 0;
+
+    for (size_t i = 0; i < count; ++i) {
+        PointLight pointLight = lights[i].getPointLightData();
+        const uint32_t hasShadow = pointLight.shadowData.y;
+
+        if (hasShadow != 0 && shadowLayerCount < 64u) {
+            pointLight.shadowData.x = shadowLayerCount;
+            gpuData->pointLights[shadowLayerCount] = pointLight;
+            ++shadowLayerCount;
+        } else {
+            if (hasShadow != 0) {
+                pointLight.shadowData = glm::uvec4(0xFFFFFFFFu, 0u, 0u, 0u);
+            }
+            deferredLights[deferredCount++] = pointLight;
+        }
+    }
+
+    uint32_t writeIndex = shadowLayerCount;
+    for (size_t i = 0; i < deferredCount; ++i) {
+        if (writeIndex >= 64u) {
+            break;
+        }
+        gpuData->pointLights[writeIndex++] = deferredLights[i];
+    }
+
+    gpuData->numPointLights = glm::uvec4(writeIndex, static_cast<uint32_t>(count), 0, 0);
+    lightsDirty[frameIndex] = 0u;
 }
 
 void engine::LightManager::createAllShadowMaps() {

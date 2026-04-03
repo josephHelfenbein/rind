@@ -1030,6 +1030,8 @@ void rind::Player::damage(float amount) {
             showHitmarker(glm::clamp(healEffectColor + glm::vec3(0.3f), glm::vec3(0.0f), glm::vec3(1.0f)));
             earlyReturn = true;
         }
+    } else if (protectionMultiplier > 1e-6f) {
+        amount /= protectionMultiplier;
     }
     setHealth(std::min(getHealth() - amount, getMaxHealth()));
     if (getHealth() <= 0.5f * getMaxHealth()) {
@@ -1200,7 +1202,10 @@ void rind::Player::shoot() {
         engine::Entity* other = hit.other->getParent();
         if (other->getType() == engine::Entity::EntityType::Enemy) {
             rind::Enemy* character = static_cast<rind::Enemy*>(other);
-            const float damageAmount = 34.0f;
+            float damageAmount = 34.0f;
+            if (strengthMultiplier > 1e-6f) {
+                damageAmount *= strengthMultiplier;
+            }
             if (character->getHealth() - damageAmount <= 0.0f) {
                 showHitmarker(glm::vec3(1.0f, 0.2f, 0.2f));
                 audioManager->playSound("hitmarker_death", 0.6f, 0.25f);
@@ -1274,7 +1279,10 @@ void rind::Player::punch() {
                 continue;
             }
             rind::Enemy* character = static_cast<rind::Enemy*>(other);
-            const float damageAmount = 50.0f;
+            float damageAmount = 50.0f;
+            if (strengthMultiplier > 1e-6f) {
+                damageAmount *= strengthMultiplier;
+            }
             particleManager->burstParticles(
                 character->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f),
                 glm::vec3(1.0f, 0.5f, 0.15f),

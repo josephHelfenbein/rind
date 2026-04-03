@@ -26,6 +26,8 @@ struct IrradianceProbesUBO {
     uint4 numProbes;
 };
 
+static const uint INVALID_SHADOW_INDEX = 0xFFFFFFFF;
+
 [[vk::binding(0)]]
 ConstantBuffer<LightsUBO> lightsUBO;
 
@@ -51,7 +53,7 @@ Texture2D<float4> particleTexture;
 Texture2D<float4> volumetricTexture;
 
 [[vk::binding(8)]]
-TextureCube<float> shadowMaps[64];
+Texture2DArray<float> shadowTexture;
 
 [[vk::binding(9)]]
 SamplerState sampleSampler;
@@ -60,15 +62,10 @@ struct PushConstants {
     float4x4 invView;
     float4x4 invProj;
     float3 camPos;
-    uint shadowSamples;
 };
 [[vk::push_constant]] PushConstants pc;
 
 static const float PI = 3.14159265359;
-
-float worldAngle(float3 worldPos) {
-    return frac(sin(dot(worldPos, float3(127.1, 311.7, 74.7))) * 43758.5453) * 6.28318;
-}
 
 float3 reconstructPosition(float2 uv, float depth) {
     float4 ndc = float4(uv * 2.0 - 1.0, depth, 1.0);
@@ -116,80 +113,6 @@ float specularAntiAliasing(float3 N, float roughness) {
     float variance = dot(dndu, dndu) + dot(dndv, dndv);
     float kernelRoughness = min(2.0 * variance, 1.0);
     return clamp(roughness + kernelRoughness, 0.0, 1.0);
-}
-
-static const uint INVALID_SHADOW_INDEX = 0xFFFFFFFF;
-
-static const float2 diskOffsets[16] = {
-    float2(-0.9420162, -0.3990622),
-    float2( 0.9455861, -0.7689073),
-    float2(-0.0941841, -0.9293887),
-    float2( 0.3449594,  0.2938776),
-    float2(-0.9158858,  0.4577143),
-    float2(-0.8154423, -0.8791246),
-    float2(-0.3827754,  0.2767685),
-    float2( 0.9748440,  0.7564838),
-    float2( 0.4432332, -0.9751155),
-    float2( 0.5374298, -0.4737342),
-    float2(-0.2649691, -0.4189302),
-    float2( 0.7919751,  0.1909019),
-    float2(-0.2418884,  0.9970651),
-    float2(-0.8140996,  0.9143759),
-    float2( 0.1998413,  0.7864137),
-    float2( 0.1438316, -0.1410079)
-};
-
-float linearizeDepth(float perspectiveDepth, float nearPlane, float farPlane) {
-    return nearPlane * farPlane / (farPlane - perspectiveDepth * (farPlane - nearPlane));
-}
-
-float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, float3 lightDir) {
-    uint shadowIndex = light.shadowData.x;
-    uint hasShadow = light.shadowData.y;
-    if (shadowIndex == INVALID_SHADOW_INDEX || hasShadow == 0) {
-        return 1.0;
-    }
-    float3 lightPos = light.positionRadius.xyz;
-    float3 toFrag = fragPos - lightPos;
-    float currentDistance = length(toFrag);
-    float farPlane = light.shadowParams.y;
-    float nearPlane = light.shadowParams.z;
-    float baseBias = light.shadowParams.x;
-    float shadowFadeStart = nearPlane * 10.0;
-    if (currentDistance <= nearPlane || currentDistance > farPlane) {
-        return 1.0;
-    }
-    float shadowFade = saturate((currentDistance - nearPlane) / (shadowFadeStart - nearPlane));
-    float currentDepth = currentDistance / farPlane;
-    float3 sampleDir = normalize(toFrag);
-    float NdotL = max(dot(geomNormal, lightDir), 0.0);
-    float slopeBias = baseBias * (1.0 - NdotL) * 2.0;
-    float distanceBias = baseBias * (nearPlane / max(currentDistance, nearPlane));
-    float bias = baseBias + slopeBias + distanceBias;
-    float shadow = 0.0;
-    float totalWeight = 0.0;
-    float diskRadius = 0.02 + 0.04 * (currentDistance / farPlane) * sqrt(pc.shadowSamples / 16.0);
-    float penumbraSize = 0.015 * (currentDistance / farPlane);
-    float angle = worldAngle(fragPos);
-    float cosA = 0.0f, sinA = 0.0f;
-    sincos(angle, sinA, cosA);
-    float3 up = abs(sampleDir.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
-    float3 right = normalize(cross(up, sampleDir));
-    float3 forward = cross(sampleDir, right);
-    for (uint i = 0; i < pc.shadowSamples; ++i) {
-        float2 o = diskOffsets[i];
-        float2 rotated = float2(o.x * cosA - o.y * sinA, o.x * sinA + o.y * cosA);
-        float3 offsetDir = right * rotated.x + forward * rotated.y;
-        float3 sampleOffset = sampleDir + offsetDir * diskRadius;
-        float sampleDepth = shadowMaps[shadowIndex].Sample(sampleSampler, sampleOffset);
-        float weight = 1.0 - length(o);
-        float diff = (currentDepth - bias) - sampleDepth;
-        shadow += smoothstep(0.0, penumbraSize, diff) * weight;
-        totalWeight += weight;
-    }
-    shadow /= totalWeight;
-    shadow *= shadowFade;
-    return 1.0 - shadow;
 }
 
 void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, out float3 diffuseIrr, out float3 specularIrr) {
@@ -305,6 +228,7 @@ float4 main(VSOutput input) : SV_Target {
         float3 lightPos = light.positionRadius.xyz;
         float lightRadius = light.positionRadius.w;
         float3 lightColor = light.colorIntensity.rgb;
+        uint shadowIndex = light.shadowData.x;
         float intensity = light.colorIntensity.w;
         float3 toLight = lightPos - fragPos;
         float distance = length(toLight);
@@ -335,7 +259,10 @@ float4 main(VSOutput input) : SV_Target {
         float3 kD = (1.0 - F) * (1.0 - metallic);
         float3 diffuse = kD * albedoSample.rgb;
 
-        float shadow = computePointShadow(light, fragPos, geomNormal, L);
+        bool hasShadow = (shadowIndex != INVALID_SHADOW_INDEX && light.shadowData.y != 0 && shadowIndex < 64u);
+        float shadow = hasShadow
+            ? shadowTexture.Sample(sampleSampler, float3(input.fragTexCoord, float(shadowIndex)))
+            : 1.0;
 
         float3 contribution = (diffuse + specular) * radiance * NdotL * shadow;
         contribution = clamp(contribution, float3(0.0, 0.0, 0.0), float3(100.0, 100.0, 100.0));

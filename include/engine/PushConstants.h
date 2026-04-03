@@ -14,6 +14,13 @@ namespace engine {
         glm::mat4 invView;
         glm::mat4 invProj;
         glm::vec3 camPos;
+        uint32_t pad;
+    };
+
+    struct ShadowImagePC {
+        glm::mat4 invView;
+        glm::mat4 invProj;
+        glm::vec3 camPos;
         uint32_t shadowSamples;
     };
 
@@ -98,6 +105,18 @@ namespace engine {
         glm::vec2 inverseScreenSize;
         uint32_t flags; // bit 0-1 = AA mode (0=none, 1=FXAA, 2=SMAA)
         uint32_t pad;
+    };
+
+    struct BlurPC {
+        uint32_t blurDirection; // 0 = horizontal, 1 = vertical
+        uint32_t taps; // number of taps to use, up to 8
+    };
+
+    struct BlurArrayPC {
+        glm::mat4 invProj;
+        uint32_t blurDirection; // 0 = horizontal, 1 = vertical
+        uint32_t taps; // number of taps to use, up to 8
+        uint32_t layerCount; // number of shadow layers to blur
     };
 
     struct SHPC {

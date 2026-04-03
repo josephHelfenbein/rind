@@ -183,10 +183,20 @@ void engine::Model::loadFromFile() {
                 animDuration = maxTime;
             }
             const fastgltf::Accessor& outputAccessor = gltf.accessors[sampler.outputAccessor];
-            fastgltf::iterateAccessor<glm::vec4>(gltf, outputAccessor,
-                [&](glm::vec4 value) {
-                    keyframes.outputValues.push_back(value);
-                });
+            if (outputAccessor.type == fastgltf::AccessorType::Vec3) {
+                fastgltf::iterateAccessor<glm::vec3>(gltf, outputAccessor,
+                    [&](glm::vec3 value) {
+                        keyframes.outputValues.emplace_back(value, 0.0f);
+                    });
+            } else if (outputAccessor.type == fastgltf::AccessorType::Vec4) {
+                fastgltf::iterateAccessor<glm::vec4>(gltf, outputAccessor,
+                    [&](glm::vec4 value) {
+                        keyframes.outputValues.push_back(value);
+                    });
+            } else {
+                std::cerr << "Warning: Unsupported animation output accessor type in model " << filepath << "\n";
+                continue;
+            }
             samplers.push_back(keyframes);
         }
         animationClip.samplers = std::move(samplers);

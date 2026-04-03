@@ -81,13 +81,16 @@ namespace rind {
             setJumpSpeed(status.jumpSpeed);
             setMoveSpeed(status.moveSpeed);
             setGravity(status.gravity);
-            hasStatus = true;
-            statusResetTime = status.resetTime;
+            strengthMultiplier = status.strengthMultiplier;
+            protectionMultiplier = status.protectionMultiplier;
             statusTextObject->setText(status.statusText);
+            statusTextObject->setTint(glm::vec4(status.textColor, 1.0f));
             statusEffectOverlayObject->setTint(glm::vec4(status.overlayColor, 1.0f));
             currentStatusEffect = status;
             if (!isMain) {
                 audioManager->playSound("status_effect", 0.5f, 0.2f);
+                hasStatus = true;
+                statusResetTime = status.resetTime;
             }
         }
         float getStatusRemaining() const {
@@ -107,7 +110,7 @@ namespace rind {
         const glm::vec3 gunModelTranslation = glm::vec3(0.55856f, -0.273792f, -0.642208f);
         glm::quat gunModelInitialQuat = glm::angleAxis(glm::radians(-90.0f), glm::vec3(0,1,0));
         glm::quat gunModelOverheatedRot = 
-            glm::angleAxis(glm::radians(-60.0f), glm::vec3(0,1,0)) *
+            glm::angleAxis(glm::radians(-45.0f), glm::vec3(0,1,0)) *
             glm::angleAxis(glm::radians(-40.0f), glm::vec3(1,0,0));
         engine::Entity* gunModel = nullptr;
         engine::Entity* playerModel = nullptr;
@@ -190,6 +193,8 @@ namespace rind {
         size_t shotTimesEnd = 0;
         float coolingTime = 0.0f;
         const float maxCoolingTime = 4.0f;
+        float strengthMultiplier = 1.0f;
+        float protectionMultiplier = 1.0f;
 
         float grenadeCooldown = 4.0f;
         std::chrono::steady_clock::time_point lastGrenadeTime = std::chrono::steady_clock::now();

@@ -18,18 +18,15 @@ namespace engine {
         );
 
         glm::vec3 getColor() const { return color; }
-        void setColor(const glm::vec3& color) { this->color = color; }
+        void setColor(const glm::vec3& color);
 
         float getIntensity() const { return intensity; }
-        void setIntensity(float intensity) { this->intensity = intensity; }
+        void setIntensity(float intensity);
 
         float getRadius() const { return radius; }
-        void setRadius(float radius) {
-            this->radius = radius;
-            shadowProj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius);
-        }
+        void setRadius(float radius);
 
-        void updateLightIdx(uint32_t newIdx) { lightIdx = newIdx; }
+        void updateLightIdx(uint32_t newIdx);
 
         bool shadowMapReady() const { return hasShadowMap; }
         uint32_t getShadowMapSize() const { return shadowMapSize; }
@@ -92,6 +89,8 @@ namespace engine {
         void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
 
+        void markLightsDirty();
+
         Renderer* getRenderer() const { return renderer; }
 
     private:
@@ -100,5 +99,6 @@ namespace engine {
         std::vector<VkBuffer> lightsBuffers;
         std::vector<VkDeviceMemory> lightsBuffersMemory;
         std::vector<void*> lightBuffersMapped;
+        std::vector<uint8_t> lightsDirty;
     };
 }
