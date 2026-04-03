@@ -4,7 +4,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #endif
 #include <engine/SettingsManager.h>
-#include <array>
+#include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -528,9 +528,8 @@ engine::LightManager::~LightManager() {
 
 void engine::LightManager::addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius) {
     lights.emplace_back(this, name, transform, color, intensity, radius);
-    Light& newLight = lights.back();
-    newLight.updateLightIdx(lights.size() - 1);
-    newLight.createShadowMaps(renderer);
+    lights.back().createShadowMaps(renderer);
+    reorderLights();
     renderer->createComputeDescriptorSets();
     markLightsDirty();
 }
@@ -544,9 +543,7 @@ void engine::LightManager::unregisterLight(uint32_t lightIdx) {
         light.destroyShadowResources(renderer->getDevice());
     }
     lights.erase(lights.begin() + lightIdx);
-    for (size_t i = lightIdx; i < lights.size(); ++i) {
-        lights[i].updateLightIdx(static_cast<uint32_t>(i));
-    }
+    reorderLights();
     renderer->createComputeDescriptorSets();
     markLightsDirty();
 }
@@ -606,43 +603,21 @@ void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
     std::vector<Light>& lights = getLights();
     size_t count = std::min(lights.size(), static_cast<size_t>(64));
 
-    PointLight defaultLight = {};
-    defaultLight.positionRadius.w = 1.0f;
-    defaultLight.shadowData = glm::uvec4(0xFFFFFFFFu, 0u, 0u, 0u);
-    for (size_t i = 0; i < 64; ++i) {
-        gpuData->pointLights[i] = defaultLight;
-    }
-
-    std::array<PointLight, 64> deferredLights{};
-    size_t deferredCount = 0;
-    uint32_t shadowLayerCount = 0;
-
     for (size_t i = 0; i < count; ++i) {
-        PointLight pointLight = lights[i].getPointLightData();
-        const uint32_t hasShadow = pointLight.shadowData.y;
-
-        if (hasShadow != 0 && shadowLayerCount < 64u) {
-            pointLight.shadowData.x = shadowLayerCount;
-            gpuData->pointLights[shadowLayerCount] = pointLight;
-            ++shadowLayerCount;
-        } else {
-            if (hasShadow != 0) {
-                pointLight.shadowData = glm::uvec4(0xFFFFFFFFu, 0u, 0u, 0u);
-            }
-            deferredLights[deferredCount++] = pointLight;
-        }
+        gpuData->pointLights[i] = lights[i].getPointLightData();
     }
 
-    uint32_t writeIndex = shadowLayerCount;
-    for (size_t i = 0; i < deferredCount; ++i) {
-        if (writeIndex >= 64u) {
-            break;
-        }
-        gpuData->pointLights[writeIndex++] = deferredLights[i];
-    }
-
-    gpuData->numPointLights = glm::uvec4(writeIndex, static_cast<uint32_t>(count), 0, 0);
+    gpuData->numPointLights = glm::uvec4(static_cast<uint32_t>(count), 0, 0, 0);
     lightsDirty[frameIndex] = 0u;
+}
+
+void engine::LightManager::reorderLights() {
+    std::stable_partition(lights.begin(), lights.end(), [](const Light& l) {
+        return l.shadowMapReady();
+    });
+    for (size_t i = 0; i < lights.size(); ++i) {
+        lights[i].updateLightIdx(static_cast<uint32_t>(i));
+    }
 }
 
 void engine::LightManager::createAllShadowMaps() {

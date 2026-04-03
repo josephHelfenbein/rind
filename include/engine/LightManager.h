@@ -94,6 +94,8 @@ namespace engine {
         Renderer* getRenderer() const { return renderer; }
 
     private:
+        void reorderLights();
+
         Renderer* renderer;
         std::vector<Light> lights;
         std::vector<VkBuffer> lightsBuffers;
