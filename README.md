@@ -177,26 +177,14 @@ git submodule update --init --recursive
 
 ### 2. Configure
 
-**Windows (PowerShell):**
-```powershell
-cmake -S . -B build
-```
-
-**macOS / Linux:**
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
 ### 3. Build
 
-**Windows (PowerShell):**
-```powershell
-cmake --build build --config Release --parallel
-```
-
-**macOS / Linux:**
 ```bash
-cmake --build build --parallel
+cmake --build build --config Release --parallel
 ```
 
 ### 4. Run

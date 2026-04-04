@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 project(Rind)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+option(BUNDLE_WINDOWS_RUNTIMES "Bundle required runtime DLLs next to Windows executable and in install package" ON)
 
 set(IS_WINDOWS FALSE)
 set(IS_MACOS FALSE)
@@ -43,13 +44,23 @@ endif()
 
 if(IS_WINDOWS)
   link_directories(${CMAKE_SOURCE_DIR}/include)
+  if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "Windows builds are x64-only. Please configure with a 64-bit toolchain/generator.")
+  endif()
 endif()
 
 set(FASTGLTF_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(FASTGLTF_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(FASTGLTF_ENABLE_DOCS OFF CACHE BOOL "" FORCE)
 set(FASTGLTF_COMPILE_AS_CPP20 ON CACHE BOOL "" FORCE)
+set(FASTGLTF_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+if(IS_WINDOWS)
+  set(CMAKE_SKIP_INSTALL_RULES ON)
+endif()
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/fastgltf)
+if(IS_WINDOWS)
+  set(CMAKE_SKIP_INSTALL_RULES OFF)
+endif()
 if(TARGET fastgltf)
   target_compile_options(fastgltf PRIVATE -Wno-nan-infinity-disabled)
 endif()
@@ -366,6 +377,7 @@ elseif(IS_WINDOWS)
   set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
   set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
   set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+  set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
   add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/freetype)
 
   set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -501,6 +513,68 @@ endif()
 
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /FS)
+endif()
+
+if(IS_WINDOWS)
+  install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)
+
+  if(BUNDLE_WINDOWS_RUNTIMES)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
+      install(FILES $<TARGET_RUNTIME_DLLS:${PROJECT_NAME}> DESTINATION .)
+    endif()
+
+    if(MSVC OR CMAKE_VERSION VERSION_LESS "3.21")
+      set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
+      set(CMAKE_INSTALL_UCRT_LIBRARIES TRUE)
+      set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE)
+      include(InstallRequiredSystemLibraries)
+      if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+        install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION .)
+      endif()
+    endif()
+
+    if(MSVC)
+      get_filename_component(_compiler_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+      foreach(_omp_dll_name libomp140.x86_64.dll libomp.dll vcomp140.dll)
+        unset(_omp_dll_path CACHE)
+        unset(_omp_dll_path)
+        find_file(_omp_dll_path NAMES ${_omp_dll_name}
+          HINTS
+            "${_compiler_bin_dir}"
+            "${_compiler_bin_dir}/../../../../../VC/Redist/MSVC"
+            "${_compiler_bin_dir}/../../../../../VC/Tools/Llvm/x64/bin"
+          PATH_SUFFIXES
+            x64/Microsoft.VC143.CRT
+            x64/Microsoft.VC142.CRT
+        )
+        if(_omp_dll_path)
+          install(FILES "${_omp_dll_path}" DESTINATION .)
+          add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_omp_dll_path}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+            COMMENT "Copying ${_omp_dll_name} to runtime output"
+          )
+        endif()
+      endforeach()
+    elseif(MINGW)
+      get_filename_component(_compiler_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+      foreach(_mingw_runtime_dll libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll libgomp-1.dll)
+        unset(_mingw_runtime_path CACHE)
+        unset(_mingw_runtime_path)
+        find_file(_mingw_runtime_path NAMES ${_mingw_runtime_dll}
+          HINTS
+            "${_compiler_bin_dir}"
+            "${_compiler_bin_dir}/../bin"
+        )
+        if(_mingw_runtime_path)
+          install(FILES "${_mingw_runtime_path}" DESTINATION .)
+          add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_mingw_runtime_path}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+            COMMENT "Copying ${_mingw_runtime_dll} to runtime output"
+          )
+        endif()
+      endforeach()
+    endif()
+  endif()
 endif()
 
 if(IS_MACOS)
