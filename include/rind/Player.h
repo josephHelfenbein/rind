@@ -83,6 +83,7 @@ namespace rind {
             setGravity(status.gravity);
             strengthMultiplier = status.strengthMultiplier;
             protectionMultiplier = status.protectionMultiplier;
+            grenadeCooldown = status.grenadeCooldown;
             statusTextObject->setText(status.statusText);
             statusTextObject->setTint(glm::vec4(status.textColor, 1.0f));
             statusEffectOverlayObject->setTint(glm::vec4(status.overlayColor, 1.0f));

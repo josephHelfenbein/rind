@@ -130,7 +130,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     return 1.0 - shadow;
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 void main(uint3 globalID : SV_DispatchThreadID) {
     uint width, height, layers;
     shadowTexture.GetDimensions(width, height, layers);

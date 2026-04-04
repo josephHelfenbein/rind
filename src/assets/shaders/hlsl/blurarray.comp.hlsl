@@ -12,9 +12,6 @@ Texture2D<float4> gBufferNormal;
 [[vk::binding(3)]]
 RWTexture2DArray<float> outputTexture;
 
-[[vk::binding(4)]]
-SamplerState sampleSampler;
-
 struct PointLight {
     float4 positionRadius;
     float4 colorIntensity;
@@ -26,8 +23,11 @@ struct LightsUBO {
     PointLight pointLights[64];
     uint4 numPointLights;
 };
-[[vk::binding(5)]]
+[[vk::binding(4)]]
 ConstantBuffer<LightsUBO> lightsUBO;
+
+[[vk::binding(5)]]
+SamplerState sampleSampler;
 
 struct PushConstants {
     float4x4 invProj;
@@ -87,24 +87,15 @@ float bilateralGuideWeight(float centerLinearDepth, float3 centerNormal, float2 
     return depthWeight * normalWeight;
 }
 
-groupshared uint gs_needGuide[64];
-groupshared float gs_plusWeights[64 * 8];
-groupshared float gs_minusWeights[64 * 8];
-groupshared float2 gs_plusUV[64 * 8];
-groupshared float2 gs_minusUV[64 * 8];
-
-[numthreads(8, 8, 1)]
-void main(uint3 globalID : SV_DispatchThreadID, uint3 localID : SV_GroupThreadID) {
+[numthreads(16, 16, 1)]
+void main(uint3 globalID : SV_DispatchThreadID) {
     uint width, height, layers;
     outputTexture.GetDimensions(width, height, layers);
-    uint pixelIndex = localID.y * 8u + localID.x;
-    uint pixelBase = pixelIndex * 8u;
-    if (localID.z == 0) {
-        gs_needGuide[pixelIndex] = 0u;
-    }
-    GroupMemoryBarrierWithGroupSync();
 
-    bool inBounds = globalID.x < width && globalID.y < height && globalID.z < layers;
+    if (globalID.x >= width || globalID.y >= height || globalID.z >= layers) {
+        return;
+    }
+
     float2 uv = (float2(globalID.xy) + 0.5) / float2(width, height);
     float2 texelSize = 1.0 / float2(width, height);
     float2 minUV = texelSize * 0.5;
@@ -114,111 +105,57 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 localID : SV_GroupThreadID
     uint activeLayers = min(layers, pc.layerCount);
     uint layer = globalID.z;
 
-    bool processLayer = false;
-    bool writeNow = false;
-    float writeValue = 1.0;
-    float centerSample = 1.0;
-
-    if (inBounds && activeLayers > 0 && layer < activeLayers) {
-        if (layer >= lightsUBO.numPointLights.x) {
-            writeNow = true;
-            writeValue = 1.0;
-        } else {
-            PointLight layerLight = lightsUBO.pointLights[layer];
-            if (layerLight.shadowData.x != layer || layerLight.shadowData.y == 0) {
-                writeNow = true;
-                writeValue = 1.0;
-            } else {
-                centerSample = inputTexture.SampleLevel(sampleSampler, float3(uv, float(layer)), 0.0);
-                if (tapCount == 0) {
-                    writeNow = true;
-                    writeValue = centerSample;
-                } else {
-                    if (centerSample <= fastBinaryShadowLow || centerSample >= fastBinaryShadowHigh) {
-                        float2 edgeOffset = blurAxis * texelSize;
-                        float2 uvPlus = clamp(uv + edgeOffset, minUV, maxUV);
-                        float2 uvMinus = clamp(uv - edgeOffset, minUV, maxUV);
-                        float plusSample = inputTexture.SampleLevel(sampleSampler, float3(uvPlus, float(layer)), 0.0);
-                        float minusSample = inputTexture.SampleLevel(sampleSampler, float3(uvMinus, float(layer)), 0.0);
-                        float localEdgeDiff = max(abs(plusSample - centerSample), abs(minusSample - centerSample));
-                        if (localEdgeDiff < fastEdgeThreshold) {
-                            writeNow = true;
-                            writeValue = centerSample;
-                        }
-                    }
-                    if (!writeNow) {
-                        processLayer = true;
-                        InterlockedOr(gs_needGuide[pixelIndex], 1u);
-                    }
-                }
-            }
+    if (activeLayers == 0 || layer >= activeLayers || layer >= lightsUBO.numPointLights.x) {
+        outputTexture[int3(globalID.xy, layer)] = 1.0;
+        return;
+    }
+    PointLight layerLight = lightsUBO.pointLights[layer];
+    if (layerLight.shadowData.x != layer || layerLight.shadowData.y == 0) {
+        outputTexture[int3(globalID.xy, layer)] = 1.0;
+        return;
+    }
+    float centerSample = inputTexture.SampleLevel(sampleSampler, float3(uv, float(layer)), 0.0);
+    if (tapCount == 0) {
+        outputTexture[int3(globalID.xy, layer)] = centerSample;
+        return;
+    }
+    if (centerSample <= fastBinaryShadowLow || centerSample >= fastBinaryShadowHigh) {
+        float2 edgeOffset = blurAxis * texelSize;
+        float2 uvPlus = clamp(uv + edgeOffset, minUV, maxUV);
+        float2 uvMinus = clamp(uv - edgeOffset, minUV, maxUV);
+        float plusSample = inputTexture.SampleLevel(sampleSampler, float3(uvPlus, float(layer)), 0.0);
+        float minusSample = inputTexture.SampleLevel(sampleSampler, float3(uvMinus, float(layer)), 0.0);
+        float localEdgeDiff = max(abs(plusSample - centerSample), abs(minusSample - centerSample));
+        if (localEdgeDiff < fastEdgeThreshold) {
+            outputTexture[int3(globalID.xy, layer)] = centerSample;
+            return;
         }
     }
+    float centerDepth = gBufferDepth.SampleLevel(sampleSampler, uv, 0.0);
+    float centerLinearDepth = linearViewDepth(centerDepth, uv);
+    float3 centerNormal = decodeNormal(gBufferNormal.SampleLevel(sampleSampler, uv, 0.0).xyz);
+    float2 offset0 = blurAxis * (offsets[0] * texelSize);
+    float2 uvPlus0 = uv + offset0;
+    float2 uvMinus0 = uv - offset0;
 
-    GroupMemoryBarrierWithGroupSync();
-
-    if (localID.z == 0 && gs_needGuide[pixelIndex] != 0u && globalID.x < width && globalID.y < height) {
-        float2 sharedUV = (float2(globalID.xy) + 0.5) / float2(width, height);
-        float centerDepth = gBufferDepth.SampleLevel(sampleSampler, sharedUV, 0.0);
-        float centerLinearDepth = linearViewDepth(centerDepth, sharedUV);
-        float3 centerNormal = decodeNormal(gBufferNormal.SampleLevel(sampleSampler, sharedUV, 0.0).xyz);
-
-        [unroll]
-        for (uint i = 0; i < 8; ++i) {
-            uint idx = pixelBase + i;
-            gs_plusWeights[idx] = 0.0;
-            gs_minusWeights[idx] = 0.0;
-            gs_plusUV[idx] = sharedUV;
-            gs_minusUV[idx] = sharedUV;
-
-            if (i >= tapCount) {
-                continue;
-            }
-
-            float2 offset = blurAxis * (offsets[i] * texelSize);
-            float2 uvPlus = sharedUV + offset;
-            if (uvPlus.x >= minUV.x && uvPlus.x <= maxUV.x && uvPlus.y >= minUV.y && uvPlus.y <= maxUV.y) {
-                gs_plusUV[idx] = uvPlus;
-                gs_plusWeights[idx] = weights[i] * bilateralGuideWeight(centerLinearDepth, centerNormal, uvPlus);
-            }
-            float2 uvMinus = sharedUV - offset;
-            if (uvMinus.x >= minUV.x && uvMinus.x <= maxUV.x && uvMinus.y >= minUV.y && uvMinus.y <= maxUV.y) {
-                gs_minusUV[idx] = uvMinus;
-                gs_minusWeights[idx] = weights[i] * bilateralGuideWeight(centerLinearDepth, centerNormal, uvMinus);
-            }
-        }
+    float plusWeight0 = 0.0;
+    float minusWeight0 = 0.0;
+    if (uvPlus0.x >= minUV.x && uvPlus0.x <= maxUV.x && uvPlus0.y >= minUV.y && uvPlus0.y <= maxUV.y) {
+        plusWeight0 = weights[0] * bilateralGuideWeight(centerLinearDepth, centerNormal, uvPlus0);
+    }
+    if (uvMinus0.x >= minUV.x && uvMinus0.x <= maxUV.x && uvMinus0.y >= minUV.y && uvMinus0.y <= maxUV.y) {
+        minusWeight0 = weights[0] * bilateralGuideWeight(centerLinearDepth, centerNormal, uvMinus0);
     }
 
-    GroupMemoryBarrierWithGroupSync();
-
-    if (!inBounds) {
-        return;
-    }
-
-    if (writeNow) {
-        outputTexture[int3(globalID.xy, layer)] = writeValue;
-        return;
-    }
-
-    if (!processLayer) {
-        return;
-    }
-
-    float plusWeight0 = gs_plusWeights[pixelBase + 0u];
-    float minusWeight0 = gs_minusWeights[pixelBase + 0u];
     bool hasPlus0 = plusWeight0 > 0.0;
     bool hasMinus0 = minusWeight0 > 0.0;
-    float plus0Sample = hasPlus0 ? inputTexture.SampleLevel(sampleSampler, float3(gs_plusUV[pixelBase + 0u], float(layer)), 0.0) : centerSample;
-    float minus0Sample = hasMinus0 ? inputTexture.SampleLevel(sampleSampler, float3(gs_minusUV[pixelBase + 0u], float(layer)), 0.0) : centerSample;
+    float plus0Sample = hasPlus0 ? inputTexture.SampleLevel(sampleSampler, float3(uvPlus0, float(layer)), 0.0) : centerSample;
+    float minus0Sample = hasMinus0 ? inputTexture.SampleLevel(sampleSampler, float3(uvMinus0, float(layer)), 0.0) : centerSample;
 
     if ((hasPlus0 || hasMinus0) && (centerSample <= binaryShadowLow || centerSample >= binaryShadowHigh)) {
         float localDiff = 0.0;
-        if (hasPlus0) {
-            localDiff = max(localDiff, abs(plus0Sample - centerSample));
-        }
-        if (hasMinus0) {
-            localDiff = max(localDiff, abs(minus0Sample - centerSample));
-        }
+        if (hasPlus0) localDiff = max(localDiff, abs(plus0Sample - centerSample));
+        if (hasMinus0) localDiff = max(localDiff, abs(minus0Sample - centerSample));
         if (localDiff < flatShadowThreshold) {
             outputTexture[int3(globalID.xy, layer)] = centerSample;
             return;
@@ -228,30 +165,30 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 localID : SV_GroupThreadID
     float sum = centerSample * centerWeight;
     float weightSum = centerWeight;
 
-    if (hasPlus0) {
-        sum += plus0Sample * plusWeight0;
-        weightSum += plusWeight0;
-    }
-    if (hasMinus0) {
-        sum += minus0Sample * minusWeight0;
-        weightSum += minusWeight0;
-    }
+    if (hasPlus0) { sum += plus0Sample * plusWeight0; weightSum += plusWeight0; }
+    if (hasMinus0) { sum += minus0Sample * minusWeight0; weightSum += minusWeight0; }
 
     [unroll]
     for (uint i = 1; i < 8; ++i) {
-        if (i >= tapCount) {
-            break;
+        if (i >= tapCount) break;
+        float2 offset = blurAxis * (offsets[i] * texelSize);
+
+        float2 uvP = uv + offset;
+        if (uvP.x >= minUV.x && uvP.x <= maxUV.x && uvP.y >= minUV.y && uvP.y <= maxUV.y) {
+            float w = weights[i] * bilateralGuideWeight(centerLinearDepth, centerNormal, uvP);
+            if (w > 0.0) {
+                sum += inputTexture.SampleLevel(sampleSampler, float3(uvP, float(layer)), 0.0) * w;
+                weightSum += w;
+            }
         }
-        uint idx = pixelBase + i;
-        float plusWeight = gs_plusWeights[idx];
-        float minusWeight = gs_minusWeights[idx];
-        if (plusWeight > 0.0) {
-            sum += inputTexture.SampleLevel(sampleSampler, float3(gs_plusUV[idx], float(layer)), 0.0) * plusWeight;
-            weightSum += plusWeight;
-        }
-        if (minusWeight > 0.0) {
-            sum += inputTexture.SampleLevel(sampleSampler, float3(gs_minusUV[idx], float(layer)), 0.0) * minusWeight;
-            weightSum += minusWeight;
+
+        float2 uvM = uv - offset;
+        if (uvM.x >= minUV.x && uvM.x <= maxUV.x && uvM.y >= minUV.y && uvM.y <= maxUV.y) {
+            float w = weights[i] * bilateralGuideWeight(centerLinearDepth, centerNormal, uvM);
+            if (w > 0.0) {
+                sum += inputTexture.SampleLevel(sampleSampler, float3(uvM, float(layer)), 0.0) * w;
+                weightSum += w;
+            }
         }
     }
 

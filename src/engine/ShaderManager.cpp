@@ -310,7 +310,7 @@ void engine::ShaderManager::createDefaultShaders() {
         images.push_back({
             .name = "ShadowImage",
             .clearValue = { .color = { {1.0f} } },
-            .format = VK_FORMAT_R16_SFLOAT,
+            .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .arrayLayers = 64 // max shadow-casting lights
         });
@@ -327,7 +327,7 @@ void engine::ShaderManager::createDefaultShaders() {
         images.push_back({
             .name = "ShadowImageBlurHColor",
             .clearValue = { .color = { {1.0f} } },
-            .format = VK_FORMAT_R16_SFLOAT,
+            .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .arrayLayers = 64
         });
@@ -344,7 +344,7 @@ void engine::ShaderManager::createDefaultShaders() {
         images.push_back({
             .name = "ShadowImageBlurVColor",
             .clearValue = { .color = { {1.0f} } },
-            .format = VK_FORMAT_R16_SFLOAT,
+            .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .arrayLayers = 64
         });
@@ -411,7 +411,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = "AOColor",
             .resolutionDivider = 2, // half
             .clearValue = { .color = { {1.0f, 1.0f, 1.0f, 1.0f} } },
-            .format = VK_FORMAT_R16_UNORM,
+            .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         aoPass->images = images;
@@ -459,7 +459,7 @@ void engine::ShaderManager::createDefaultShaders() {
         std::vector<PassImage> images;
         images.push_back({
             .name = "BloomColor",
-            .resolutionDivider = 3, // third
+            .resolutionDivider = 4, // quarter
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -476,7 +476,7 @@ void engine::ShaderManager::createDefaultShaders() {
         std::vector<PassImage> images;
         images.push_back({
             .name = "BloomBlurHColor",
-            .resolutionDivider = 3, // third
+            .resolutionDivider = 4, // quarter
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -493,7 +493,7 @@ void engine::ShaderManager::createDefaultShaders() {
         std::vector<PassImage> images;
         images.push_back({
             .name = "BloomBlurVColor",
-            .resolutionDivider = 3, // third
+            .resolutionDivider = 4, // quarter
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -707,8 +707,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .workgroupSizeX = 8,
-                .workgroupSizeY = 8,
+                .workgroupSizeX = 16,
+                .workgroupSizeY = 16,
                 .workgroupSizeZ = 1,
                 .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
@@ -809,11 +809,11 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLER,
-                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .workgroupSizeX = 8,
-                .workgroupSizeY = 8,
+                .workgroupSizeX = 16,
+                .workgroupSizeY = 16,
                 .workgroupSizeZ = 1,
                 .fillPushConstants = [getActiveShadowLayers](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     uint32_t activeShadowLayers = getActiveShadowLayers(renderer);
@@ -857,7 +857,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                     },
                     {
-                        .binding = 5,
+                        .binding = 4,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
                             LightManager* lightManager = renderer->getLightManager();
                             auto& lightsBuffers = lightManager->getLightsBuffers();
@@ -895,11 +895,11 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLER,
-                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .workgroupSizeX = 8,
-                .workgroupSizeY = 8,
+                .workgroupSizeX = 16,
+                .workgroupSizeY = 16,
                 .workgroupSizeZ = 1,
                 .fillPushConstants = [getActiveShadowLayers](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     uint32_t activeShadowLayers = getActiveShadowLayers(renderer);
@@ -943,7 +943,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                     },
                     {
-                        .binding = 5,
+                        .binding = 4,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
                             LightManager* lightManager = renderer->getLightManager();
                             auto& lightsBuffers = lightManager->getLightsBuffers();
@@ -1397,7 +1397,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     engine::BlurPC pc = {
                         .blurDirection = 0,
-                        .taps = 8
+                        .taps = 2
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurPC), &pc);
                 },
@@ -1434,7 +1434,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     engine::BlurPC pc = {
                         .blurDirection = 1,
-                        .taps = 4
+                        .taps = 1
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurPC), &pc);
                 },

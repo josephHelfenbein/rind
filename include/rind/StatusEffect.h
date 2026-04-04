@@ -11,23 +11,24 @@ namespace rind {
         glm::vec3 overlayColor = glm::vec3(1.0f);
         float strengthMultiplier = 1.0f;
         float protectionMultiplier = 1.0f;
+        float grenadeCooldown = 4.0f;
         float resetTime = 6.0f;
     };
     static const StatusEffect mainStatusEffect{};
     static const StatusEffect fastMoveStatusEffect{
         .moveSpeed = 20.0f,
-        .statusText = "SPEED UP +100%",
+        .statusText = "SPEED UP",
         .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
         .overlayColor = glm::vec3(1.0f, 0.5f, 0.5f)
     };
     static const StatusEffect highJumpStatusEffect{
-        .jumpSpeed = 2.5f,
+        .jumpSpeed = 3.0f,
         .statusText = "HIGH JUMP",
         .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
         .overlayColor = glm::vec3(0.5f, 0.5f, 1.0f)
     };
     static const StatusEffect lowGravityStatusEffect{
-        .gravity = 7.0f,
+        .gravity = 5.0f,
         .statusText = "LOW GRAVITY",
         .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
         .overlayColor = glm::vec3(0.5f, 1.0f, 0.5f)
@@ -38,15 +39,27 @@ namespace rind {
         .overlayColor = glm::vec3(1.0f, 0.5f, 1.0f),
         .strengthMultiplier = 1.5f
     };
+    static const StatusEffect instantKillStatusEffect{
+        .statusText = "INSTANT KILL",
+        .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
+        .overlayColor = glm::vec3(0.8f, 0.2f, 0.2f),
+        .strengthMultiplier = 3.5f
+    };
+    static const StatusEffect infiniteGrenadesStatusEffect{
+        .statusText = "INFINITE GRENADES",
+        .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
+        .overlayColor = glm::vec3(0.2f, 0.9f, 0.3f),
+        .grenadeCooldown = 0.1f
+    };
     static const StatusEffect armorBoostStatusEffect{
         .statusText = "ARMOR BOOST",
         .textColor = glm::vec3(0.7f, 1.0f, 0.7f),
         .overlayColor = glm::vec3(0.5f, 1.0f, 1.0f),
-        .protectionMultiplier = 1.5f
+        .protectionMultiplier = 2.0f
     };
     static const StatusEffect slowMoveStatusEffect{
         .moveSpeed = 5.0f,
-        .statusText = "SLOW DOWN -50%",
+        .statusText = "SLOW DOWN",
         .textColor = glm::vec3(1.0f, 0.65f, 0.6f),
         .overlayColor = glm::vec3(0.5f, 0.5f, 0.5f)
     };
@@ -57,8 +70,7 @@ namespace rind {
         .statusText = "ANCHOR",
         .textColor = glm::vec3(1.0f, 0.65f, 0.6f),
         .overlayColor = glm::vec3(0.25f, 0.25f, 0.25f),
-        .strengthMultiplier = 0.5f,
-        .protectionMultiplier = 0.5f
+        .strengthMultiplier = 0.5f
     };
     static const StatusEffect weakStatusEffect{
         .statusText = "WEAKNESS",
@@ -79,6 +91,8 @@ namespace rind {
         highJumpStatusEffect,
         lowGravityStatusEffect,
         damageBoostStatusEffect,
+        instantKillStatusEffect,
+        infiniteGrenadesStatusEffect,
         armorBoostStatusEffect,
         slowMoveStatusEffect,
         weakStatusEffect,
