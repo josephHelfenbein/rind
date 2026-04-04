@@ -1,7 +1,8 @@
 #include <engine/UIManager.h>
+#include <engine/EmbeddedAssets.h>
+#include <font/font_registry.h>
 #include <algorithm>
 #include <utility>
-#include <filesystem>
 #include <limits>
 #include <engine/Renderer.h>
 #include <engine/AudioManager.h>
@@ -302,8 +303,8 @@ float engine::SliderObject::getSliderValueFromMouse(GLFWwindow* window) {
     return minValue + ratio * (maxValue - minValue);
 }
 
-engine::UIManager::UIManager(Renderer* renderer, const std::string& fontDirectory)
-    : renderer(renderer), fontDirectory(fontDirectory) {
+engine::UIManager::UIManager(Renderer* renderer)
+    : renderer(renderer) {
         renderer->registerUIManager(this);
     }
 
@@ -471,26 +472,15 @@ void engine::UIManager::loadFonts() {
         std::cout << "Error: Could not init FreeType Library\n";
         return;
     }
-    auto scanAndLoadFonts = [&](auto& self, const std::string& directory, std::string parentPath) -> void {
-        std::vector<std::string> fontFiles = engine::scanDirectory(directory);
-        for (const auto& filePath : fontFiles) {
-            if (std::filesystem::is_directory(filePath)) {
-                self(self, filePath, parentPath + std::filesystem::path(filePath).filename().string() + "_");
-                continue;
-            }
-            if (!std::filesystem::is_regular_file(filePath)) {
-                continue;
-            }
-            std::string fileName = std::filesystem::path(filePath).filename().string();
-            std::string fontName = parentPath + std::filesystem::path(fileName).stem().string();
+    const auto& embeddedFonts = getEmbedded_font();
+    for (const auto& [fontName, asset] : embeddedFonts) {
             if (fonts.find(fontName) != fonts.end()) {
-                std::cout << "Warning: Duplicate font name detected: " << fontName << ". Skipping " << filePath << "\n";
+                std::cout << "Warning: Duplicate font name detected: " << fontName << ". Skipping.\n";
                 continue;
             }
             FT_Face face;
-            if (FT_New_Face(ft, filePath.c_str(), 0, &face)) {
-                std::cout << "Error: Failed to load font " << filePath << "\n";
-                FT_Done_FreeType(ft);
+            if (FT_New_Memory_Face(ft, asset.data, static_cast<FT_Long>(asset.size), 0, &face)) {
+                std::cout << "Error: Failed to load embedded font " << fontName << "\n";
                 continue;
             }
             FT_Set_Pixel_Sizes(face, 0, 48);
@@ -598,9 +588,7 @@ void engine::UIManager::loadFonts() {
             }
             fonts.insert_or_assign(fontName, std::move(font));
             FT_Done_Face(face);
-        }
-    };
-    scanAndLoadFonts(scanAndLoadFonts, fontDirectory, "");
+    }
     FT_Done_FreeType(ft);
 }
 

@@ -7,7 +7,6 @@
 #include <fastgltf/glm_element_traits.hpp>
 #include <vulkan/vulkan.h>
 #include <vector>
-#include <engine/io.h>
 #include <unordered_map>
 #include <string>
 
@@ -51,9 +50,9 @@ namespace engine {
             std::vector<AnimationSampler> samplers;
             std::vector<AnimationChannel> channels;
         };
-        Model(const std::string& name, const std::string& filepath, Renderer* renderer);
+        Model(const std::string& name, const unsigned char* embeddedData, size_t embeddedSize, Renderer* renderer);
         ~Model();
-        void loadFromFile();
+        void loadFromMemory();
         std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> loadVertsForModel();
         std::pair<VkBuffer, VkDeviceMemory> getVertexBuffer() const { return {vertexBuffer, vertexBufferMemory}; }
         std::pair<VkBuffer, VkDeviceMemory> getIndexBuffer() const { return {indexBuffer, indexBufferMemory}; }
@@ -70,7 +69,8 @@ namespace engine {
         }
     private:
         std::string name;
-        std::string filepath;
+        const unsigned char* embeddedData = nullptr;
+        size_t embeddedSize = 0;
         Renderer* renderer;
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
@@ -85,7 +85,7 @@ namespace engine {
     };
     class ModelManager {
     public:
-        ModelManager(Renderer* renderer, const std::string& modelDirectory);
+        ModelManager(Renderer* renderer);
         ~ModelManager();
 
         void init();
@@ -97,7 +97,6 @@ namespace engine {
         }
     private:
         Renderer* renderer;
-        std::string modelDirectory;
         std::unordered_map<std::string, Model*> models;
     };
 };

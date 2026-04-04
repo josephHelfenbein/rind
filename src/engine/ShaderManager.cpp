@@ -7,32 +7,19 @@
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
 #include <engine/TextureManager.h>
-#include <engine/io.h>
+#include <engine/EmbeddedAssets.h>
 #include <engine/PushConstants.h>
 #include <glm/glm.hpp>
+#include <shader/shader_registry.h>
 
 #include <iostream>
 #include <utility>
 #include <unordered_set>
 
 engine::ShaderManager::ShaderManager(
-    engine::Renderer* renderer,
-    const std::string& shaderDirectory
-) : renderer(renderer), shaderDirectory(shaderDirectory) {
+    engine::Renderer* renderer
+) : renderer(renderer) {
         renderer->registerShaderManager(this);
-        std::vector<std::string> shaderFiles = engine::scanDirectory(this->shaderDirectory);
-        for (const auto& filePath : shaderFiles) {
-            if (!std::filesystem::is_regular_file(filePath)) {
-                continue;
-            }
-            std::filesystem::path p(filePath);
-            std::string baseName = p.stem().string(); // strip trailing .spv
-            if (foundShaderFiles.find(baseName) != foundShaderFiles.end()) {
-                std::cout << "Warning: Duplicate shader file name detected: " << baseName << ". Skipping " << filePath << "\n";
-                continue;
-            }
-            foundShaderFiles[baseName] = filePath;
-        }
     }
 
 engine::ShaderManager::~ShaderManager() {
@@ -112,14 +99,6 @@ void engine::ShaderManager::loadGraphicsShader(const std::string& name) {
     auto it = graphicsShaderMap.find(name);
     if (it != graphicsShaderMap.end()) {
         GraphicsShader* shader = it->second;
-        auto resolveStage = [&](ShaderStageInfo& stage) {
-            if (!std::filesystem::exists(stage.path)) {
-                std::string mapped = getShaderFilePath(stage.path);
-                if (!mapped.empty()) stage.path = mapped;
-            }
-        };
-        resolveStage(shader->vertex);
-        resolveStage(shader->fragment);
         shader->createDescriptorSetLayout(renderer);
         shader->createPipeline(renderer);
         shader->createDescriptorPool(renderer);
@@ -132,10 +111,6 @@ void engine::ShaderManager::loadComputeShader(const std::string& name) {
     auto it = computeShaderMap.find(name);
     if (it != computeShaderMap.end()) {
         ComputeShader* shader = it->second;
-        if (!std::filesystem::exists(shader->compute.path)) {
-            std::string mapped = getShaderFilePath(shader->compute.path);
-            if (!mapped.empty()) shader->compute.path = mapped;
-        }
         shader->createDescriptorSetLayout(renderer);
         shader->createPipeline(renderer);
         shader->createDescriptorPool(renderer);
@@ -168,22 +143,6 @@ void engine::ShaderManager::addComputeShader(ComputeShader shader) {
     computeShaderMap[name] = rawPtr;
 }
 
-void engine::ShaderManager::editGraphicsShader(const std::string& name, const ShaderStageInfo& newVertex, const ShaderStageInfo& newFragment) {
-    auto shader = getGraphicsShader(name);
-    if (shader) {
-        shader->vertex = newVertex;
-        shader->fragment = newFragment;
-        loadGraphicsShader(name);
-    }
-}
-
-void engine::ShaderManager::editComputeShader(const std::string& name, const ShaderStageInfo& newCompute) {
-    auto shader = getComputeShader(name);
-    if (shader) {
-        shader->compute = newCompute;
-        loadComputeShader(name);
-    }
-}
 
 engine::GraphicsShader* engine::ShaderManager::getGraphicsShader(const std::string& name) const {
     auto it = graphicsShaderMap.find(name);
@@ -201,12 +160,16 @@ engine::ComputeShader* engine::ShaderManager::getComputeShader(const std::string
     return nullptr;
 }
 
-std::string engine::ShaderManager::getShaderFilePath(const std::string& name) const {
-    auto it = foundShaderFiles.find(name);
-    if (it != foundShaderFiles.end()) {
-        return it->second;
+std::vector<char> engine::ShaderManager::getShaderBytes(const std::string& name) const {
+    const auto& shaders = getEmbedded_shader();
+    auto it = shaders.find(name);
+    if (it != shaders.end()) {
+        const auto& asset = it->second;
+        return std::vector<char>(reinterpret_cast<const char*>(asset.data),
+                                reinterpret_cast<const char*>(asset.data) + asset.size);
     }
-    return "";
+    std::cerr << "Warning: Embedded shader not found: " << name << "\n";
+    return {};
 }
 
 std::vector<engine::GraphicsShader> engine::ShaderManager::getGraphicsShaders() const {
@@ -246,10 +209,8 @@ namespace {
 
 void engine::ShaderManager::createDefaultShaders() {
     renderPasses.clear();
-    auto shaderPath = [&](const std::string& baseName) {
-        auto mapped = getShaderFilePath(baseName);
-        if (!mapped.empty()) return mapped;
-        return (std::filesystem::path(shaderDirectory) / baseName).string();
+    auto shaderPath = [&](const std::string& baseName) -> std::string {
+        return baseName;
     };
 
     // Define Render Passes
@@ -2477,9 +2438,9 @@ void engine::ComputeShader::createDescriptorSetLayout(engine::Renderer* renderer
 
 void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
     VkDevice device = renderer->getDevice();
-    std::vector<char> vertShaderCode = readFile(vertex.path);
+    std::vector<char> vertShaderCode = renderer->getShaderManager()->getShaderBytes(vertex.path);
     VkShaderModule vertShaderModule = ShaderManager::createShaderModule(vertShaderCode, renderer);
-    
+
     VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -2492,7 +2453,7 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
 
     VkShaderModule fragShaderModule = VK_NULL_HANDLE;
     if (!fragment.path.empty()) {
-        std::vector<char> fragShaderCode = readFile(fragment.path);
+        std::vector<char> fragShaderCode = renderer->getShaderManager()->getShaderBytes(fragment.path);
         fragShaderModule = ShaderManager::createShaderModule(fragShaderCode, renderer);
         VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -2644,7 +2605,7 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
 
 void engine::ComputeShader::createPipeline(Renderer* renderer) {
     VkDevice device = renderer->getDevice();
-    std::vector<char> compShaderCode = readFile(compute.path);
+    std::vector<char> compShaderCode = renderer->getShaderManager()->getShaderBytes(compute.path);
     VkShaderModule compShaderModule = ShaderManager::createShaderModule(compShaderCode, renderer);
     VkPipelineShaderStageCreateInfo compShaderStageInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,

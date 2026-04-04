@@ -1984,7 +1984,7 @@ void engine::Renderer::ensureFallbackShadowCubeTexture() {
     );
 
     Texture fallbackCube = {
-        .path = "fallback_shadow_cube",
+        .name = "fallback_shadow_cube",
         .image = cubeImage,
         .imageView = cubeView,
         .imageMemory = cubeMemory,
@@ -2056,7 +2056,7 @@ void engine::Renderer::ensureFallback2DTexture() {
     );
 
     Texture fallbackTex = {
-        .path = "fallback_white_2d",
+        .name = "fallback_white_2d",
         .image = texImage,
         .imageView = texView,
         .imageMemory = texMemory,

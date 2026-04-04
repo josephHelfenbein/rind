@@ -245,7 +245,7 @@ namespace engine {
     
     class ShaderManager {
     public:
-        ShaderManager(engine::Renderer* renderer, const std::string& shaderDirectory = "src/assets/shaders/compiled/");
+        ShaderManager(engine::Renderer* renderer);
         ~ShaderManager();
 
         void addGraphicsShader(GraphicsShader shader);
@@ -258,13 +258,10 @@ namespace engine {
         void loadGraphicsShader(const std::string& name);
         void loadComputeShader(const std::string& name);
 
-        void editGraphicsShader(const std::string& name, const ShaderStageInfo& newVertex, const ShaderStageInfo& newFragment);
-        void editComputeShader(const std::string& name, const ShaderStageInfo& newCompute);
-
         GraphicsShader* getGraphicsShader(const std::string& name) const;
         ComputeShader* getComputeShader(const std::string& name) const;
 
-        std::string getShaderFilePath(const std::string& name) const;
+        std::vector<char> getShaderBytes(const std::string& name) const;
 
         void loadSMAATextures();
         void createDefaultShaders();
@@ -283,10 +280,6 @@ namespace engine {
         std::unordered_map<std::string, ComputeShader*> computeShaderMap;
 
         std::vector<std::shared_ptr<PassInfo>> renderPasses;
-
-        std::unordered_map<std::string, std::string> foundShaderFiles;
-
-        std::string shaderDirectory;
 
         engine::Renderer* renderer;
         RenderGraph renderGraph;

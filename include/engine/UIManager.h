@@ -11,7 +11,6 @@
 #include <engine/PushConstants.h>
 #include <external/freetype/include/ft2build.h>
 #include FT_FREETYPE_H
-#include <engine/io.h>
 #include <variant>
 #include <functional>
 #include <string>
@@ -324,7 +323,7 @@ namespace engine {
 
     class UIManager {
     public:
-        UIManager(Renderer* renderer, const std::string& fontDirectory);
+        UIManager(Renderer* renderer);
         ~UIManager();
 
         void addObject(UIObject* object);
@@ -390,7 +389,6 @@ namespace engine {
         std::unordered_map<std::string, Font> fonts;
         UIObject* cursor = nullptr;
         bool showCursor = false;
-        std::string fontDirectory = "";
         std::vector<std::string> pendingRemovals;
     };
 };

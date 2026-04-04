@@ -18,7 +18,7 @@ namespace engine {
 
     class AudioManager {
     public:
-        AudioManager(Renderer* renderer, const std::string& audioDirectory);
+        AudioManager(Renderer* renderer);
         ~AudioManager();
 
         void update();
@@ -26,11 +26,9 @@ namespace engine {
 
         void updateListener(const glm::vec3& position, const glm::vec3& forward, const glm::vec3& up);
 
-        bool loadSound(const std::string& name, const std::string& filePath);
-        
         void playSound(const std::string& name, float volume = 1.0f, float pitchVariation = 0.0f, bool persistent = false);
         void playSound3D(const std::string& name, const glm::vec3& position, float volume = 1.0f, float pitchVariation = 0.0f);
-        
+
         void stopSound(const std::string& name);
         void stopAllSounds();
 
@@ -39,8 +37,6 @@ namespace engine {
     private:
         ma_engine m_engine;
         Renderer* renderer;
-        std::string audioDirectory;
-        std::unordered_map<std::string, std::string> m_soundPaths;
         std::unordered_map<std::string, std::unique_ptr<SoundData>> m_sounds;
         std::vector<std::unique_ptr<SoundData>> m_oneShots;
         std::vector<std::unique_ptr<SoundData>> m_persistentSounds;

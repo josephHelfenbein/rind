@@ -3,7 +3,6 @@
 #include <vector>
 #include <string>
 #include <fstream>
-#include <filesystem>
 #include <stdexcept>
 #include <glm/glm.hpp>
 
@@ -26,14 +25,6 @@ namespace engine {
             throw std::runtime_error("Failed to read file: " + filename);
         }
         return buffer;
-    }
-
-    static std::vector<std::string> scanDirectory(const std::string& directoryPath) {
-        std::vector<std::string> fileList;
-        for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
-            fileList.push_back(entry.path().string());
-        }
-        return fileList;
     }
 
     static inline void remapCoord(glm::vec3& coord) {

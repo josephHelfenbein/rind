@@ -1,4 +1,6 @@
 #include <engine/ModelManager.h>
+#include <engine/EmbeddedAssets.h>
+#include <model/model_registry.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -8,9 +10,10 @@
 
 engine::Model::Model(
     const std::string& name,
-    const std::string& filepath,
+    const unsigned char* embeddedData,
+    size_t embeddedSize,
     Renderer* renderer
-) : name(name), filepath(filepath), renderer(renderer) {}
+) : name(name), embeddedData(embeddedData), embeddedSize(embeddedSize), renderer(renderer) {}
 
 engine::Model::~Model() {
     VkDevice device = renderer->getDevice();
@@ -40,26 +43,26 @@ engine::Model::~Model() {
     }
 }
 
-void engine::Model::loadFromFile() {
-    const std::filesystem::path pathObj(filepath);
-    auto dataResult = fastgltf::GltfDataBuffer::FromPath(pathObj);
+void engine::Model::loadFromMemory() {
+    auto dataResult = fastgltf::GltfDataBuffer::FromBytes(
+        reinterpret_cast<const std::byte*>(embeddedData), embeddedSize);
     if (!dataResult) {
-        throw std::runtime_error("Failed to load model file: " + filepath + " Error: " + fastgltf::getErrorName(dataResult.error()).data());
+        throw std::runtime_error("Failed to load embedded model: " + name + " Error: " + fastgltf::getErrorName(dataResult.error()).data());
     }
     fastgltf::GltfDataBuffer data = std::move(dataResult.get());
     fastgltf::Parser parser{};
-    constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
-    auto load = parser.loadGltfBinary(data, pathObj.parent_path(), gltfOptions);
+    constexpr auto gltfOptions = fastgltf::Options::None;
+    auto load = parser.loadGltfBinary(data, std::filesystem::path{}, gltfOptions);
     if (!load) {
-        throw std::runtime_error("Failed to parse model file: " + filepath + " Error: " + fastgltf::getErrorName(load.error()).data());
+        throw std::runtime_error("Failed to parse embedded model: " + name + " Error: " + fastgltf::getErrorName(load.error()).data());
     }
     fastgltf::Asset gltf = std::move(load.get());
     if (gltf.meshes.empty()) {
-        throw std::runtime_error("Model file contains no meshes: " + filepath);
+        throw std::runtime_error("Embedded model contains no meshes: " + name);
     }
     const auto& mesh = gltf.meshes[0];
     if (mesh.primitives.empty()) {
-        throw std::runtime_error("Mesh contains no primitives: " + filepath);
+        throw std::runtime_error("Mesh contains no primitives: " + name);
     }
     std::unordered_map<size_t, int> nodeToJointIndex;
     if (!gltf.skins.empty()) {
@@ -147,7 +150,7 @@ void engine::Model::loadFromFile() {
                     channel.path = AnimationChannel::Path::SCALE;
                     break;
                 default:
-                    std::cerr << "Warning: Unsupported animation channel path in model " << filepath << "\n";
+                    std::cerr << "Warning: Unsupported animation channel path in model " << name << "\n";
                     continue;
             };
             channels.push_back(channel);
@@ -167,7 +170,7 @@ void engine::Model::loadFromFile() {
                     keyframes.interpolation = AnimationSampler::Interpolation::CUBICSPLINE;
                     break;
                 default:
-                    std::cerr << "Warning: Unsupported animation sampler interpolation in model " << filepath << "\n";
+                    std::cerr << "Warning: Unsupported animation sampler interpolation in model " << name << "\n";
                     continue;
             };
             const fastgltf::Accessor& inputAccessor = gltf.accessors[sampler.inputAccessor];
@@ -194,7 +197,7 @@ void engine::Model::loadFromFile() {
                         keyframes.outputValues.push_back(value);
                     });
             } else {
-                std::cerr << "Warning: Unsupported animation output accessor type in model " << filepath << "\n";
+                std::cerr << "Warning: Unsupported animation output accessor type in model " << name << "\n";
                 continue;
             }
             samplers.push_back(keyframes);
@@ -211,12 +214,12 @@ void engine::Model::loadFromFile() {
     bool hasSkinningData = false;
     for (const auto& primitive : mesh.primitives) {
         if (!primitive.indicesAccessor.has_value()) {
-            std::cerr << "Warning: Primitive in model " << filepath << " has no indices. Skipping.\n";
+            std::cerr << "Warning: Primitive in model " << name << " has no indices. Skipping.\n";
             continue;
         }
         const auto possitionAttr = primitive.findAttribute("POSITION");
         if (possitionAttr == primitive.attributes.end()) {
-            std::cerr << "Warning: Primitive in model " << filepath << " has no POSITION attribute. Skipping.\n";
+            std::cerr << "Warning: Primitive in model " << name << " has no POSITION attribute. Skipping.\n";
             continue;
         }
         const fastgltf::Accessor& indexAccessor = gltf.accessors[primitive.indicesAccessor.value()];
@@ -375,7 +378,7 @@ void engine::Model::loadFromFile() {
         }
     }
     if (tempVertices.empty() || tempIndices.empty()) {
-        throw std::runtime_error("No valid geometry found in model: " + filepath);
+        throw std::runtime_error("No valid geometry found in model: " + name);
     }
     if (hasSkinningData && !skinningData.empty()) {
         std::tie(skinningBuffer, skinningBufferMemory) = renderer->createBuffer(
@@ -416,25 +419,25 @@ void engine::Model::loadFromFile() {
 }
 
 std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> engine::Model::loadVertsForModel() {
-    const std::filesystem::path pathObj(filepath);
-    auto dataResult = fastgltf::GltfDataBuffer::FromPath(pathObj);
+    auto dataResult = fastgltf::GltfDataBuffer::FromBytes(
+        reinterpret_cast<const std::byte*>(embeddedData), embeddedSize);
     if (!dataResult) {
-        throw std::runtime_error("Failed to load model file: " + filepath + " Error: " + fastgltf::getErrorName(dataResult.error()).data());
+        throw std::runtime_error("Failed to load embedded model: " + name + " Error: " + fastgltf::getErrorName(dataResult.error()).data());
     }
     fastgltf::GltfDataBuffer data = std::move(dataResult.get());
     fastgltf::Parser parser{};
-    constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
-    auto load = parser.loadGltfBinary(data, pathObj.parent_path(), gltfOptions);
+    constexpr auto gltfOptions = fastgltf::Options::None;
+    auto load = parser.loadGltfBinary(data, std::filesystem::path{}, gltfOptions);
     if (!load) {
-        throw std::runtime_error("Failed to parse model file: " + filepath + " Error: " + fastgltf::getErrorName(load.error()).data());
+        throw std::runtime_error("Failed to parse embedded model: " + name + " Error: " + fastgltf::getErrorName(load.error()).data());
     }
     fastgltf::Asset gltf = std::move(load.get());
     if (gltf.meshes.empty()) {
-        throw std::runtime_error("Model file contains no meshes: " + filepath);
+        throw std::runtime_error("Embedded model contains no meshes: " + name);
     }
     const auto& mesh = gltf.meshes[0];
     if (mesh.primitives.empty()) {
-        throw std::runtime_error("Mesh contains no primitives: " + filepath);
+        throw std::runtime_error("Mesh contains no primitives: " + name);
     }
     std::vector<glm::vec3> vertices;
     std::vector<uint32_t> indices;
@@ -460,7 +463,7 @@ std::pair<std::vector<glm::vec3>, std::vector<uint32_t>> engine::Model::loadVert
     return {vertices, indices};
 }
 
-engine::ModelManager::ModelManager(Renderer* renderer, const std::string& modelDirectory) : renderer(renderer), modelDirectory(modelDirectory) {
+engine::ModelManager::ModelManager(Renderer* renderer) : renderer(renderer) {
     renderer->registerModelManager(this);
 }
 
@@ -472,27 +475,14 @@ engine::ModelManager::~ModelManager() {
 }
 
 void engine::ModelManager::init() {
-    auto scanAndLoadModels = [&](auto& self, const std::string& directory, std::string parentPath) -> void{
-        std::vector<std::string> modelFiles = engine::scanDirectory(directory);
-        for (const auto& filePath : modelFiles) {
-            if (std::filesystem::is_directory(filePath)) {
-                self(self, filePath, parentPath + std::filesystem::path(filePath).filename().string() + "_");
-                continue;
-            }
-            if (!std::filesystem::is_regular_file(filePath)) {
-                continue;
-            }
-            std::string fileName = std::filesystem::path(filePath).filename().string();
-            std::string modelBaseName = std::filesystem::path(fileName).stem().string();
-            std::string modelName = parentPath + modelBaseName;
-            if (models.find(modelName) != models.end()) {
-                std::cout << "Warning: Duplicate model name detected: " << modelName << ". Skipping " << filePath << "\n";
-                continue;
-            }
-            Model* model = new Model(modelName, filePath, renderer);
-            model->loadFromFile();
-            models[modelName] = model;
+    const auto& embeddedModels = getEmbedded_model();
+    for (const auto& [modelName, asset] : embeddedModels) {
+        if (models.find(modelName) != models.end()) {
+            std::cout << "Warning: Duplicate model name detected: " << modelName << ". Skipping.\n";
+            continue;
         }
-    };
-    scanAndLoadModels(scanAndLoadModels, modelDirectory, "");
+        Model* model = new Model(modelName, asset.data, asset.size, renderer);
+        model->loadFromMemory();
+        models[modelName] = model;
+    }
 }

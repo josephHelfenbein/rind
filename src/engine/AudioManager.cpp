@@ -1,33 +1,33 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include <engine/AudioManager.h>
-#include <engine/io.h>
+#include <engine/EmbeddedAssets.h>
+#include <audio/audio_registry.h>
 #include <iostream>
-#include <filesystem>
 
-engine::AudioManager::AudioManager(Renderer* renderer, const std::string& audioDirectory) : renderer(renderer), audioDirectory(std::move(audioDirectory)) {
+engine::AudioManager::AudioManager(Renderer* renderer) : renderer(renderer) {
     renderer->registerAudioManager(this);
     ma_result result = ma_engine_init(NULL, &m_engine);
     if (result != MA_SUCCESS) {
         throw std::runtime_error("Failed to initialize audio engine");
     }
     m_initialized = true;
-    std::vector<std::string> audioFiles = scanDirectory(this->audioDirectory);
-    for (const auto& filePath : audioFiles) {
-        if (!std::filesystem::is_regular_file(filePath)) {
+
+    const auto& embeddedAudio = getEmbedded_audio();
+    for (const auto& [name, asset] : embeddedAudio) {
+        ma_resource_manager* pResourceManager = ma_engine_get_resource_manager(&m_engine);
+        result = ma_resource_manager_register_encoded_data(pResourceManager, name.c_str(), asset.data, asset.size);
+        if (result != MA_SUCCESS) {
+            std::cerr << "Failed to register embedded audio: " << name << std::endl;
             continue;
         }
-        std::filesystem::path p(filePath);
-        std::string baseName = p.stem().string(); // strip trailing extension
-        if (m_soundPaths.find(baseName) != m_soundPaths.end()) {
-            std::cout << "Warning: Duplicate audio file name detected: " << baseName << ". Skipping " << filePath << "\n";
+        auto data = std::make_unique<SoundData>();
+        result = ma_sound_init_from_file(&m_engine, name.c_str(), 0, NULL, NULL, &data->sound);
+        if (result != MA_SUCCESS) {
+            std::cerr << "Failed to load sound: " << name << std::endl;
             continue;
         }
-        m_soundPaths[baseName] = filePath;
-    }
-    for (const auto& [name, filePath] : m_soundPaths) {
-        if (!loadSound(name, filePath)) {
-            std::cerr << "Failed to load sound: " << filePath << std::endl;
-        }
+        data->isLoaded = true;
+        m_sounds[name] = std::move(data);
     }
 }
 
@@ -95,29 +95,11 @@ void engine::AudioManager::updateListener(const glm::vec3& position, const glm::
     ma_engine_listener_set_world_up(&m_engine, 0, up.x, up.y, up.z);
 }
 
-bool engine::AudioManager::loadSound(const std::string& name, const std::string& filePath) {
-    if (!m_initialized) return false;
-    auto data = std::make_unique<SoundData>();
-    ma_result result = ma_sound_init_from_file(&m_engine, filePath.c_str(), 0, NULL, NULL, &data->sound);
-    if (result != MA_SUCCESS) {
-        std::cerr << "Failed to load sound: " << filePath << std::endl;
-        return false;
-    }
-    data->isLoaded = true;
-    m_sounds[name] = std::move(data);
-    return true;
-}
-
 void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3& position, float volume, float pitchVariation) {
     if (!m_initialized) return;
-    auto it = m_soundPaths.find(name);
-    if (it == m_soundPaths.end()) {
-        std::cerr << "3D Sound not found: " << name << std::endl;
-        return;
-    }
     auto data = std::make_unique<SoundData>();
-    ma_result result = ma_sound_init_from_file(&m_engine, it->second.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC, NULL, NULL, &data->sound);
-    
+    ma_result result = ma_sound_init_from_file(&m_engine, name.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC, NULL, NULL, &data->sound);
+
     if (result != MA_SUCCESS) {
         std::cerr << "Failed to init 3D sound: " << name << std::endl;
         return;
@@ -128,7 +110,7 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
     ma_sound_set_volume(&data->sound, volume);
     ma_sound_set_min_distance(&data->sound, 7.0f);
     ma_sound_set_rolloff(&data->sound, 0.3f);
-    
+
     if (pitchVariation != 0.0f) {
         float vary = dist(rng) * pitchVariation;
         ma_sound_set_pitch(&data->sound, 1.0f + vary);
@@ -140,14 +122,9 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
 
 void engine::AudioManager::playSound(const std::string& name, float volume, float pitchVariation, bool persistent) {
     if (!m_initialized) return;
-    auto it = m_soundPaths.find(name);
-    if (it == m_soundPaths.end()) {
-        std::cerr << "Sound not found: " << name << std::endl;
-        return;
-    }
     auto data = std::make_unique<SoundData>();
-    ma_result result = ma_sound_init_from_file(&m_engine, it->second.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC, NULL, NULL, &data->sound);
-    
+    ma_result result = ma_sound_init_from_file(&m_engine, name.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC, NULL, NULL, &data->sound);
+
     if (result != MA_SUCCESS) {
         std::cerr << "Failed to init sound: " << name << std::endl;
         return;

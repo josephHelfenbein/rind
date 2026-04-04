@@ -11,6 +11,7 @@
 #include <engine/UIManager.h>
 #include <engine/InputManager.h>
 #include <engine/EntityManager.h>
+#include <engine/io.h>
 
 namespace engine {
     class SettingsManager {

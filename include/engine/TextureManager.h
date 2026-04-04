@@ -8,7 +8,6 @@
 namespace engine {
     struct Texture {
         std::string name;
-        std::string path;
         VkImage image = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
         VkDeviceMemory imageMemory = VK_NULL_HANDLE;
@@ -24,17 +23,16 @@ namespace engine {
 
     class TextureManager {
     public:
-        TextureManager(engine::Renderer* renderer, const std::string& textureDirectory);
+        TextureManager(engine::Renderer* renderer);
         ~TextureManager();
 
         void init();
-        
+
         Texture* getTexture(const std::string& name);
         void registerTexture(const std::string& name, const Texture& texture);
 
     private:
         std::unordered_map<std::string, Texture> textures;
         engine::Renderer* renderer;
-        std::string textureDirectory;
     };
 };

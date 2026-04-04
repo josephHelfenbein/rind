@@ -145,9 +145,9 @@ file(GLOB_RECURSE HLSL_SOURCE_FILES
 
 set(SPIRV_BINARY_FILES)
 
+# Compile HLSL shaders to SPIR-V using dxc
 foreach(HLSL ${HLSL_SOURCE_FILES})
   get_filename_component(FILE_NAME ${HLSL} NAME)
-
   if(FILE_NAME MATCHES "\\.vert\\.hlsl$")
     set(SHADER_PROFILE "vs_6_0")
   elseif(FILE_NAME MATCHES "\\.frag\\.hlsl$")
@@ -176,8 +176,133 @@ add_custom_target(
     DEPENDS ${SPIRV_BINARY_FILES}
     COMMENT "Compiling shaders"
 )
-
 add_dependencies(${PROJECT_NAME} Shaders)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(GENERATED_ASSETS_DIR "${CMAKE_BINARY_DIR}/generated/assets")
+file(MAKE_DIRECTORY ${GENERATED_ASSETS_DIR})
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${GENERATED_ASSETS_DIR}
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+set(ALL_EMBEDDED_SOURCES "")
+set(ALL_EMBEDDED_OUTPUTS "")
+
+# Embed assets into C++ source files
+function(embed_asset_category)
+    cmake_parse_arguments(EA "" "CATEGORY;DIRECTORY;RECURSIVE" "EXTENSIONS" ${ARGN})
+
+    set(ASSET_FILES "")
+    foreach(EXT ${EA_EXTENSIONS})
+        if(EA_RECURSIVE)
+            file(GLOB_RECURSE FOUND "${EA_DIRECTORY}/${EXT}")
+        else()
+            file(GLOB FOUND "${EA_DIRECTORY}/${EXT}")
+        endif()
+        list(APPEND ASSET_FILES ${FOUND})
+    endforeach()
+
+    set(CATEGORY_DIR "${GENERATED_ASSETS_DIR}/${EA_CATEGORY}")
+    file(MAKE_DIRECTORY ${CATEGORY_DIR})
+    set(CATEGORY_NAMES "")
+    set(CATEGORY_SOURCES "")
+
+    foreach(ASSET_FILE ${ASSET_FILES})
+        file(RELATIVE_PATH REL_PATH "${EA_DIRECTORY}" "${ASSET_FILE}")
+        get_filename_component(REL_DIR "${REL_PATH}" DIRECTORY)
+        get_filename_component(FILE_NAME "${REL_PATH}" NAME)
+        string(REGEX REPLACE "\\.[^.]+$" "" STEM "${FILE_NAME}")
+
+        if(REL_DIR)
+            string(REPLACE "/" "_" DIR_PREFIX "${REL_DIR}")
+            set(ASSET_NAME "${DIR_PREFIX}_${STEM}")
+        else()
+            set(ASSET_NAME "${STEM}")
+        endif()
+
+        string(REGEX REPLACE "[^a-zA-Z0-9]" "_" SAFE_NAME "${ASSET_NAME}")
+        set(OUT_CPP "${CATEGORY_DIR}/${EA_CATEGORY}_${SAFE_NAME}.cpp")
+        set(OUT_H "${CATEGORY_DIR}/${EA_CATEGORY}_${SAFE_NAME}.h")
+
+        add_custom_command(
+            OUTPUT ${OUT_CPP} ${OUT_H}
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/cmake/embed_asset.py
+                ${ASSET_FILE}
+                ${CATEGORY_DIR}
+                ${ASSET_NAME}
+                ${EA_CATEGORY}
+            DEPENDS ${ASSET_FILE} ${CMAKE_SOURCE_DIR}/cmake/embed_asset.py
+            COMMENT "Embedding ${EA_CATEGORY}: ${ASSET_NAME}"
+            VERBATIM
+        )
+
+        list(APPEND CATEGORY_NAMES "${ASSET_NAME}")
+        list(APPEND CATEGORY_SOURCES ${OUT_CPP})
+    endforeach()
+
+    string(REPLACE ";" "\\;" NAMES_ESCAPED "${CATEGORY_NAMES}")
+    set(REGISTRY_H "${CATEGORY_DIR}/${EA_CATEGORY}_registry.h")
+
+    set(CATEGORY_HEADERS "")
+    foreach(NAME ${CATEGORY_NAMES})
+        string(REGEX REPLACE "[^a-zA-Z0-9]" "_" SAFE "${NAME}")
+        list(APPEND CATEGORY_HEADERS "${CATEGORY_DIR}/${EA_CATEGORY}_${SAFE}.h")
+    endforeach()
+
+    add_custom_command(
+        OUTPUT ${REGISTRY_H}
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/cmake/generate_registry.py
+            ${EA_CATEGORY}
+            ${CATEGORY_DIR}
+            ${CATEGORY_NAMES}
+        DEPENDS ${CATEGORY_HEADERS} ${CMAKE_SOURCE_DIR}/cmake/generate_registry.py
+        COMMENT "Generating ${EA_CATEGORY} registry"
+        VERBATIM
+    )
+
+    set(ALL_EMBEDDED_SOURCES ${ALL_EMBEDDED_SOURCES} ${CATEGORY_SOURCES} PARENT_SCOPE)
+    set(ALL_EMBEDDED_OUTPUTS ${ALL_EMBEDDED_OUTPUTS} ${REGISTRY_H} ${CATEGORY_SOURCES} PARENT_SCOPE)
+endfunction()
+
+embed_asset_category(
+    CATEGORY shader
+    DIRECTORY "${CMAKE_SOURCE_DIR}/src/assets/shaders/compiled"
+    EXTENSIONS "*.spv"
+    RECURSIVE OFF
+)
+embed_asset_category(
+    CATEGORY font
+    DIRECTORY "${CMAKE_SOURCE_DIR}/src/assets/fonts"
+    EXTENSIONS "*.ttf" "*.otf"
+    RECURSIVE ON
+)
+embed_asset_category(
+    CATEGORY audio
+    DIRECTORY "${CMAKE_SOURCE_DIR}/src/assets/audio"
+    EXTENSIONS "*.wav"
+    RECURSIVE OFF
+)
+embed_asset_category(
+    CATEGORY model
+    DIRECTORY "${CMAKE_SOURCE_DIR}/src/assets/models"
+    EXTENSIONS "*.glb"
+    RECURSIVE ON
+)
+embed_asset_category(
+    CATEGORY texture
+    DIRECTORY "${CMAKE_SOURCE_DIR}/src/assets/textures"
+    EXTENSIONS "*.png" "*.jpg" "*.hdr"
+    RECURSIVE ON
+)
+
+target_sources(${PROJECT_NAME} PRIVATE ${ALL_EMBEDDED_SOURCES})
+add_custom_target(EmbeddedAssets DEPENDS ${ALL_EMBEDDED_OUTPUTS})
+add_dependencies(EmbeddedAssets Shaders)
+add_dependencies(${PROJECT_NAME} EmbeddedAssets)
 
 if(IS_MACOS)
   find_package(Vulkan REQUIRED)

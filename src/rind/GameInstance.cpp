@@ -519,13 +519,13 @@ rind::GameInstance::GameInstance() {
     irradianceManager = std::make_unique<engine::IrradianceManager>(renderer.get());
     inputManager = std::make_unique<engine::InputManager>(renderer.get());
     sceneManager = std::make_unique<engine::SceneManager>(renderer.get(), std::move(scenes));
-    textureManager = std::make_unique<engine::TextureManager>(renderer.get(), "src/assets/textures/");
-    shaderManager = std::make_unique<engine::ShaderManager>(renderer.get(), "src/assets/shaders/compiled/");
-    uiManager = std::make_unique<engine::UIManager>(renderer.get(), "src/assets/fonts/");
-    modelManager = std::make_unique<engine::ModelManager>(renderer.get(), "src/assets/models/");
+    textureManager = std::make_unique<engine::TextureManager>(renderer.get());
+    shaderManager = std::make_unique<engine::ShaderManager>(renderer.get());
+    uiManager = std::make_unique<engine::UIManager>(renderer.get());
+    modelManager = std::make_unique<engine::ModelManager>(renderer.get());
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     volumetricManager = std::make_unique<engine::VolumetricManager>(renderer.get());
-    audioManager = std::make_unique<engine::AudioManager>(renderer.get(), "src/assets/audio/");
+    audioManager = std::make_unique<engine::AudioManager>(renderer.get());
     settingsManager = std::make_unique<engine::SettingsManager>(renderer.get(),
         std::vector<engine::SettingsManager::SettingsDefinition>{
             {

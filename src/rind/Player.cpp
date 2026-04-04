@@ -1234,13 +1234,14 @@ void rind::Player::shoot() {
 
 void rind::Player::throwGrenade() {
     glm::vec3 forward = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    glm::vec3 playerForward = -glm::normalize(glm::vec3(getWorldTransform()[2]));
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     glm::vec3 playerVel = getVelocity();
     Grenade* grenade = new Grenade(
         getEntityManager(),
         this,
-        glm::translate(glm::mat4(1.0f), gunPos + forward * 0.5f + playerVel * 0.05f),
-        forward * 20.0f + glm::vec3(0.0f, 3.0f, 0.0f) + playerVel,
+        glm::translate(glm::mat4(1.0f), gunPos + forward * 0.2f + playerVel * 0.1f + playerForward * 0.5f),
+        forward * 20.0f + glm::vec3(0.0f, 3.0f, 0.0f) + playerVel * 0.25f,
         trailColor,
         6.0f
     );
