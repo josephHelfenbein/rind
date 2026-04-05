@@ -4,6 +4,7 @@ project(Rind)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUNDLE_WINDOWS_RUNTIMES "Bundle required runtime DLLs next to Windows executable and in install package" ON)
+option(BUNDLE_MACOS_RUNTIMES "Bundle required runtime dylibs and Vulkan ICD next to macOS executable" ON)
 
 set(IS_WINDOWS FALSE)
 set(IS_MACOS FALSE)
@@ -515,6 +516,7 @@ if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE /FS)
 endif()
 
+# Bundle Windows runtime DLLs
 if(IS_WINDOWS)
   install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)
 
@@ -577,36 +579,141 @@ if(IS_WINDOWS)
   endif()
 endif()
 
+# Bundle macOS runtime dylibs and Vulkan ICD
 if(IS_MACOS)
   set_target_properties(${PROJECT_NAME} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
-        BUILD_RPATH "@executable_path/../bin/lib"
-        INSTALL_RPATH "@executable_path/../bin/lib"
+        BUILD_RPATH "@executable_path;@executable_path/lib"
+        INSTALL_RPATH "@executable_path;@executable_path/lib"
     )
-  set(_vulkan_loader_candidates)
-  if(VK_SDK_PATH)
-    list(APPEND _vulkan_loader_candidates "${VK_SDK_PATH}/macOS/lib/libvulkan.1.dylib")
-  endif()
-  list(APPEND _vulkan_loader_candidates
-        "/opt/homebrew/opt/vulkan-loader/lib/libvulkan.1.dylib"
-        "/usr/local/opt/vulkan-loader/lib/libvulkan.1.dylib"
-    )
-  set(_vulkan_loader_to_copy "")
-  foreach(_cand IN LISTS _vulkan_loader_candidates)
-    if(EXISTS "${_cand}")
-      set(_vulkan_loader_to_copy "${_cand}")
-      break()
+  if(BUNDLE_MACOS_RUNTIMES)
+    set(_macos_runtime_search_dirs)
+    if(VK_SDK_PATH)
+      list(APPEND _macos_runtime_search_dirs "${VK_SDK_PATH}/macOS/lib")
     endif()
-  endforeach()
-  if(_vulkan_loader_to_copy)
+    if(DEFINED ENV{VULKAN_SDK})
+      list(APPEND _macos_runtime_search_dirs "$ENV{VULKAN_SDK}/macOS/lib")
+    endif()
+    list(APPEND _macos_runtime_search_dirs
+          "/opt/homebrew/lib"
+          "/opt/homebrew/opt/glfw/lib"
+          "/opt/homebrew/opt/freetype/lib"
+          "/opt/homebrew/opt/libomp/lib"
+          "/opt/homebrew/opt/vulkan-loader/lib"
+          "/opt/homebrew/opt/molten-vk/lib"
+          "/usr/local/lib"
+          "/usr/local/opt/glfw/lib"
+          "/usr/local/opt/freetype/lib"
+          "/usr/local/opt/libomp/lib"
+          "/usr/local/opt/vulkan-loader/lib"
+          "/usr/local/opt/molten-vk/lib"
+      )
+
+    set(_macos_existing_search_dirs)
+    foreach(_dir IN LISTS _macos_runtime_search_dirs)
+      if(IS_DIRECTORY "${_dir}")
+        list(APPEND _macos_existing_search_dirs "${_dir}")
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _macos_existing_search_dirs)
+
+    set(_macos_extra_runtime_libs)
+
+    set(_vulkan_loader_candidates)
+    if(VK_SDK_PATH)
+      list(APPEND _vulkan_loader_candidates "${VK_SDK_PATH}/macOS/lib/libvulkan.1.dylib")
+    endif()
+    if(DEFINED ENV{VULKAN_SDK})
+      list(APPEND _vulkan_loader_candidates "$ENV{VULKAN_SDK}/macOS/lib/libvulkan.1.dylib")
+    endif()
+    list(APPEND _vulkan_loader_candidates
+          "/opt/homebrew/opt/vulkan-loader/lib/libvulkan.1.dylib"
+          "/usr/local/opt/vulkan-loader/lib/libvulkan.1.dylib"
+      )
+    set(_vulkan_loader_to_copy "")
+    foreach(_cand IN LISTS _vulkan_loader_candidates)
+      if(EXISTS "${_cand}")
+        set(_vulkan_loader_to_copy "${_cand}")
+        list(APPEND _macos_extra_runtime_libs "${_cand}")
+        break()
+      endif()
+    endforeach()
+    if(NOT _vulkan_loader_to_copy)
+      message(WARNING "BUNDLE_MACOS_RUNTIMES=ON but libvulkan.1.dylib was not found. Set VK_SDK_PATH/VULKAN_SDK or install vulkan-loader.")
+    endif()
+
+    set(_moltenvk_candidates)
+    if(VK_SDK_PATH)
+      list(APPEND _moltenvk_candidates "${VK_SDK_PATH}/macOS/lib/libMoltenVK.dylib")
+    endif()
+    if(DEFINED ENV{VULKAN_SDK})
+      list(APPEND _moltenvk_candidates "$ENV{VULKAN_SDK}/macOS/lib/libMoltenVK.dylib")
+    endif()
+    list(APPEND _moltenvk_candidates
+          "/opt/homebrew/opt/molten-vk/lib/libMoltenVK.dylib"
+          "/usr/local/opt/molten-vk/lib/libMoltenVK.dylib"
+      )
+    set(_moltenvk_to_copy "")
+    foreach(_cand IN LISTS _moltenvk_candidates)
+      if(EXISTS "${_cand}")
+        set(_moltenvk_to_copy "${_cand}")
+        list(APPEND _macos_extra_runtime_libs "${_cand}")
+        break()
+      endif()
+    endforeach()
+    if(NOT _moltenvk_to_copy)
+      message(WARNING "BUNDLE_MACOS_RUNTIMES=ON but libMoltenVK.dylib was not found. Set VK_SDK_PATH/VULKAN_SDK or install molten-vk.")
+    endif()
+
+    set(_moltenvk_icd_candidates)
+    if(VK_SDK_PATH)
+      list(APPEND _moltenvk_icd_candidates "${VK_SDK_PATH}/macOS/share/vulkan/icd.d/MoltenVK_icd.json")
+    endif()
+    if(DEFINED ENV{VULKAN_SDK})
+      list(APPEND _moltenvk_icd_candidates "$ENV{VULKAN_SDK}/share/vulkan/icd.d/MoltenVK_icd.json")
+      list(APPEND _moltenvk_icd_candidates "$ENV{VULKAN_SDK}/macOS/share/vulkan/icd.d/MoltenVK_icd.json")
+    endif()
+    list(APPEND _moltenvk_icd_candidates
+          "/opt/homebrew/share/vulkan/icd.d/MoltenVK_icd.json"
+          "/usr/local/share/vulkan/icd.d/MoltenVK_icd.json"
+      )
+    set(_moltenvk_icd_source "")
+    foreach(_cand IN LISTS _moltenvk_icd_candidates)
+      if(EXISTS "${_cand}")
+        set(_moltenvk_icd_source "${_cand}")
+        break()
+      endif()
+    endforeach()
+
+    set(_moltenvk_api_version "1.2.0")
+    if(_moltenvk_icd_source)
+      file(READ "${_moltenvk_icd_source}" _moltenvk_icd_contents)
+      string(REGEX MATCH "\"api_version\"[ \t]*:[ \t]*\"([^\"]+)\"" _api_match "${_moltenvk_icd_contents}")
+      if(CMAKE_MATCH_1)
+        set(_moltenvk_api_version "${CMAKE_MATCH_1}")
+      endif()
+    endif()
+
+    set(_moltenvk_icd_generated "${CMAKE_BINARY_DIR}/generated/MoltenVK_icd.json")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+    file(WRITE "${_moltenvk_icd_generated}" "{\n    \"file_format_version\": \"1.0.0\",\n    \"ICD\": {\n        \"library_path\": \"../lib/libMoltenVK.dylib\",\n        \"api_version\": \"${_moltenvk_api_version}\",\n        \"is_portability_driver\": true\n    }\n}\n")
+
+    set(_macos_bundle_script "${CMAKE_BINARY_DIR}/cmake/macos_bundle_runtime.cmake")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cmake")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/macos_bundle_runtime.cmake.in" "${_macos_bundle_script}" @ONLY)
+
+    string(REPLACE ";" "|" _macos_search_dirs_pipe "${_macos_existing_search_dirs}")
+    string(REPLACE ";" "|" _macos_extra_libs_pipe "${_macos_extra_runtime_libs}")
+
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin/lib
-            COMMAND ${CMAKE_COMMAND} -E echo "Copying libvulkan from ${_vulkan_loader_to_copy}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_vulkan_loader_to_copy}" "${CMAKE_SOURCE_DIR}/bin/lib/libvulkan.1.dylib"
-        )
-  else()
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Warning: libvulkan.1.dylib not found; set VK_SDK_PATH or install vulkan-loader"
+            COMMAND ${CMAKE_COMMAND}
+                -DAPP_PATH="$<TARGET_FILE:${PROJECT_NAME}>"
+                -DAPP_DIR="$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+                -DSEARCH_DIRS_PIPE="${_macos_search_dirs_pipe}"
+                -DEXTRA_LIBS_PIPE="${_macos_extra_libs_pipe}"
+                -DMOLTENVK_ICD_TEMPLATE="${_moltenvk_icd_generated}"
+                -P "${_macos_bundle_script}"
+            COMMENT "Bundling macOS runtime dylibs and Vulkan ICD"
         )
   endif()
 endif()

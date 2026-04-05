@@ -1,0 +1,130 @@
+if(NOT DEFINED APP_PATH OR APP_PATH STREQUAL "" OR NOT EXISTS "${APP_PATH}")
+  message(FATAL_ERROR "APP_PATH is missing or does not exist: '${APP_PATH}'")
+endif()
+if(NOT DEFINED APP_DIR OR APP_DIR STREQUAL "")
+  message(FATAL_ERROR "APP_DIR was not provided")
+endif()
+
+set(SEARCH_DIRS "")
+if(DEFINED SEARCH_DIRS_PIPE AND NOT SEARCH_DIRS_PIPE STREQUAL "")
+  string(REPLACE "|" ";" SEARCH_DIRS "${SEARCH_DIRS_PIPE}")
+endif()
+
+set(EXTRA_LIBS "")
+if(DEFINED EXTRA_LIBS_PIPE AND NOT EXTRA_LIBS_PIPE STREQUAL "")
+  string(REPLACE "|" ";" EXTRA_LIBS "${EXTRA_LIBS_PIPE}")
+endif()
+
+set(APP_LIB_DIR "${APP_DIR}/lib")
+file(MAKE_DIRECTORY "${APP_LIB_DIR}")
+
+file(GET_RUNTIME_DEPENDENCIES
+  EXECUTABLES "${APP_PATH}"
+  RESOLVED_DEPENDENCIES_VAR RESOLVED_DEPS
+  UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED_DEPS
+  DIRECTORIES ${SEARCH_DIRS}
+  PRE_EXCLUDE_REGEXES
+    "^/System/Library/.*"
+    "^/usr/lib/.*"
+)
+
+if(UNRESOLVED_DEPS)
+  message(WARNING "Unresolved runtime dependencies for ${APP_PATH}: ${UNRESOLVED_DEPS}")
+endif()
+
+set(ALL_DEPS ${RESOLVED_DEPS})
+foreach(_lib IN LISTS EXTRA_LIBS)
+  if(EXISTS "${_lib}")
+    list(APPEND ALL_DEPS "${_lib}")
+  endif()
+endforeach()
+
+set(_original_dep_paths "")
+set(_bundled_dep_paths "")
+foreach(_dep IN LISTS ALL_DEPS)
+  get_filename_component(_dep_name "${_dep}" NAME)
+  if(NOT _dep_name STREQUAL "")
+    set(_dep_dst "${APP_LIB_DIR}/${_dep_name}")
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_dep}" "${_dep_dst}"
+      RESULT_VARIABLE _copy_result
+    )
+    if(_copy_result EQUAL 0)
+      list(APPEND _original_dep_paths "${_dep}")
+      list(APPEND _bundled_dep_paths "${_dep_dst}")
+    endif()
+  endif()
+endforeach()
+
+list(LENGTH _original_dep_paths _dep_count)
+if(_dep_count GREATER 0)
+  math(EXPR _last_dep_index "${_dep_count} - 1")
+
+  foreach(_idx RANGE ${_last_dep_index})
+    list(GET _original_dep_paths ${_idx} _old_dep)
+    list(GET _bundled_dep_paths ${_idx} _bundled_dep)
+    get_filename_component(_dep_name "${_bundled_dep}" NAME)
+
+    execute_process(
+      COMMAND install_name_tool -change "${_old_dep}" "@executable_path/lib/${_dep_name}" "${APP_PATH}"
+      RESULT_VARIABLE _change_result
+      OUTPUT_QUIET
+      ERROR_QUIET
+    )
+  endforeach()
+
+  foreach(_lib IN LISTS _bundled_dep_paths)
+    get_filename_component(_dep_name "${_lib}" NAME)
+
+    execute_process(
+      COMMAND install_name_tool -id "@rpath/${_dep_name}" "${_lib}"
+      RESULT_VARIABLE _set_id_result
+      OUTPUT_QUIET
+      ERROR_QUIET
+    )
+
+    foreach(_idx RANGE ${_last_dep_index})
+      list(GET _original_dep_paths ${_idx} _old_dep)
+      list(GET _bundled_dep_paths ${_idx} _other_bundled_dep)
+      get_filename_component(_other_dep_name "${_other_bundled_dep}" NAME)
+
+      execute_process(
+        COMMAND install_name_tool -change "${_old_dep}" "@loader_path/${_other_dep_name}" "${_lib}"
+        RESULT_VARIABLE _rewrite_dep_result
+        OUTPUT_QUIET
+        ERROR_QUIET
+      )
+    endforeach()
+  endforeach()
+endif()
+
+execute_process(
+  COMMAND install_name_tool -add_rpath "@executable_path/lib" "${APP_PATH}"
+  RESULT_VARIABLE _add_rpath_result
+  OUTPUT_QUIET
+  ERROR_QUIET
+)
+
+find_program(CODESIGN_EXECUTABLE codesign)
+if(CODESIGN_EXECUTABLE)
+  foreach(_lib IN LISTS _bundled_dep_paths)
+    execute_process(
+      COMMAND "${CODESIGN_EXECUTABLE}" --force --sign - --timestamp=none "${_lib}"
+      RESULT_VARIABLE _sign_lib_result
+      OUTPUT_QUIET
+      ERROR_QUIET
+    )
+  endforeach()
+
+  execute_process(
+    COMMAND "${CODESIGN_EXECUTABLE}" --force --sign - --timestamp=none "${APP_PATH}"
+    RESULT_VARIABLE _sign_app_result
+    OUTPUT_QUIET
+    ERROR_QUIET
+  )
+endif()
+
+if(DEFINED MOLTENVK_ICD_TEMPLATE AND EXISTS "${MOLTENVK_ICD_TEMPLATE}")
+  file(MAKE_DIRECTORY "${APP_DIR}/icd")
+  configure_file("${MOLTENVK_ICD_TEMPLATE}" "${APP_DIR}/icd/MoltenVK_icd.json" COPYONLY)
+endif()
