@@ -16,6 +16,7 @@
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
 
+#include <algorithm>
 #include <utility>
 #include <unordered_map>
 #include <unordered_set>
@@ -231,6 +232,8 @@ void engine::Renderer::initVulkan() {
     shaderManager->loadSMAATextures();
     shaderManager->createDefaultShaders();
     shaderManager->resolveRenderGraphShaders();
+    buildRenderSubmitGraph();
+    buildRenderAttachmentReadStages();
     createAttachmentResources();
     shaderManager->loadAllShaders();
     lightManager->createLightsUBO();
@@ -264,6 +267,413 @@ void engine::Renderer::mainLoop() {
         drawFrame();
     }
     vkDeviceWaitIdle(device);
+}
+
+void engine::Renderer::buildRenderSubmitGraph() {
+    renderSubmitGraph = {};
+    if (!shaderManager) {
+        return;
+    }
+
+    const auto& renderGraph = shaderManager->getRenderGraph();
+    const auto& scheduledOrder = shaderManager->getScheduledNodeOrder();
+    std::vector<size_t> fallbackOrder;
+    const std::vector<size_t>* resolvedOrder = nullptr;
+    if (scheduledOrder.size() == renderGraph.size()) {
+        resolvedOrder = &scheduledOrder;
+    } else {
+        fallbackOrder.resize(renderGraph.size());
+        for (size_t idx = 0; idx < fallbackOrder.size(); ++idx) {
+            fallbackOrder[idx] = idx;
+        }
+        resolvedOrder = &fallbackOrder;
+    }
+
+    auto& submissions = renderSubmitGraph.submissions;
+    submissions.reserve(resolvedOrder->size());
+    for (size_t orderIdx = 0; orderIdx < resolvedOrder->size(); ++orderIdx) {
+        const size_t nodeIdx = (*resolvedOrder)[orderIdx];
+        if (nodeIdx >= renderGraph.size()) {
+            continue;
+        }
+        const RenderNode& node = renderGraph[nodeIdx];
+        const bool laneAllowsCompute = !node.lane || node.lane->allowCompute;
+        const bool lanePreferAsync = node.lane && node.lane->preferAsync;
+        const bool computeShaderOnlyNode = !node.usesRendering && !node.computeShaders.empty() && !node.customRenderFunc;
+        const bool computeCapableCustomNode = !node.usesRendering && node.customRenderFunc && node.canRunCustomOnComputeQueue;
+        const bool computeEligibleNode = computeShaderOnlyNode || computeCapableCustomNode;
+
+        NodeQueueClass queueClass = NodeQueueClass::Graphics;
+        if (hasAsyncComputeQueue && laneAllowsCompute && lanePreferAsync && computeEligibleNode) {
+            queueClass = NodeQueueClass::Compute;
+        }
+
+        submissions.push_back({
+            .nodeIdx = nodeIdx,
+            .queueClass = queueClass,
+            .dependencySubmissions = {},
+            .incomingCrossQueueEdges = {},
+            .outgoingCrossQueueEdges = {}
+        });
+
+        if (queueClass == NodeQueueClass::Compute) {
+            ++renderSubmitGraph.computeSubmissionCount;
+        } else {
+            ++renderSubmitGraph.graphicsSubmissionCount;
+        }
+    }
+
+    const size_t invalidSubmission = submissions.size();
+    std::vector<size_t> nodeToSubmission(renderGraph.size(), invalidSubmission);
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        nodeToSubmission[submissions[submissionIdx].nodeIdx] = submissionIdx;
+    }
+
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        RenderSubmitNode& submission = submissions[submissionIdx];
+        const RenderNode& node = renderGraph[submission.nodeIdx];
+        for (size_t depNodeIdx : node.resolvedDependencies) {
+            if (depNodeIdx >= nodeToSubmission.size()) {
+                continue;
+            }
+            const size_t depSubmissionIdx = nodeToSubmission[depNodeIdx];
+            if (depSubmissionIdx == invalidSubmission || depSubmissionIdx == submissionIdx) {
+                continue;
+            }
+            submission.dependencySubmissions.push_back(depSubmissionIdx);
+        }
+        std::sort(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end());
+        submission.dependencySubmissions.erase(
+            std::unique(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end()),
+            submission.dependencySubmissions.end()
+        );
+    }
+
+    auto hasDependencyPath = [&](size_t fromSubmission, size_t targetSubmission) {
+        if (fromSubmission >= submissions.size() || targetSubmission >= submissions.size()) {
+            return false;
+        }
+        std::vector<uint8_t> visited(submissions.size(), 0);
+        std::vector<size_t> stack = { fromSubmission };
+        while (!stack.empty()) {
+            const size_t current = stack.back();
+            stack.pop_back();
+            if (current >= submissions.size() || visited[current]) {
+                continue;
+            }
+            visited[current] = 1;
+            for (size_t dep : submissions[current].dependencySubmissions) {
+                if (dep == targetSubmission) {
+                    return true;
+                }
+                if (dep < submissions.size() && !visited[dep]) {
+                    stack.push_back(dep);
+                }
+            }
+        }
+        return false;
+    };
+
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        RenderSubmitNode& submission = submissions[submissionIdx];
+        if (submission.dependencySubmissions.size() <= 1) {
+            continue;
+        }
+
+        std::vector<size_t> reducedDependencies;
+        reducedDependencies.reserve(submission.dependencySubmissions.size());
+        for (size_t depCandidate : submission.dependencySubmissions) {
+            bool isRedundant = false;
+            for (size_t otherDep : submission.dependencySubmissions) {
+                if (otherDep == depCandidate) {
+                    continue;
+                }
+                if (hasDependencyPath(otherDep, depCandidate)) {
+                    isRedundant = true;
+                    break;
+                }
+            }
+            if (!isRedundant) {
+                reducedDependencies.push_back(depCandidate);
+            }
+        }
+        submission.dependencySubmissions = std::move(reducedDependencies);
+    }
+
+    std::unordered_map<const RenderLane*, size_t> lastSubmissionByPreservedLane;
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        RenderSubmitNode& submission = submissions[submissionIdx];
+        const RenderNode& node = renderGraph[submission.nodeIdx];
+        if (!node.lane || !node.lane->mustPreserveOrder) {
+            continue;
+        }
+
+        const RenderLane* laneKey = node.lane.get();
+        auto prevIt = lastSubmissionByPreservedLane.find(laneKey);
+        if (prevIt != lastSubmissionByPreservedLane.end()) {
+            submission.dependencySubmissions.push_back(prevIt->second);
+            std::sort(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end());
+            submission.dependencySubmissions.erase(
+                std::unique(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end()),
+                submission.dependencySubmissions.end()
+            );
+        }
+        lastSubmissionByPreservedLane[laneKey] = submissionIdx;
+    }
+
+    auto& crossQueueEdges = renderSubmitGraph.crossQueueEdges;
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        RenderSubmitNode& submission = submissions[submissionIdx];
+        for (size_t depSubmissionIdx : submission.dependencySubmissions) {
+            if (submissions[depSubmissionIdx].queueClass == submission.queueClass) {
+                continue;
+            }
+            const size_t edgeIdx = crossQueueEdges.size();
+            crossQueueEdges.push_back({
+                .fromSubmission = depSubmissionIdx,
+                .toSubmission = submissionIdx
+            });
+            submissions[depSubmissionIdx].outgoingCrossQueueEdges.push_back(edgeIdx);
+            submission.incomingCrossQueueEdges.push_back(edgeIdx);
+        }
+    }
+
+    std::vector<std::vector<size_t>> submissionDependents(submissions.size());
+    std::vector<size_t> remainingDependencies(submissions.size(), 0);
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        remainingDependencies[submissionIdx] = submissions[submissionIdx].dependencySubmissions.size();
+        for (size_t depSubmissionIdx : submissions[submissionIdx].dependencySubmissions) {
+            if (depSubmissionIdx < submissions.size()) {
+                submissionDependents[depSubmissionIdx].push_back(submissionIdx);
+            }
+        }
+    }
+
+    std::vector<size_t> readySubmissions;
+    readySubmissions.reserve(submissions.size());
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        if (remainingDependencies[submissionIdx] == 0) {
+            readySubmissions.push_back(submissionIdx);
+        }
+    }
+
+    auto hasIncomingFromCompute = [&](const RenderSubmitNode& submission) {
+        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
+            if (edgeIdx >= crossQueueEdges.size()) {
+                continue;
+            }
+            const size_t fromSubmission = crossQueueEdges[edgeIdx].fromSubmission;
+            if (fromSubmission < submissions.size() && submissions[fromSubmission].queueClass == NodeQueueClass::Compute) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto earliestCrossQueueProducerOrder = [&](const RenderSubmitNode& submission) {
+        size_t bestOrder = submissions.size();
+        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
+            if (edgeIdx >= crossQueueEdges.size()) {
+                continue;
+            }
+            const size_t producerSubmission = crossQueueEdges[edgeIdx].fromSubmission;
+            if (producerSubmission < bestOrder) {
+                bestOrder = producerSubmission;
+            }
+        }
+        return bestOrder;
+    };
+
+    auto pickNextReadySubmission = [&](const std::vector<size_t>& candidates) {
+        return *std::min_element(
+            candidates.begin(),
+            candidates.end(),
+            [&](size_t lhs, size_t rhs) {
+                const RenderSubmitNode& lhsSubmission = submissions[lhs];
+                const RenderSubmitNode& rhsSubmission = submissions[rhs];
+                const RenderNode& lhsNode = renderGraph[lhsSubmission.nodeIdx];
+                const RenderNode& rhsNode = renderGraph[rhsSubmission.nodeIdx];
+                const bool lhsPreferAsyncLane = lhsNode.lane && lhsNode.lane->preferAsync;
+                const bool rhsPreferAsyncLane = rhsNode.lane && rhsNode.lane->preferAsync;
+                const bool lhsIncomingCompute = hasIncomingFromCompute(lhsSubmission);
+                const bool rhsIncomingCompute = hasIncomingFromCompute(rhsSubmission);
+
+                int lhsBucket = 3;
+                int rhsBucket = 3;
+                if (lhsSubmission.queueClass == NodeQueueClass::Graphics && !lhsIncomingCompute && lhsPreferAsyncLane) {
+                    lhsBucket = 0;
+                } else if (lhsSubmission.queueClass == NodeQueueClass::Compute) {
+                    lhsBucket = 1;
+                } else if (lhsSubmission.queueClass == NodeQueueClass::Graphics && !lhsIncomingCompute) {
+                    lhsBucket = 2;
+                }
+                if (rhsSubmission.queueClass == NodeQueueClass::Graphics && !rhsIncomingCompute && rhsPreferAsyncLane) {
+                    rhsBucket = 0;
+                } else if (rhsSubmission.queueClass == NodeQueueClass::Compute) {
+                    rhsBucket = 1;
+                } else if (rhsSubmission.queueClass == NodeQueueClass::Graphics && !rhsIncomingCompute) {
+                    rhsBucket = 2;
+                }
+
+                if (lhsBucket != rhsBucket) {
+                    return lhsBucket < rhsBucket;
+                }
+
+                if (lhsSubmission.queueClass == NodeQueueClass::Compute && rhsSubmission.queueClass == NodeQueueClass::Compute) {
+                    const size_t lhsProducerOrder = earliestCrossQueueProducerOrder(lhsSubmission);
+                    const size_t rhsProducerOrder = earliestCrossQueueProducerOrder(rhsSubmission);
+                    if (lhsProducerOrder != rhsProducerOrder) {
+                        return lhsProducerOrder < rhsProducerOrder;
+                    }
+                    if (lhsSubmission.incomingCrossQueueEdges.size() != rhsSubmission.incomingCrossQueueEdges.size()) {
+                        return lhsSubmission.incomingCrossQueueEdges.size() < rhsSubmission.incomingCrossQueueEdges.size();
+                    }
+                }
+
+                return lhs < rhs;
+            }
+        );
+    };
+
+    auto& submissionOrder = renderSubmitGraph.submissionOrder;
+    submissionOrder.reserve(submissions.size());
+    while (!readySubmissions.empty()) {
+        const size_t nextSubmission = pickNextReadySubmission(readySubmissions);
+        readySubmissions.erase(std::find(readySubmissions.begin(), readySubmissions.end(), nextSubmission));
+        submissionOrder.push_back(nextSubmission);
+        for (size_t dependentIdx : submissionDependents[nextSubmission]) {
+            if (remainingDependencies[dependentIdx] == 0) {
+                continue;
+            }
+            remainingDependencies[dependentIdx]--;
+            if (remainingDependencies[dependentIdx] == 0) {
+                readySubmissions.push_back(dependentIdx);
+            }
+        }
+    }
+
+    if (submissionOrder.size() != submissions.size()) {
+        submissionOrder.clear();
+        submissionOrder.reserve(submissions.size());
+        for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+            submissionOrder.push_back(submissionIdx);
+        }
+    }
+
+    size_t imageAvailableWaitOrderPos = submissionOrder.size();
+    for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+        const RenderNode& node = renderGraph[submissions[submissionOrder[orderPos]].nodeIdx];
+        if (node.passInfo && node.passInfo->usesSwapchain) {
+            imageAvailableWaitOrderPos = orderPos;
+            break;
+        }
+    }
+    if (imageAvailableWaitOrderPos == submissionOrder.size() && !submissionOrder.empty()) {
+        for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+            if (submissions[submissionOrder[orderPos]].queueClass == NodeQueueClass::Graphics) {
+                imageAvailableWaitOrderPos = orderPos;
+                break;
+            }
+        }
+        if (imageAvailableWaitOrderPos == submissionOrder.size()) {
+            imageAvailableWaitOrderPos = 0;
+        }
+    }
+    renderSubmitGraph.imageAvailableWaitOrderPos = imageAvailableWaitOrderPos;
+    renderSubmitGraph.valid = true;
+}
+
+void engine::Renderer::buildRenderAttachmentReadStages() {
+    renderNodeAttachmentReadStages.clear();
+    if (!shaderManager) {
+        return;
+    }
+
+    const auto& renderGraph = shaderManager->getRenderGraph();
+    const size_t nodeCount = renderGraph.size();
+    renderNodeAttachmentReadStages.resize(nodeCount);
+
+    const VkPipelineStageFlags2 shaderReadStages =
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+
+    for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
+        const RenderNode& node = renderGraph[nodeIdx];
+        if (!node.passInfo || !node.passInfo->images.has_value()) {
+            continue;
+        }
+
+        auto producerHasShaderName = [&](const std::string& shaderName) {
+            return std::find(node.shaderNames.begin(), node.shaderNames.end(), shaderName) != node.shaderNames.end();
+        };
+
+        for (const auto& image : node.passInfo->images.value()) {
+            VkPipelineStageFlags2 linkedStages = 0;
+
+            for (size_t consumerIdx = 0; consumerIdx < nodeCount; ++consumerIdx) {
+                if (consumerIdx == nodeIdx) {
+                    continue;
+                }
+
+                const RenderNode& consumer = renderGraph[consumerIdx];
+                if (std::find(consumer.resolvedDependencies.begin(), consumer.resolvedDependencies.end(), nodeIdx)
+                    == consumer.resolvedDependencies.end()) {
+                    continue;
+                }
+
+                bool readsViaGraphicsBinding = false;
+                for (GraphicsShader* shader : consumer.shaders) {
+                    if (!shader) {
+                        continue;
+                    }
+                    for (const auto& binding : shader->config.inputBindings) {
+                        if (binding.attachmentName != image.name) {
+                            continue;
+                        }
+                        if (binding.sourceShaderName.empty() || !producerHasShaderName(binding.sourceShaderName)) {
+                            continue;
+                        }
+                        readsViaGraphicsBinding = true;
+                        break;
+                    }
+                    if (readsViaGraphicsBinding) {
+                        break;
+                    }
+                }
+
+                bool readsViaComputeBinding = false;
+                for (ComputeShader* shader : consumer.computeShaders) {
+                    if (!shader) {
+                        continue;
+                    }
+                    for (const auto& binding : shader->config.inputBindings) {
+                        if (binding.attachmentName != image.name) {
+                            continue;
+                        }
+                        if (binding.sourceShaderName.empty() || !producerHasShaderName(binding.sourceShaderName)) {
+                            continue;
+                        }
+                        readsViaComputeBinding = true;
+                        break;
+                    }
+                    if (readsViaComputeBinding) {
+                        break;
+                    }
+                }
+
+                if (readsViaGraphicsBinding) {
+                    linkedStages |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+                }
+                if (readsViaComputeBinding) {
+                    linkedStages |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                }
+            }
+
+            if (linkedStages == 0) {
+                linkedStages = shaderReadStages;
+            }
+            renderNodeAttachmentReadStages[nodeIdx][image.name] = linkedStages;
+        }
+    }
 }
 
 void engine::Renderer::drawFrame() {
@@ -371,68 +781,24 @@ void engine::Renderer::drawFrame() {
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
     const auto& renderGraph = shaderManager->getRenderGraph();
-    const auto& scheduledOrder = shaderManager->getScheduledNodeOrder();
-    std::vector<size_t> fallbackOrder;
-    const std::vector<size_t>* resolvedOrder = nullptr;
-    if (scheduledOrder.size() == renderGraph.size()) {
-        resolvedOrder = &scheduledOrder;
-    } else {
-        fallbackOrder.resize(renderGraph.size());
-        for (size_t idx = 0; idx < fallbackOrder.size(); ++idx) {
-            fallbackOrder[idx] = idx;
+    bool submitGraphStale = !renderSubmitGraph.valid;
+    if (!submitGraphStale) {
+        for (const RenderSubmitNode& submission : renderSubmitGraph.submissions) {
+            if (submission.nodeIdx >= renderGraph.size()) {
+                submitGraphStale = true;
+                break;
+            }
         }
-        resolvedOrder = &fallbackOrder;
     }
-
-    enum class NodeQueueClass { Graphics, Compute };
-    struct NodeSubmission {
-        size_t nodeIdx = 0;
-        NodeQueueClass queueClass = NodeQueueClass::Graphics;
-        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-        std::vector<size_t> dependencySubmissions;
-        std::vector<size_t> incomingCrossQueueEdges;
-        std::vector<size_t> outgoingCrossQueueEdges;
-    };
-    struct CrossQueueEdge {
-        size_t fromSubmission = 0;
-        size_t toSubmission = 0;
-    };
-
-    std::vector<NodeSubmission> submissions;
-    submissions.reserve(resolvedOrder->size());
-    for (size_t orderIdx = 0; orderIdx < resolvedOrder->size(); ++orderIdx) {
-        const size_t nodeIdx = (*resolvedOrder)[orderIdx];
-        if (nodeIdx >= renderGraph.size()) {
-            continue;
-        }
-        const RenderNode& node = renderGraph[nodeIdx];
-        const bool laneAllowsCompute = !node.lane || node.lane->allowCompute;
-        const bool lanePreferAsync = node.lane && node.lane->preferAsync;
-        const bool computeShaderOnlyNode = !node.usesRendering && !node.computeShaders.empty() && !node.customRenderFunc;
-        const bool computeCapableCustomNode = !node.usesRendering && node.customRenderFunc && node.canRunCustomOnComputeQueue;
-        const bool computeEligibleNode = computeShaderOnlyNode || computeCapableCustomNode;
-        NodeQueueClass queueClass = NodeQueueClass::Graphics;
-        if (hasAsyncComputeQueue && laneAllowsCompute && lanePreferAsync && computeEligibleNode) {
-            queueClass = NodeQueueClass::Compute;
-        }
-        submissions.push_back({
-            .nodeIdx = nodeIdx,
-            .queueClass = queueClass,
-            .commandBuffer = VK_NULL_HANDLE,
-            .dependencySubmissions = {},
-            .incomingCrossQueueEdges = {},
-            .outgoingCrossQueueEdges = {}
-        });
+    if (submitGraphStale) {
+        buildRenderSubmitGraph();
+        buildRenderAttachmentReadStages();
     }
-
-    uint32_t graphicsSubmissionCount = 0;
-    uint32_t computeSubmissionCount = 0;
-    for (const NodeSubmission& submission : submissions) {
-        if (submission.queueClass == NodeQueueClass::Compute) {
-            ++computeSubmissionCount;
-        } else {
-            ++graphicsSubmissionCount;
-        }
+    const auto& submissions = renderSubmitGraph.submissions;
+    const auto& crossQueueEdges = renderSubmitGraph.crossQueueEdges;
+    const auto& submissionOrder = renderSubmitGraph.submissionOrder;
+    if (submissionOrder.empty()) {
+        throw std::runtime_error("RenderSubmitGraph has no submissions!");
     }
 
     auto ensureCommandBufferCapacity = [&](std::vector<VkCommandBuffer>& buffers, uint32_t needed, VkCommandPool pool) {
@@ -455,147 +821,36 @@ void engine::Renderer::drawFrame() {
 
     std::vector<VkCommandBuffer>& frameGraphicsSegments = graphicsSegmentCommandBuffers[currentFrame];
     std::vector<VkCommandBuffer>& frameComputeSegments = computeSegmentCommandBuffers[currentFrame];
+    const uint32_t graphicsSubmissionCount = renderSubmitGraph.graphicsSubmissionCount;
+    const uint32_t computeSubmissionCount = renderSubmitGraph.computeSubmissionCount;
     const uint32_t extraGraphicsNeeded = graphicsSubmissionCount > 0 ? graphicsSubmissionCount - 1 : 0;
     ensureCommandBufferCapacity(frameGraphicsSegments, extraGraphicsNeeded, commandPool);
     ensureCommandBufferCapacity(frameComputeSegments, computeSubmissionCount, computeCommandPool);
 
+    std::vector<VkCommandBuffer> submissionCommandBuffers(submissions.size(), VK_NULL_HANDLE);
     uint32_t usedGraphicsExtra = 0;
     uint32_t usedCompute = 0;
     bool usedPrimaryGraphicsBuffer = false;
-    for (NodeSubmission& submission : submissions) {
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        const RenderSubmitNode& submission = submissions[submissionIdx];
         if (submission.queueClass == NodeQueueClass::Compute) {
-            submission.commandBuffer = frameComputeSegments[usedCompute++];
+            submissionCommandBuffers[submissionIdx] = frameComputeSegments[usedCompute++];
         } else {
             if (!usedPrimaryGraphicsBuffer) {
-                submission.commandBuffer = commandBuffers[currentFrame];
+                submissionCommandBuffers[submissionIdx] = commandBuffers[currentFrame];
                 usedPrimaryGraphicsBuffer = true;
             } else {
-                submission.commandBuffer = frameGraphicsSegments[usedGraphicsExtra++];
+                submissionCommandBuffers[submissionIdx] = frameGraphicsSegments[usedGraphicsExtra++];
             }
         }
-        vkResetCommandBuffer(submission.commandBuffer, 0);
+        vkResetCommandBuffer(submissionCommandBuffers[submissionIdx], 0);
     }
 
     bool framePrepDone = false;
-    for (NodeSubmission& submission : submissions) {
-        std::vector<size_t> nodeOrder = { submission.nodeIdx };
-        recordCommandBuffer(submission.commandBuffer, imageIndex, &nodeOrder, !framePrepDone);
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        std::vector<size_t> nodeOrder = { submissions[submissionIdx].nodeIdx };
+        recordCommandBuffer(submissionCommandBuffers[submissionIdx], imageIndex, &nodeOrder, !framePrepDone);
         framePrepDone = true;
-    }
-
-    const size_t invalidSubmission = submissions.size();
-    std::vector<size_t> nodeToSubmission(renderGraph.size(), invalidSubmission);
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        nodeToSubmission[submissions[submissionIdx].nodeIdx] = submissionIdx;
-    }
-
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        NodeSubmission& submission = submissions[submissionIdx];
-        const RenderNode& node = renderGraph[submission.nodeIdx];
-        for (size_t depNodeIdx : node.resolvedDependencies) {
-            if (depNodeIdx >= nodeToSubmission.size()) {
-                continue;
-            }
-            const size_t depSubmissionIdx = nodeToSubmission[depNodeIdx];
-            if (depSubmissionIdx == invalidSubmission || depSubmissionIdx == submissionIdx) {
-                continue;
-            }
-            submission.dependencySubmissions.push_back(depSubmissionIdx);
-        }
-        std::sort(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end());
-        submission.dependencySubmissions.erase(
-            std::unique(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end()),
-            submission.dependencySubmissions.end()
-        );
-    }
-
-    auto hasDependencyPath = [&](size_t fromSubmission, size_t targetSubmission) {
-        if (fromSubmission >= submissions.size() || targetSubmission >= submissions.size()) {
-            return false;
-        }
-        std::vector<uint8_t> visited(submissions.size(), 0);
-        std::vector<size_t> stack = { fromSubmission };
-        while (!stack.empty()) {
-            const size_t current = stack.back();
-            stack.pop_back();
-            if (current >= submissions.size() || visited[current]) {
-                continue;
-            }
-            visited[current] = 1;
-            for (size_t dep : submissions[current].dependencySubmissions) {
-                if (dep == targetSubmission) {
-                    return true;
-                }
-                if (dep < submissions.size() && !visited[dep]) {
-                    stack.push_back(dep);
-                }
-            }
-        }
-        return false;
-    };
-
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        NodeSubmission& submission = submissions[submissionIdx];
-        if (submission.dependencySubmissions.size() <= 1) {
-            continue;
-        }
-
-        std::vector<size_t> reducedDependencies;
-        reducedDependencies.reserve(submission.dependencySubmissions.size());
-        for (size_t depCandidate : submission.dependencySubmissions) {
-            bool isRedundant = false;
-            for (size_t otherDep : submission.dependencySubmissions) {
-                if (otherDep == depCandidate) {
-                    continue;
-                }
-                if (hasDependencyPath(otherDep, depCandidate)) {
-                    isRedundant = true;
-                    break;
-                }
-            }
-            if (!isRedundant) {
-                reducedDependencies.push_back(depCandidate);
-            }
-        }
-        submission.dependencySubmissions = std::move(reducedDependencies);
-    }
-
-    std::unordered_map<const RenderLane*, size_t> lastSubmissionByPreservedLane;
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        NodeSubmission& submission = submissions[submissionIdx];
-        const RenderNode& node = renderGraph[submission.nodeIdx];
-        if (!node.lane || !node.lane->mustPreserveOrder) {
-            continue;
-        }
-
-        const RenderLane* laneKey = node.lane.get();
-        auto prevIt = lastSubmissionByPreservedLane.find(laneKey);
-        if (prevIt != lastSubmissionByPreservedLane.end()) {
-            submission.dependencySubmissions.push_back(prevIt->second);
-            std::sort(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end());
-            submission.dependencySubmissions.erase(
-                std::unique(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end()),
-                submission.dependencySubmissions.end()
-            );
-        }
-        lastSubmissionByPreservedLane[laneKey] = submissionIdx;
-    }
-
-    std::vector<CrossQueueEdge> crossQueueEdges;
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        NodeSubmission& submission = submissions[submissionIdx];
-        for (size_t depSubmissionIdx : submission.dependencySubmissions) {
-            if (submissions[depSubmissionIdx].queueClass == submission.queueClass) {
-                continue;
-            }
-            const size_t edgeIdx = crossQueueEdges.size();
-            crossQueueEdges.push_back({
-                .fromSubmission = depSubmissionIdx,
-                .toSubmission = submissionIdx
-            });
-            submissions[depSubmissionIdx].outgoingCrossQueueEdges.push_back(edgeIdx);
-            submission.incomingCrossQueueEdges.push_back(edgeIdx);
-        }
     }
 
     std::vector<VkSemaphore>& frameBoundarySemaphores = crossQueueSegmentSemaphores[currentFrame];
@@ -637,151 +892,14 @@ void engine::Renderer::drawFrame() {
         return vkQueueSubmit(queue, 1, &submitInfo, fence);
     };
 
-    auto hasIncomingFromCompute = [&](const NodeSubmission& submission) {
-        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
-            if (edgeIdx >= crossQueueEdges.size()) {
-                continue;
-            }
-            const size_t fromSubmission = crossQueueEdges[edgeIdx].fromSubmission;
-            if (fromSubmission < submissions.size() && submissions[fromSubmission].queueClass == NodeQueueClass::Compute) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    auto earliestCrossQueueProducerOrder = [&](const NodeSubmission& submission) {
-        size_t bestOrder = submissions.size();
-        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
-            if (edgeIdx >= crossQueueEdges.size()) {
-                continue;
-            }
-            const size_t producerSubmission = crossQueueEdges[edgeIdx].fromSubmission;
-            if (producerSubmission < bestOrder) {
-                bestOrder = producerSubmission;
-            }
-        }
-        return bestOrder;
-    };
-
-    std::vector<std::vector<size_t>> submissionDependents(submissions.size());
-    std::vector<size_t> remainingDependencies(submissions.size(), 0);
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        remainingDependencies[submissionIdx] = submissions[submissionIdx].dependencySubmissions.size();
-        for (size_t depSubmissionIdx : submissions[submissionIdx].dependencySubmissions) {
-            if (depSubmissionIdx < submissions.size()) {
-                submissionDependents[depSubmissionIdx].push_back(submissionIdx);
-            }
-        }
-    }
-
-    std::vector<size_t> readySubmissions;
-    readySubmissions.reserve(submissions.size());
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        if (remainingDependencies[submissionIdx] == 0) {
-            readySubmissions.push_back(submissionIdx);
-        }
-    }
-
-    std::vector<size_t> submissionOrder;
-    submissionOrder.reserve(submissions.size());
-    auto pickNextReadySubmission = [&](const std::vector<size_t>& candidates) {
-        return *std::min_element(
-            candidates.begin(),
-            candidates.end(),
-            [&](size_t lhs, size_t rhs) {
-                const NodeSubmission& lhsSubmission = submissions[lhs];
-                const NodeSubmission& rhsSubmission = submissions[rhs];
-                const RenderNode& lhsNode = renderGraph[lhsSubmission.nodeIdx];
-                const RenderNode& rhsNode = renderGraph[rhsSubmission.nodeIdx];
-                const bool lhsPreferAsyncLane = lhsNode.lane && lhsNode.lane->preferAsync;
-                const bool rhsPreferAsyncLane = rhsNode.lane && rhsNode.lane->preferAsync;
-                const bool lhsIncomingCompute = hasIncomingFromCompute(lhsSubmission);
-                const bool rhsIncomingCompute = hasIncomingFromCompute(rhsSubmission);
-
-                int lhsBucket = 3;
-                int rhsBucket = 3;
-                if (lhsSubmission.queueClass == NodeQueueClass::Graphics && !lhsIncomingCompute && lhsPreferAsyncLane) {
-                    lhsBucket = 0;
-                } else if (lhsSubmission.queueClass == NodeQueueClass::Compute) {
-                    lhsBucket = 1;
-                } else if (lhsSubmission.queueClass == NodeQueueClass::Graphics && !lhsIncomingCompute) {
-                    lhsBucket = 2;
-                }
-                if (rhsSubmission.queueClass == NodeQueueClass::Graphics && !rhsIncomingCompute && rhsPreferAsyncLane) {
-                    rhsBucket = 0;
-                } else if (rhsSubmission.queueClass == NodeQueueClass::Compute) {
-                    rhsBucket = 1;
-                } else if (rhsSubmission.queueClass == NodeQueueClass::Graphics && !rhsIncomingCompute) {
-                    rhsBucket = 2;
-                }
-
-                if (lhsBucket != rhsBucket) {
-                    return lhsBucket < rhsBucket;
-                }
-
-                if (lhsSubmission.queueClass == NodeQueueClass::Compute && rhsSubmission.queueClass == NodeQueueClass::Compute) {
-                    const size_t lhsProducerOrder = earliestCrossQueueProducerOrder(lhsSubmission);
-                    const size_t rhsProducerOrder = earliestCrossQueueProducerOrder(rhsSubmission);
-                    if (lhsProducerOrder != rhsProducerOrder) {
-                        return lhsProducerOrder < rhsProducerOrder;
-                    }
-                    if (lhsSubmission.incomingCrossQueueEdges.size() != rhsSubmission.incomingCrossQueueEdges.size()) {
-                        return lhsSubmission.incomingCrossQueueEdges.size() < rhsSubmission.incomingCrossQueueEdges.size();
-                    }
-                }
-
-                return lhs < rhs;
-            }
-        );
-    };
-
-    while (!readySubmissions.empty()) {
-        const size_t nextSubmission = pickNextReadySubmission(readySubmissions);
-        readySubmissions.erase(std::find(readySubmissions.begin(), readySubmissions.end(), nextSubmission));
-        submissionOrder.push_back(nextSubmission);
-        for (size_t dependentIdx : submissionDependents[nextSubmission]) {
-            if (remainingDependencies[dependentIdx] == 0) {
-                continue;
-            }
-            remainingDependencies[dependentIdx]--;
-            if (remainingDependencies[dependentIdx] == 0) {
-                readySubmissions.push_back(dependentIdx);
-            }
-        }
-    }
-
-    if (submissionOrder.size() != submissions.size()) {
-        submissionOrder.clear();
-        submissionOrder.reserve(submissions.size());
-        for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-            submissionOrder.push_back(submissionIdx);
-        }
-    }
-
-    size_t imageAvailableWaitOrderPos = submissionOrder.size();
-    for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
-        const RenderNode& node = renderGraph[submissions[submissionOrder[orderPos]].nodeIdx];
-        if (node.passInfo && node.passInfo->usesSwapchain) {
-            imageAvailableWaitOrderPos = orderPos;
-            break;
-        }
-    }
-    if (imageAvailableWaitOrderPos == submissionOrder.size() && !submissionOrder.empty()) {
-        for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
-            if (submissions[submissionOrder[orderPos]].queueClass == NodeQueueClass::Graphics) {
-                imageAvailableWaitOrderPos = orderPos;
-                break;
-            }
-        }
-        if (imageAvailableWaitOrderPos == submissionOrder.size()) {
-            imageAvailableWaitOrderPos = 0;
-        }
+    size_t imageAvailableWaitOrderPos = renderSubmitGraph.imageAvailableWaitOrderPos;
+    if (imageAvailableWaitOrderPos >= submissionOrder.size()) {
+        imageAvailableWaitOrderPos = 0;
     }
 
     for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
         const size_t submissionIdx = submissionOrder[orderPos];
-        const NodeSubmission& submission = submissions[submissionIdx];
+        const RenderSubmitNode& submission = submissions[submissionIdx];
         const bool isLastSubmission = orderPos + 1 == submissionOrder.size();
 
         std::vector<VkSemaphore> waitSemaphores;
@@ -811,7 +929,7 @@ void engine::Renderer::drawFrame() {
         VkQueue submitQueue = submission.queueClass == NodeQueueClass::Compute ? computeQueue : graphicsQueue;
         if (submitNode(
                 submitQueue,
-                submission.commandBuffer,
+                submissionCommandBuffers[submissionIdx],
                 waitSemaphores,
                 waitStages,
                 signalSemaphores,
@@ -962,80 +1080,14 @@ void engine::Renderer::recordCommandBuffer(
         if (node.usePassManagedTransitions && node.passInfo->images.has_value()) {
             const VkPipelineStageFlags2 shaderReadStages =
                 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-            auto linkedReadStagesForImage = [&](const std::string& attachmentName) {
-                VkPipelineStageFlags2 linkedStages = 0;
-
-                auto producerHasShaderName = [&](const std::string& shaderName) {
-                    return std::find(node.shaderNames.begin(), node.shaderNames.end(), shaderName) != node.shaderNames.end();
-                };
-
-                for (size_t consumerIdx = 0; consumerIdx < nodeCount; ++consumerIdx) {
-                    if (consumerIdx == nodeIdx) {
-                        continue;
-                    }
-
-                    const RenderNode& consumer = renderGraph[consumerIdx];
-                    if (std::find(consumer.resolvedDependencies.begin(), consumer.resolvedDependencies.end(), nodeIdx)
-                        == consumer.resolvedDependencies.end()) {
-                        continue;
-                    }
-
-                    bool readsViaGraphicsBinding = false;
-                    for (GraphicsShader* shader : consumer.shaders) {
-                        if (!shader) {
-                            continue;
-                        }
-                        for (const auto& binding : shader->config.inputBindings) {
-                            if (binding.attachmentName != attachmentName) {
-                                continue;
-                            }
-                            if (binding.sourceShaderName.empty() || !producerHasShaderName(binding.sourceShaderName)) {
-                                continue;
-                            }
-                            readsViaGraphicsBinding = true;
-                            break;
-                        }
-                        if (readsViaGraphicsBinding) {
-                            break;
-                        }
-                    }
-
-                    bool readsViaComputeBinding = false;
-                    for (ComputeShader* shader : consumer.computeShaders) {
-                        if (!shader) {
-                            continue;
-                        }
-                        for (const auto& binding : shader->config.inputBindings) {
-                            if (binding.attachmentName != attachmentName) {
-                                continue;
-                            }
-                            if (binding.sourceShaderName.empty() || !producerHasShaderName(binding.sourceShaderName)) {
-                                continue;
-                            }
-                            readsViaComputeBinding = true;
-                            break;
-                        }
-                        if (readsViaComputeBinding) {
-                            break;
-                        }
-                    }
-
-                    if (readsViaGraphicsBinding) {
-                        linkedStages |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-                    }
-                    if (readsViaComputeBinding) {
-                        linkedStages |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-                    }
-                }
-
-                if (linkedStages == 0) {
-                    linkedStages = shaderReadStages;
-                }
-                return linkedStages;
-            };
-
             for (auto& image : node.passInfo->images.value()) {
-                const VkPipelineStageFlags2 linkedReadStages = linkedReadStagesForImage(image.name);
+                VkPipelineStageFlags2 linkedReadStages = shaderReadStages;
+                if (nodeIdx < renderNodeAttachmentReadStages.size()) {
+                    auto stageIt = renderNodeAttachmentReadStages[nodeIdx].find(image.name);
+                    if (stageIt != renderNodeAttachmentReadStages[nodeIdx].end()) {
+                        linkedReadStages = stageIt->second;
+                    }
+                }
                 const bool isDepth = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
                 const bool isStorage = (image.usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
                 const VkImageAspectFlags aspect = isDepth

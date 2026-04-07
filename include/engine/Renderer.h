@@ -12,6 +12,7 @@
 #include <optional>
 #include <utility>
 #include <chrono>
+#include <unordered_map>
 
 namespace engine {
     struct GraphicsShader;
@@ -261,6 +262,33 @@ namespace engine {
         std::vector<std::vector<VkCommandBuffer>> computeSegmentCommandBuffers;
         std::vector<std::vector<VkSemaphore>> crossQueueSegmentSemaphores;
 
+        enum class NodeQueueClass {
+            Graphics,
+            Compute
+        };
+        struct CrossQueueEdge {
+            size_t fromSubmission = 0;
+            size_t toSubmission = 0;
+        };
+        struct RenderSubmitNode {
+            size_t nodeIdx = 0;
+            NodeQueueClass queueClass = NodeQueueClass::Graphics;
+            std::vector<size_t> dependencySubmissions;
+            std::vector<size_t> incomingCrossQueueEdges;
+            std::vector<size_t> outgoingCrossQueueEdges;
+        };
+        struct RenderSubmitGraph {
+            std::vector<RenderSubmitNode> submissions;
+            std::vector<CrossQueueEdge> crossQueueEdges;
+            std::vector<size_t> submissionOrder;
+            uint32_t graphicsSubmissionCount = 0;
+            uint32_t computeSubmissionCount = 0;
+            size_t imageAvailableWaitOrderPos = 0;
+            bool valid = false;
+        };
+        RenderSubmitGraph renderSubmitGraph;
+        std::vector<std::unordered_map<std::string, VkPipelineStageFlags2>> renderNodeAttachmentReadStages;
+
         class EntityManager* entityManager;
         class InputManager* inputManager;
         class UIManager* uiManager;
@@ -294,6 +322,8 @@ namespace engine {
         void createCommandBuffers();
         void createSyncObjects();
         void createQuadResources();
+        void buildRenderSubmitGraph();
+        void buildRenderAttachmentReadStages();
 
         void drawFrame();
 
