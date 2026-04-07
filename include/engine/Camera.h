@@ -56,6 +56,7 @@ namespace engine {
             return cachedViewProj;
         }
         void update(float deltaTime) override {
+            if (cachedInvView == getWorldTransform()) return;
             cachedInvView = getWorldTransform();
             cachedView = glm::inverse(cachedInvView);
             cachedProj = glm::perspective(glm::radians(fovY), aspectRatio, nearPlane, farPlane);

@@ -70,6 +70,9 @@ namespace engine {
         uint32_t arrayLayers = 1;
         VkImageCreateFlags flags = 0;
 
+        uint32_t allocatedWidth = 0;
+        uint32_t allocatedHeight = 0;
+
         VkImage image = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
@@ -228,19 +231,34 @@ struct std::hash<engine::ComputeShader> {
 };
 
 namespace engine {
+    struct RenderLane {
+        std::string name;
+        bool allowGraphics = true;
+        bool allowCompute = true;
+        bool preferAsync = false;
+        bool mustPreserveOrder = false;
+    };
+
     struct RenderNode {
+        std::string name;
         bool is2D = false;
         PassInfo* passInfo = nullptr;
         std::unordered_set<GraphicsShader*> shaders;
         std::unordered_set<ComputeShader*> computeShaders;
         std::vector<std::string> shaderNames;
+        std::vector<std::string> dependsOnNodeNames;
+        std::vector<size_t> resolvedDependencies;
+        std::shared_ptr<RenderLane> lane = nullptr;
         bool usesRendering = true;
+        bool canRunCustomOnComputeQueue = false;
+        bool usePassManagedTransitions = true;
         VkPipelineStageFlags2 storageWriteStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
         std::function<void(Renderer*, VkCommandBuffer, uint32_t)> customRenderFunc = nullptr;
         std::function<bool(Renderer*)> skipCondition = nullptr;
     };
     struct RenderGraph {
         std::vector<RenderNode> nodes;
+        std::vector<size_t> scheduledNodeOrder;
     };
     
     class ShaderManager {
@@ -268,6 +286,7 @@ namespace engine {
         const std::vector<std::shared_ptr<PassInfo>>& getRenderPasses() const;
         std::vector<RenderNode>& getRenderGraph();
         const std::vector<RenderNode>& getRenderGraph() const;
+        const std::vector<size_t>& getScheduledNodeOrder() const;
         void resolveRenderGraphShaders();
 
         static VkShaderModule createShaderModule(const std::vector<char>& code, Renderer* renderer);

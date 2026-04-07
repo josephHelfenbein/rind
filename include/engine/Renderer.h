@@ -228,8 +228,10 @@ namespace engine {
 
         bool shadowMapRecreationPending = false;
 
-        VkQueue graphicsQueue;
-        VkQueue presentQueue;
+        VkQueue graphicsQueue = VK_NULL_HANDLE;
+        VkQueue computeQueue = VK_NULL_HANDLE;
+        VkQueue presentQueue = VK_NULL_HANDLE;
+        bool hasAsyncComputeQueue = false;
         VkSwapchainKHR swapChain;
         std::vector<VkImage> swapChainImages;
         std::vector<VkImageLayout> swapChainImageLayouts;
@@ -237,7 +239,8 @@ namespace engine {
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
         std::vector<std::shared_ptr<PassInfo>> managedRenderPasses;
-        VkCommandPool commandPool;
+        VkCommandPool commandPool = VK_NULL_HANDLE;
+        VkCommandPool computeCommandPool = VK_NULL_HANDLE;
         VkSampler mainTextureSampler;
         VkSampler nearestSampler;
         class TextObject* fpsCounter = nullptr;
@@ -254,6 +257,9 @@ namespace engine {
         std::vector<VkSemaphore> imageAvailableSemaphores;
         std::vector<VkSemaphore> renderFinishedSemaphores;
         std::vector<VkCommandBuffer> commandBuffers;
+        std::vector<std::vector<VkCommandBuffer>> graphicsSegmentCommandBuffers;
+        std::vector<std::vector<VkCommandBuffer>> computeSegmentCommandBuffers;
+        std::vector<std::vector<VkSemaphore>> crossQueueSegmentSemaphores;
 
         class EntityManager* entityManager;
         class InputManager* inputManager;
@@ -293,7 +299,12 @@ namespace engine {
 
         VkCommandBuffer beginSingleTimeCommands();
         void endSingleTimeCommands(VkCommandBuffer commandBuffer);
-        void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+        void recordCommandBuffer(
+            VkCommandBuffer commandBuffer,
+            uint32_t imageIndex,
+            const std::vector<size_t>* nodeOrder = nullptr,
+            bool doFramePrep = true
+        );
 
         void draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node);
 
@@ -311,6 +322,7 @@ namespace engine {
         }
         struct QueueFamilyIndices {
             std::optional<uint32_t> graphicsFamily;
+            std::optional<uint32_t> computeFamily;
             std::optional<uint32_t> presentFamily;
             bool isComplete() {
                 return graphicsFamily.has_value() && presentFamily.has_value();

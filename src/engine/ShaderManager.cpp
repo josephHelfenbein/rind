@@ -14,6 +14,8 @@
 
 #include <iostream>
 #include <utility>
+#include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 
 engine::ShaderManager::ShaderManager(
@@ -639,7 +641,7 @@ void engine::ShaderManager::createDefaultShaders() {
             auto& lights = lightManager->getLights();
             for (uint32_t i = 0; i < static_cast<uint32_t>(lights.size()) && i < 64u; ++i) {
                 engine::Light& light = lights[i];
-                if (light.getShadowImageView() == VK_NULL_HANDLE) {
+                if (light.getShadowImageView(0) == VK_NULL_HANDLE) {
                     continue;
                 }
                 ++activeShadowLayers;
@@ -716,7 +718,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     { 2, "gbuffer", "Normal" },
                     {
                         .binding = 3,
-                        .imageArrayProvider = [](Renderer* renderer, size_t, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
+                        .imageArrayProvider = [](Renderer* renderer, size_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
                             auto* textureManager = renderer->getTextureManager();
                             Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_shadow_cube") : nullptr;
                             VkImageView fallbackView = (fallbackTex && fallbackTex->imageView != VK_NULL_HANDLE) ? fallbackTex->imageView : VK_NULL_HANDLE;
@@ -733,8 +735,9 @@ void engine::ShaderManager::createDefaultShaders() {
                             uint32_t shadowLayer = 0;
                             for (uint32_t i = 0; i < lightCount && shadowLayer < count; ++i) {
                                 Light& light = lights[i];
-                                if (light.getShadowImageView() != VK_NULL_HANDLE) {
-                                    imageInfos[startIdx + shadowLayer].imageView = light.getShadowImageView();
+                                VkImageView shadowView = light.getShadowImageView(frameIndex);
+                                if (shadowView != VK_NULL_HANDLE) {
+                                    imageInfos[startIdx + shadowLayer].imageView = shadowView;
                                     ++shadowLayer;
                                 }
                             }
@@ -1701,11 +1704,42 @@ void engine::ShaderManager::createDefaultShaders() {
         addGraphicsShader(std::move(shader));
     }
 
+    auto generalGraphicsLane = std::make_shared<RenderLane>(RenderLane{
+        .name = "GeneralGraphics",
+        .allowGraphics = true,
+        .allowCompute = false,
+        .preferAsync = false,
+        .mustPreserveOrder = false
+    });
+    auto shadowLane = std::make_shared<RenderLane>(RenderLane{
+        .name = "Shadow",
+        .allowGraphics = true,
+        .allowCompute = true,
+        .preferAsync = true,
+        .mustPreserveOrder = true
+    });
+    auto irradianceSHLane = std::make_shared<RenderLane>(RenderLane{
+        .name = "IrradianceSH",
+        .allowGraphics = true,
+        .allowCompute = true,
+        .preferAsync = true,
+        .mustPreserveOrder = true
+    });
+    auto irradianceRenderLane = std::make_shared<RenderLane>(RenderLane{
+        .name = "IrradianceRender",
+        .allowGraphics = true,
+        .allowCompute = false,
+        .preferAsync = true,
+        .mustPreserveOrder = false
+    });
+
     renderGraph.nodes = {
         {
+            .name = "gbuffer",
             .is2D = false,
             .passInfo = gbufferPass.get(),
             .shaderNames = { "gbuffer" },
+            .lane = generalGraphicsLane,
             .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
                 renderer->getEntityManager()->renderEntities(cmd, frame);
             },
@@ -1723,25 +1757,47 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         },
         {
+            .name = "particle",
             .is2D = true,
             .passInfo = particlePass.get(),
             .shaderNames = { "particle" },
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = generalGraphicsLane,
             .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
                 renderer->getParticleManager()->renderParticles(cmd, frame);
             }
         },
         {
+            .name = "volumetric",
             .is2D = true,
             .passInfo = volumetricPass.get(),
             .shaderNames = { "volumetric" },
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = generalGraphicsLane,
             .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
                 renderer->getVolumetricManager()->renderVolumetrics(cmd, frame);
             }
         },
         {
+            .name = "shadow_prep",
+            .is2D = false,
+            .passInfo = shadowPass.get(),
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = shadowLane,
+            .usesRendering = false,
+            .usePassManagedTransitions = false,
+            .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
+                renderer->getLightManager()->renderShadows(cmd, frame);
+                renderer->getLightManager()->updateLightsUBO(frame);
+            }
+        },
+        {
+            .name = "shadow_image",
             .is2D = false,
             .passInfo = shadowImagePass.get(),
             .shaderNames = { "shadowimage" },
+            .dependsOnNodeNames = { "shadow_prep", "gbuffer" },
+            .lane = shadowLane,
             .usesRendering = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .skipCondition = [](Renderer* renderer) {
@@ -1758,23 +1814,59 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         },
         {
+            .name = "shadow_blur_h",
             .is2D = true,
             .passInfo = shadowImageBlurPassH.get(),
             .shaderNames = { "shadowimageblurh" },
+            .dependsOnNodeNames = { "shadow_image" },
+            .lane = shadowLane,
             .usesRendering = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
         },
         {
+            .name = "shadow_blur_v",
             .is2D = true,
             .passInfo = shadowImageBlurPassV.get(),
             .shaderNames = { "shadowimageblurv" },
+            .dependsOnNodeNames = { "shadow_blur_h" },
+            .lane = shadowLane,
             .usesRendering = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
         },
         {
+            .name = "irradiance_dynamic_render",
+            .is2D = false,
+            .passInfo = irradiancePass.get(),
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = irradianceRenderLane,
+            .usesRendering = false,
+            .usePassManagedTransitions = false,
+            .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
+                renderer->getIrradianceManager()->renderDynamicIrradianceGraphics(cmd, frame);
+                renderer->getIrradianceManager()->updateIrradianceProbesUBO(frame);
+            }
+        },
+        {
+            .name = "irradiance_dynamic_sh",
+            .is2D = false,
+            .passInfo = irradiancePass.get(),
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = irradianceSHLane,
+            .usesRendering = false,
+            .canRunCustomOnComputeQueue = true,
+            .usePassManagedTransitions = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
+                renderer->getIrradianceManager()->dispatchDynamicIrradianceSH(cmd, frame);
+            }
+        },
+        {
+            .name = "lighting",
             .is2D = true,
             .passInfo = lightingPass.get(),
             .shaderNames = { "lighting" },
+            .dependsOnNodeNames = { "irradiance_dynamic_sh", "shadow_blur_v" },
+            .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
                     for (const Entity* e : nodes) {
@@ -1789,66 +1881,95 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         },
         {
+            .name = "ssr",
             .is2D = true,
             .passInfo = ssrPass.get(),
             .shaderNames = { "ssr" },
+            .dependsOnNodeNames = { "lighting" },
+            .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 return !renderer->getSettingsManager()->getSettings()->ssrEnabled;
             }
         },
         {
+            .name = "ao",
             .is2D = true,
             .passInfo = aoPass.get(),
-            .shaderNames = { "ao" }
+            .shaderNames = { "ao" },
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = generalGraphicsLane,
         },
         {
+            .name = "bloom",
             .is2D = true,
             .passInfo = bloomPass.get(),
-            .shaderNames = { "bloom" }
+            .shaderNames = { "bloom" },
+            .dependsOnNodeNames = { "lighting" },
+            .lane = generalGraphicsLane,
         },
         {
+            .name = "bloom_blur_h",
             .is2D = true,
             .passInfo = bloomBlurPassH.get(),
-            .shaderNames = { "bloomblurh" }
+            .shaderNames = { "bloomblurh" },
+            .dependsOnNodeNames = { "bloom" },
+            .lane = generalGraphicsLane,
         },
         {
+            .name = "bloom_blur_v",
             .is2D = true,
             .passInfo = bloomBlurPassV.get(),
-            .shaderNames = { "bloomblurv" }
+            .shaderNames = { "bloomblurv" },
+            .dependsOnNodeNames = { "bloom_blur_h" },
+            .lane = generalGraphicsLane,
         },
         {
+            .name = "combine",
             .is2D = true,
             .passInfo = combinePass.get(),
-            .shaderNames = { "combine" }
+            .shaderNames = { "combine" },
+            .dependsOnNodeNames = { "lighting", "ssr", "ao", "bloom_blur_v" },
+            .lane = generalGraphicsLane,
         },
         {
+            .name = "smaa_edge",
             .is2D = true,
             .passInfo = smaaEdgePass.get(),
             .shaderNames = { "smaaEdge" },
+            .dependsOnNodeNames = { "combine" },
+            .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 return renderer->getSettingsManager()->getSettings()->aaMode != 2;
             }
         },
         {
+            .name = "smaa_weight",
             .is2D = true,
             .passInfo = smaaWeightPass.get(),
             .shaderNames = { "smaaWeight" },
+            .dependsOnNodeNames = { "smaa_edge" },
+            .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 return renderer->getSettingsManager()->getSettings()->aaMode != 2;
             }
         },
         {
+            .name = "smaa_blend",
             .is2D = true,
             .passInfo = smaaBlendPass.get(),
             .shaderNames = { "smaaBlend" },
+            .dependsOnNodeNames = { "smaa_weight" },
+            .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 return renderer->getSettingsManager()->getSettings()->aaMode != 2;
             }
         },
         {
+            .name = "ui",
             .is2D = true,
             .passInfo = uiPass.get(),
             .shaderNames = { "ui", "text" },
+            .lane = generalGraphicsLane,
             .customRenderFunc = [this](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
                 if (renderer->getSettingsManager()->getSettings()->showFPS) {
                     if (!renderer->getFPSCounter()) {
@@ -1881,9 +2002,12 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         },
         {
+            .name = "composite",
             .is2D = true,
             .passInfo = mainPass.get(),
-            .shaderNames = { "composite" }
+            .shaderNames = { "composite" },
+            .dependsOnNodeNames = { "combine", "ui", "smaa_blend" },
+            .lane = generalGraphicsLane,
         }
     };
 }
@@ -1931,14 +2055,22 @@ const std::vector<engine::RenderNode>& engine::ShaderManager::getRenderGraph() c
     return renderGraph.nodes;
 }
 
+const std::vector<size_t>& engine::ShaderManager::getScheduledNodeOrder() const {
+    return renderGraph.scheduledNodeOrder;
+}
+
 const std::vector<std::shared_ptr<engine::PassInfo>>& engine::ShaderManager::getRenderPasses() const {
     return renderPasses;
 }
 
 void engine::ShaderManager::resolveRenderGraphShaders() {
-    for (auto& node : renderGraph.nodes) {
+    auto& nodes = renderGraph.nodes;
+    renderGraph.scheduledNodeOrder.clear();
+
+    for (auto& node : nodes) {
         node.shaders.clear();
         node.computeShaders.clear();
+        node.resolvedDependencies.clear();
         for (const auto& shaderName : node.shaderNames) {
             bool found = false;
             auto it = graphicsShaderMap.find(shaderName);
@@ -1959,6 +2091,104 @@ void engine::ShaderManager::resolveRenderGraphShaders() {
             }
         }
     }
+
+    const size_t nodeCount = nodes.size();
+    if (nodeCount == 0) {
+        return;
+    }
+
+    std::unordered_map<std::string, size_t> nodeNameToIndex;
+    for (size_t idx = 0; idx < nodeCount; ++idx) {
+        const RenderNode& node = nodes[idx];
+        if (!node.name.empty()) {
+            auto inserted = nodeNameToIndex.emplace(node.name, idx);
+            if (!inserted.second) {
+                std::cout << "Warning: Duplicate render node name '" << node.name << "'. Using first occurrence for dependency resolution.\n";
+            }
+        }
+    }
+
+    std::vector<std::unordered_set<size_t>> dependencies(nodeCount);
+    auto addDependency = [&](size_t consumerIdx, size_t producerIdx) {
+        if (consumerIdx == producerIdx) {
+            return;
+        }
+        dependencies[consumerIdx].insert(producerIdx);
+    };
+
+    for (size_t idx = 0; idx < nodeCount; ++idx) {
+        const RenderNode& node = nodes[idx];
+        for (const auto& depName : node.dependsOnNodeNames) {
+            auto depIt = nodeNameToIndex.find(depName);
+            if (depIt == nodeNameToIndex.end()) {
+                std::cout << "Warning: Render node '" << node.name << "' depends on unknown node '" << depName << "'.\n";
+                continue;
+            }
+            addDependency(idx, depIt->second);
+        }
+    }
+
+    std::vector<std::vector<size_t>> dependents(nodeCount);
+    std::vector<size_t> indegree(nodeCount, 0);
+    for (size_t consumerIdx = 0; consumerIdx < nodeCount; ++consumerIdx) {
+        indegree[consumerIdx] = dependencies[consumerIdx].size();
+        for (size_t producerIdx : dependencies[consumerIdx]) {
+            dependents[producerIdx].push_back(consumerIdx);
+        }
+        nodes[consumerIdx].resolvedDependencies.assign(dependencies[consumerIdx].begin(), dependencies[consumerIdx].end());
+        std::sort(nodes[consumerIdx].resolvedDependencies.begin(), nodes[consumerIdx].resolvedDependencies.end());
+    }
+
+    std::vector<size_t> ready;
+    ready.reserve(nodeCount);
+    for (size_t idx = 0; idx < nodeCount; ++idx) {
+        if (indegree[idx] == 0) {
+            ready.push_back(idx);
+        }
+    }
+
+    std::vector<size_t> scheduledOrder;
+    scheduledOrder.reserve(nodeCount);
+    auto pickNextReady = [&](const std::vector<size_t>& candidates) {
+        return *std::min_element(
+            candidates.begin(),
+            candidates.end(),
+            [&](size_t lhs, size_t rhs) {
+                const bool lhsPreferAsync = nodes[lhs].lane && nodes[lhs].lane->preferAsync;
+                const bool rhsPreferAsync = nodes[rhs].lane && nodes[rhs].lane->preferAsync;
+                if (lhsPreferAsync != rhsPreferAsync) {
+                    return lhsPreferAsync && !rhsPreferAsync;
+                }
+                return lhs < rhs;
+            }
+        );
+    };
+
+    while (!ready.empty()) {
+        size_t nextNode = pickNextReady(ready);
+        ready.erase(std::find(ready.begin(), ready.end(), nextNode));
+        scheduledOrder.push_back(nextNode);
+        for (size_t dependentIdx : dependents[nextNode]) {
+            if (indegree[dependentIdx] == 0) {
+                continue;
+            }
+            indegree[dependentIdx]--;
+            if (indegree[dependentIdx] == 0) {
+                ready.push_back(dependentIdx);
+            }
+        }
+    }
+
+    if (scheduledOrder.size() != nodeCount) {
+        std::cout << "Warning: Render graph dependency cycle detected. Falling back to declaration order for scheduling.\n";
+        renderGraph.scheduledNodeOrder.resize(nodeCount);
+        for (size_t idx = 0; idx < nodeCount; ++idx) {
+            renderGraph.scheduledNodeOrder[idx] = idx;
+        }
+        return;
+    }
+
+    renderGraph.scheduledNodeOrder = std::move(scheduledOrder);
 }
 
 void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers, int frameIndex) {

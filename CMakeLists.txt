@@ -6,6 +6,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUNDLE_WINDOWS_RUNTIMES "Bundle required runtime DLLs next to Windows executable and in install package" ON)
 option(BUNDLE_MACOS_RUNTIMES "Bundle required runtime dylibs and Vulkan ICD next to macOS executable" ON)
 
+set(_is_single_config_release FALSE)
+if(NOT CMAKE_CONFIGURATION_TYPES AND CMAKE_BUILD_TYPE STREQUAL "Release")
+  set(_is_single_config_release TRUE)
+endif()
+
 set(IS_WINDOWS FALSE)
 set(IS_MACOS FALSE)
 set(IS_LINUX FALSE)
@@ -160,12 +165,18 @@ set(SPIRV_BINARY_FILES)
 # Compile HLSL shaders to SPIR-V using dxc
 foreach(HLSL ${HLSL_SOURCE_FILES})
   get_filename_component(FILE_NAME ${HLSL} NAME)
+  set(SHADER_EXTRA_FLAGS)
   if(FILE_NAME MATCHES "\\.vert\\.hlsl$")
     set(SHADER_PROFILE "vs_6_0")
   elseif(FILE_NAME MATCHES "\\.frag\\.hlsl$")
     set(SHADER_PROFILE "ps_6_0")
+    if(FILE_NAME STREQUAL "volumetric.frag.hlsl")
+      set(SHADER_PROFILE "ps_6_2")
+      list(APPEND SHADER_EXTRA_FLAGS -HV 2021 -enable-16bit-types)
+    endif()
   elseif(FILE_NAME MATCHES "\\.comp\\.hlsl$")
-    set(SHADER_PROFILE "cs_6_0")
+    set(SHADER_PROFILE "cs_6_2")
+    list(APPEND SHADER_EXTRA_FLAGS -HV 2021 -enable-16bit-types)
   else()
     message(WARNING "Could not determine shader stage for ${FILE_NAME}")
     continue()
@@ -176,7 +187,7 @@ foreach(HLSL ${HLSL_SOURCE_FILES})
 
   add_custom_command(
         OUTPUT ${SPIRV}
-        COMMAND ${DXC_EXECUTABLE} -spirv -O3 -fvk-use-scalar-layout -fspv-target-env=vulkan1.3 -fvk-use-dx-position-w -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
+      COMMAND ${DXC_EXECUTABLE} -spirv -O3 -fvk-use-scalar-layout -fspv-target-env=vulkan1.3 -fvk-use-dx-position-w ${SHADER_EXTRA_FLAGS} -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
         DEPENDS ${HLSL}
         COMMENT "Compiling ${FILE_NAME} to SPIR-V"
     )
@@ -518,11 +529,11 @@ endif()
 
 # Bundle Windows runtime DLLs
 if(IS_WINDOWS)
-  install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)
+  install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION . CONFIGURATIONS Release)
 
   if(BUNDLE_WINDOWS_RUNTIMES)
     if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
-      install(FILES $<TARGET_RUNTIME_DLLS:${PROJECT_NAME}> DESTINATION .)
+      install(FILES $<TARGET_RUNTIME_DLLS:${PROJECT_NAME}> DESTINATION . CONFIGURATIONS Release)
     endif()
 
     if(MSVC OR CMAKE_VERSION VERSION_LESS "3.21")
@@ -531,7 +542,7 @@ if(IS_WINDOWS)
       set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE)
       include(InstallRequiredSystemLibraries)
       if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
-        install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION .)
+        install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION . CONFIGURATIONS Release)
       endif()
     endif()
 
@@ -550,11 +561,22 @@ if(IS_WINDOWS)
             x64/Microsoft.VC142.CRT
         )
         if(_omp_dll_path)
-          install(FILES "${_omp_dll_path}" DESTINATION .)
-          add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_omp_dll_path}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-            COMMENT "Copying ${_omp_dll_name} to runtime output"
-          )
+          install(FILES "${_omp_dll_path}" DESTINATION . CONFIGURATIONS Release)
+          if(CMAKE_CONFIGURATION_TYPES)
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+              COMMAND ${CMAKE_COMMAND}
+                -DBUILD_CONFIG="$<CONFIG>"
+                -DSOURCE_FILE="${_omp_dll_path}"
+                -DDEST_DIR="$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+                -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_release.cmake"
+              COMMENT "Copying ${_omp_dll_name} to runtime output (Release only)"
+            )
+          elseif(_is_single_config_release)
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_omp_dll_path}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+              COMMENT "Copying ${_omp_dll_name} to runtime output"
+            )
+          endif()
         endif()
       endforeach()
     elseif(MINGW)
@@ -568,11 +590,22 @@ if(IS_WINDOWS)
             "${_compiler_bin_dir}/../bin"
         )
         if(_mingw_runtime_path)
-          install(FILES "${_mingw_runtime_path}" DESTINATION .)
-          add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_mingw_runtime_path}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-            COMMENT "Copying ${_mingw_runtime_dll} to runtime output"
-          )
+          install(FILES "${_mingw_runtime_path}" DESTINATION . CONFIGURATIONS Release)
+          if(CMAKE_CONFIGURATION_TYPES)
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+              COMMAND ${CMAKE_COMMAND}
+                -DBUILD_CONFIG="$<CONFIG>"
+                -DSOURCE_FILE="${_mingw_runtime_path}"
+                -DDEST_DIR="$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+                -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_release.cmake"
+              COMMENT "Copying ${_mingw_runtime_dll} to runtime output (Release only)"
+            )
+          elseif(_is_single_config_release)
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_mingw_runtime_path}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+              COMMENT "Copying ${_mingw_runtime_dll} to runtime output"
+            )
+          endif()
         endif()
       endforeach()
     endif()
@@ -582,11 +615,9 @@ endif()
 # Bundle macOS runtime dylibs and Vulkan ICD
 if(IS_MACOS)
   set_target_properties(${PROJECT_NAME} PROPERTIES
-        BUILD_WITH_INSTALL_RPATH TRUE
-        BUILD_RPATH "@executable_path;@executable_path/lib"
         INSTALL_RPATH "@executable_path;@executable_path/lib"
     )
-  if(BUNDLE_MACOS_RUNTIMES)
+  if(BUNDLE_MACOS_RUNTIMES AND (CMAKE_CONFIGURATION_TYPES OR _is_single_config_release))
     set(_macos_runtime_search_dirs)
     if(VK_SDK_PATH)
       list(APPEND _macos_runtime_search_dirs "${VK_SDK_PATH}/macOS/lib")
@@ -707,6 +738,7 @@ if(IS_MACOS)
 
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND}
+          -DBUILD_CONFIG="$<CONFIG>"
                 -DAPP_PATH="$<TARGET_FILE:${PROJECT_NAME}>"
                 -DAPP_DIR="$<TARGET_FILE_DIR:${PROJECT_NAME}>"
                 -DSEARCH_DIRS_PIPE="${_macos_search_dirs_pipe}"

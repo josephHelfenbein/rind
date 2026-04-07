@@ -3,6 +3,9 @@
 #include <engine/EntityManager.h>
 #include <engine/PushConstants.h>
 #include <glm/glm.hpp>
+#include <algorithm>
+#include <array>
+#include <vector>
 
 namespace engine {
     class LightManager;
@@ -34,7 +37,13 @@ namespace engine {
         glm::vec3 getWorldPosition() const { return glm::vec3(transform[3]); }
 
         PointLight getPointLightData();
-        VkImageView getShadowImageView() const { return shadowDepthImageView; }
+        VkImageView getShadowImageView(size_t frameIndex = 0) const {
+            if (shadowDepthImageViews.empty()) {
+                return VK_NULL_HANDLE;
+            }
+            const size_t idx = frameIndex % shadowDepthImageViews.size();
+            return shadowDepthImageViews[idx];
+        }
 
         void createShadowMaps(engine::Renderer* renderer, bool forceRecreate = false);
         void bakeShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
@@ -52,13 +61,44 @@ namespace engine {
         glm::mat4 transform;
 
         glm::mat4 viewProjs[6];
+        std::array<glm::vec4, 6> frustumPlanes[6];
+        float getShadowCullPlaneSlack() const {
+            return std::max(0.05f, radius * 0.005f);
+        }
+        bool isAABBInFrustum(int idx, const engine::AABB& aabb, const glm::mat4& transform) const {
+            glm::vec3 corners[8] = {
+                glm::vec3(aabb.min.x, aabb.min.y, aabb.min.z),
+                glm::vec3(aabb.max.x, aabb.min.y, aabb.min.z),
+                glm::vec3(aabb.min.x, aabb.max.y, aabb.min.z),
+                glm::vec3(aabb.max.x, aabb.max.y, aabb.min.z),
+                glm::vec3(aabb.min.x, aabb.min.y, aabb.max.z),
+                glm::vec3(aabb.max.x, aabb.min.y, aabb.max.z),
+                glm::vec3(aabb.min.x, aabb.max.y, aabb.max.z),
+                glm::vec3(aabb.max.x, aabb.max.y, aabb.max.z)
+            };
+            const float cullSlack = getShadowCullPlaneSlack();
+            for (const auto& plane : frustumPlanes[idx]) {
+                int out = 0;
+                for (const auto& corner : corners) {
+                    glm::vec3 worldCorner = glm::vec3(transform * glm::vec4(corner, 1.0f));
+                    if (glm::dot(glm::vec3(plane), worldCorner) + plane.w < -cullSlack) {
+                        out++;
+                    }
+                }
+                if (out == 8) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         uint32_t lightIdx = 0xFFFFFFFF; // idx in EntityManager's light list
 
         // dynamic shadow map, sent to shader
-        VkImage shadowDepthImage = VK_NULL_HANDLE;
-        VkDeviceMemory shadowDepthMemory = VK_NULL_HANDLE;
-        VkImageView shadowDepthImageView = VK_NULL_HANDLE;
-        VkImageView shadowDepthFaceViews[6] = { VK_NULL_HANDLE };
+        std::vector<VkImage> shadowDepthImages;
+        std::vector<VkDeviceMemory> shadowDepthMemories;
+        std::vector<VkImageView> shadowDepthImageViews;
+        std::vector<std::array<VkImageView, 6>> shadowDepthFaceViews;
         
         // baked shadow map, static
         VkImage bakedShadowImage = VK_NULL_HANDLE;
@@ -67,7 +107,7 @@ namespace engine {
         VkImageView bakedShadowFaceViews[6] = { VK_NULL_HANDLE };
         
         bool hasShadowMap = false;
-        bool shadowImageReady = false;
+        std::vector<uint8_t> shadowImageReady;
         bool shadowBaked = false;
         bool bakedImageReady = false;
 

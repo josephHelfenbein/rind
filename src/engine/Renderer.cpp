@@ -17,6 +17,7 @@
 #include <engine/SettingsManager.h>
 
 #include <utility>
+#include <unordered_map>
 #include <unordered_set>
 #include <iostream>
 #include <array>
@@ -62,6 +63,15 @@ void engine::Renderer::cleanup() {
             if (sem != VK_NULL_HANDLE) vkDestroySemaphore(device, sem, nullptr);
         }
         renderFinishedSemaphores.clear();
+        for (auto& frameSemaphores : crossQueueSegmentSemaphores) {
+            for (VkSemaphore sem : frameSemaphores) {
+                if (sem != VK_NULL_HANDLE) vkDestroySemaphore(device, sem, nullptr);
+            }
+            frameSemaphores.clear();
+        }
+        crossQueueSegmentSemaphores.clear();
+        graphicsSegmentCommandBuffers.clear();
+        computeSegmentCommandBuffers.clear();
 
         if (uiVertexBuffer != VK_NULL_HANDLE) vkDestroyBuffer(device, uiVertexBuffer, nullptr);
         if (uiVertexBufferMemory != VK_NULL_HANDLE) vkFreeMemory(device, uiVertexBufferMemory, nullptr);
@@ -109,6 +119,10 @@ void engine::Renderer::cleanup() {
         if (commandPool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(device, commandPool, nullptr);
             commandPool = VK_NULL_HANDLE;
+        }
+        if (computeCommandPool != VK_NULL_HANDLE) {
+            vkDestroyCommandPool(device, computeCommandPool, nullptr);
+            computeCommandPool = VK_NULL_HANDLE;
         }
 
         vkDestroyDevice(device, nullptr);
@@ -244,7 +258,7 @@ void engine::Renderer::mainLoop() {
         if (pendingScreenModeApply) {
             pendingScreenModeApply = false;
             applyScreenMode();
-            if (currentScreenMode != 0) recreateSwapChain();
+            recreateSwapChain();
         }
         processInput(window);
         drawFrame();
@@ -253,6 +267,55 @@ void engine::Renderer::mainLoop() {
 }
 
 void engine::Renderer::drawFrame() {
+    auto shouldRebuildAttachments = [this]() {
+        if (!shaderManager) return false;
+        const auto& renderGraph = shaderManager->getRenderGraph();
+        for (const auto& node : renderGraph) {
+            if (!node.usesRendering || !node.passInfo) {
+                continue;
+            }
+            if (node.passInfo->usesSwapchain) {
+                continue;
+            }
+
+            bool hasValidColorAttachment = false;
+            for (const auto& colorAttachment : node.passInfo->colorAttachments) {
+                if (colorAttachment.imageView == VK_NULL_HANDLE) {
+                    return true;
+                }
+                hasValidColorAttachment = true;
+            }
+            bool hasValidDepthAttachment = false;
+            if (node.passInfo->hasDepthAttachment) {
+                if (!node.passInfo->depthAttachment.has_value() || node.passInfo->depthAttachment->imageView == VK_NULL_HANDLE) {
+                    return true;
+                }
+                hasValidDepthAttachment = true;
+            }
+            if (!hasValidColorAttachment && !hasValidDepthAttachment) {
+                return true;
+            }
+
+            if (swapChainExtent.width > 1 && swapChainExtent.height > 1 && node.passInfo->images.has_value()) {
+                for (const auto& image : *node.passInfo->images) {
+                    const bool isAttachment =
+                        (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0 ||
+                        (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+                    if (!isAttachment) {
+                        continue;
+                    }
+                    if (image.allocatedWidth <= 1 || image.allocatedHeight <= 1) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    if (shouldRebuildAttachments()) {
+        recreateSwapChain();
+        return;
+    }
     entityManager->processPendingDeletions();
     entityManager->processPendingAdditions();
     if (shadowMapRecreationPending) {
@@ -298,31 +361,463 @@ void engine::Renderer::drawFrame() {
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[drawFrame] acquired imageIndex=" << imageIndex << " result=" << result << std::endl;
     }
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         recreateSwapChain();
         return;
-    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    } else if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to acquire swap chain image!");
     }
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[drawFrame] recordCommandBuffer begin imageIndex=" << imageIndex << std::endl;
+
+    const auto& renderGraph = shaderManager->getRenderGraph();
+    const auto& scheduledOrder = shaderManager->getScheduledNodeOrder();
+    std::vector<size_t> fallbackOrder;
+    const std::vector<size_t>* resolvedOrder = nullptr;
+    if (scheduledOrder.size() == renderGraph.size()) {
+        resolvedOrder = &scheduledOrder;
+    } else {
+        fallbackOrder.resize(renderGraph.size());
+        for (size_t idx = 0; idx < fallbackOrder.size(); ++idx) {
+            fallbackOrder[idx] = idx;
+        }
+        resolvedOrder = &fallbackOrder;
     }
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    VkSubmitInfo submitInfo = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &imageAvailableSemaphores[currentFrame],
-        .pWaitDstStageMask = waitStages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &commandBuffers[currentFrame],
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &renderFinishedSemaphores[currentFrame]
+
+    enum class NodeQueueClass { Graphics, Compute };
+    struct NodeSubmission {
+        size_t nodeIdx = 0;
+        NodeQueueClass queueClass = NodeQueueClass::Graphics;
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        std::vector<size_t> dependencySubmissions;
+        std::vector<size_t> incomingCrossQueueEdges;
+        std::vector<size_t> outgoingCrossQueueEdges;
     };
-    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to submit draw command buffer!");
+    struct CrossQueueEdge {
+        size_t fromSubmission = 0;
+        size_t toSubmission = 0;
+    };
+
+    std::vector<NodeSubmission> submissions;
+    submissions.reserve(resolvedOrder->size());
+    for (size_t orderIdx = 0; orderIdx < resolvedOrder->size(); ++orderIdx) {
+        const size_t nodeIdx = (*resolvedOrder)[orderIdx];
+        if (nodeIdx >= renderGraph.size()) {
+            continue;
+        }
+        const RenderNode& node = renderGraph[nodeIdx];
+        const bool laneAllowsCompute = !node.lane || node.lane->allowCompute;
+        const bool lanePreferAsync = node.lane && node.lane->preferAsync;
+        const bool computeShaderOnlyNode = !node.usesRendering && !node.computeShaders.empty() && !node.customRenderFunc;
+        const bool computeCapableCustomNode = !node.usesRendering && node.customRenderFunc && node.canRunCustomOnComputeQueue;
+        const bool computeEligibleNode = computeShaderOnlyNode || computeCapableCustomNode;
+        NodeQueueClass queueClass = NodeQueueClass::Graphics;
+        if (hasAsyncComputeQueue && laneAllowsCompute && lanePreferAsync && computeEligibleNode) {
+            queueClass = NodeQueueClass::Compute;
+        }
+        submissions.push_back({
+            .nodeIdx = nodeIdx,
+            .queueClass = queueClass,
+            .commandBuffer = VK_NULL_HANDLE,
+            .dependencySubmissions = {},
+            .incomingCrossQueueEdges = {},
+            .outgoingCrossQueueEdges = {}
+        });
+    }
+
+    uint32_t graphicsSubmissionCount = 0;
+    uint32_t computeSubmissionCount = 0;
+    for (const NodeSubmission& submission : submissions) {
+        if (submission.queueClass == NodeQueueClass::Compute) {
+            ++computeSubmissionCount;
+        } else {
+            ++graphicsSubmissionCount;
+        }
+    }
+
+    auto ensureCommandBufferCapacity = [&](std::vector<VkCommandBuffer>& buffers, uint32_t needed, VkCommandPool pool) {
+        if (buffers.size() >= needed) {
+            return;
+        }
+        const uint32_t allocateCount = needed - static_cast<uint32_t>(buffers.size());
+        std::vector<VkCommandBuffer> newBuffers(allocateCount, VK_NULL_HANDLE);
+        VkCommandBufferAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = allocateCount
+        };
+        if (vkAllocateCommandBuffers(device, &allocInfo, newBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate segmented command buffers!");
+        }
+        buffers.insert(buffers.end(), newBuffers.begin(), newBuffers.end());
+    };
+
+    std::vector<VkCommandBuffer>& frameGraphicsSegments = graphicsSegmentCommandBuffers[currentFrame];
+    std::vector<VkCommandBuffer>& frameComputeSegments = computeSegmentCommandBuffers[currentFrame];
+    const uint32_t extraGraphicsNeeded = graphicsSubmissionCount > 0 ? graphicsSubmissionCount - 1 : 0;
+    ensureCommandBufferCapacity(frameGraphicsSegments, extraGraphicsNeeded, commandPool);
+    ensureCommandBufferCapacity(frameComputeSegments, computeSubmissionCount, computeCommandPool);
+
+    uint32_t usedGraphicsExtra = 0;
+    uint32_t usedCompute = 0;
+    bool usedPrimaryGraphicsBuffer = false;
+    for (NodeSubmission& submission : submissions) {
+        if (submission.queueClass == NodeQueueClass::Compute) {
+            submission.commandBuffer = frameComputeSegments[usedCompute++];
+        } else {
+            if (!usedPrimaryGraphicsBuffer) {
+                submission.commandBuffer = commandBuffers[currentFrame];
+                usedPrimaryGraphicsBuffer = true;
+            } else {
+                submission.commandBuffer = frameGraphicsSegments[usedGraphicsExtra++];
+            }
+        }
+        vkResetCommandBuffer(submission.commandBuffer, 0);
+    }
+
+    bool framePrepDone = false;
+    for (NodeSubmission& submission : submissions) {
+        std::vector<size_t> nodeOrder = { submission.nodeIdx };
+        recordCommandBuffer(submission.commandBuffer, imageIndex, &nodeOrder, !framePrepDone);
+        framePrepDone = true;
+    }
+
+    const size_t invalidSubmission = submissions.size();
+    std::vector<size_t> nodeToSubmission(renderGraph.size(), invalidSubmission);
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        nodeToSubmission[submissions[submissionIdx].nodeIdx] = submissionIdx;
+    }
+
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        NodeSubmission& submission = submissions[submissionIdx];
+        const RenderNode& node = renderGraph[submission.nodeIdx];
+        for (size_t depNodeIdx : node.resolvedDependencies) {
+            if (depNodeIdx >= nodeToSubmission.size()) {
+                continue;
+            }
+            const size_t depSubmissionIdx = nodeToSubmission[depNodeIdx];
+            if (depSubmissionIdx == invalidSubmission || depSubmissionIdx == submissionIdx) {
+                continue;
+            }
+            submission.dependencySubmissions.push_back(depSubmissionIdx);
+        }
+        std::sort(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end());
+        submission.dependencySubmissions.erase(
+            std::unique(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end()),
+            submission.dependencySubmissions.end()
+        );
+    }
+
+    auto hasDependencyPath = [&](size_t fromSubmission, size_t targetSubmission) {
+        if (fromSubmission >= submissions.size() || targetSubmission >= submissions.size()) {
+            return false;
+        }
+        std::vector<uint8_t> visited(submissions.size(), 0);
+        std::vector<size_t> stack = { fromSubmission };
+        while (!stack.empty()) {
+            const size_t current = stack.back();
+            stack.pop_back();
+            if (current >= submissions.size() || visited[current]) {
+                continue;
+            }
+            visited[current] = 1;
+            for (size_t dep : submissions[current].dependencySubmissions) {
+                if (dep == targetSubmission) {
+                    return true;
+                }
+                if (dep < submissions.size() && !visited[dep]) {
+                    stack.push_back(dep);
+                }
+            }
+        }
+        return false;
+    };
+
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        NodeSubmission& submission = submissions[submissionIdx];
+        if (submission.dependencySubmissions.size() <= 1) {
+            continue;
+        }
+
+        std::vector<size_t> reducedDependencies;
+        reducedDependencies.reserve(submission.dependencySubmissions.size());
+        for (size_t depCandidate : submission.dependencySubmissions) {
+            bool isRedundant = false;
+            for (size_t otherDep : submission.dependencySubmissions) {
+                if (otherDep == depCandidate) {
+                    continue;
+                }
+                if (hasDependencyPath(otherDep, depCandidate)) {
+                    isRedundant = true;
+                    break;
+                }
+            }
+            if (!isRedundant) {
+                reducedDependencies.push_back(depCandidate);
+            }
+        }
+        submission.dependencySubmissions = std::move(reducedDependencies);
+    }
+
+    std::unordered_map<const RenderLane*, size_t> lastSubmissionByPreservedLane;
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        NodeSubmission& submission = submissions[submissionIdx];
+        const RenderNode& node = renderGraph[submission.nodeIdx];
+        if (!node.lane || !node.lane->mustPreserveOrder) {
+            continue;
+        }
+
+        const RenderLane* laneKey = node.lane.get();
+        auto prevIt = lastSubmissionByPreservedLane.find(laneKey);
+        if (prevIt != lastSubmissionByPreservedLane.end()) {
+            submission.dependencySubmissions.push_back(prevIt->second);
+            std::sort(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end());
+            submission.dependencySubmissions.erase(
+                std::unique(submission.dependencySubmissions.begin(), submission.dependencySubmissions.end()),
+                submission.dependencySubmissions.end()
+            );
+        }
+        lastSubmissionByPreservedLane[laneKey] = submissionIdx;
+    }
+
+    std::vector<CrossQueueEdge> crossQueueEdges;
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        NodeSubmission& submission = submissions[submissionIdx];
+        for (size_t depSubmissionIdx : submission.dependencySubmissions) {
+            if (submissions[depSubmissionIdx].queueClass == submission.queueClass) {
+                continue;
+            }
+            const size_t edgeIdx = crossQueueEdges.size();
+            crossQueueEdges.push_back({
+                .fromSubmission = depSubmissionIdx,
+                .toSubmission = submissionIdx
+            });
+            submissions[depSubmissionIdx].outgoingCrossQueueEdges.push_back(edgeIdx);
+            submission.incomingCrossQueueEdges.push_back(edgeIdx);
+        }
+    }
+
+    std::vector<VkSemaphore>& frameBoundarySemaphores = crossQueueSegmentSemaphores[currentFrame];
+    while (frameBoundarySemaphores.size() < crossQueueEdges.size()) {
+        VkSemaphoreCreateInfo semaphoreInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+        };
+        VkSemaphore newSemaphore = VK_NULL_HANDLE;
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &newSemaphore) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create segmented boundary semaphore!");
+        }
+        frameBoundarySemaphores.push_back(newSemaphore);
+    }
+
+    if (DEBUG_RENDER_LOGS) {
+        std::cout << "[drawFrame] recordCommandBuffer begin imageIndex=" << imageIndex
+                  << " submissions=" << submissions.size()
+                  << " graphicsSubmissions=" << graphicsSubmissionCount
+                  << " computeSubmissions=" << computeSubmissionCount
+                  << " crossQueueEdges=" << crossQueueEdges.size() << std::endl;
+    }
+
+    auto submitNode = [&](VkQueue queue,
+                          VkCommandBuffer cb,
+                          const std::vector<VkSemaphore>& waitSemaphores,
+                          const std::vector<VkPipelineStageFlags>& waitStages,
+                          const std::vector<VkSemaphore>& signalSemaphores,
+                          VkFence fence) {
+        VkSubmitInfo submitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size()),
+            .pWaitSemaphores = waitSemaphores.empty() ? nullptr : waitSemaphores.data(),
+            .pWaitDstStageMask = waitStages.empty() ? nullptr : waitStages.data(),
+            .commandBufferCount = 1,
+            .pCommandBuffers = &cb,
+            .signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size()),
+            .pSignalSemaphores = signalSemaphores.empty() ? nullptr : signalSemaphores.data()
+        };
+        return vkQueueSubmit(queue, 1, &submitInfo, fence);
+    };
+
+    auto hasIncomingFromCompute = [&](const NodeSubmission& submission) {
+        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
+            if (edgeIdx >= crossQueueEdges.size()) {
+                continue;
+            }
+            const size_t fromSubmission = crossQueueEdges[edgeIdx].fromSubmission;
+            if (fromSubmission < submissions.size() && submissions[fromSubmission].queueClass == NodeQueueClass::Compute) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto earliestCrossQueueProducerOrder = [&](const NodeSubmission& submission) {
+        size_t bestOrder = submissions.size();
+        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
+            if (edgeIdx >= crossQueueEdges.size()) {
+                continue;
+            }
+            const size_t producerSubmission = crossQueueEdges[edgeIdx].fromSubmission;
+            if (producerSubmission < bestOrder) {
+                bestOrder = producerSubmission;
+            }
+        }
+        return bestOrder;
+    };
+
+    std::vector<std::vector<size_t>> submissionDependents(submissions.size());
+    std::vector<size_t> remainingDependencies(submissions.size(), 0);
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        remainingDependencies[submissionIdx] = submissions[submissionIdx].dependencySubmissions.size();
+        for (size_t depSubmissionIdx : submissions[submissionIdx].dependencySubmissions) {
+            if (depSubmissionIdx < submissions.size()) {
+                submissionDependents[depSubmissionIdx].push_back(submissionIdx);
+            }
+        }
+    }
+
+    std::vector<size_t> readySubmissions;
+    readySubmissions.reserve(submissions.size());
+    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+        if (remainingDependencies[submissionIdx] == 0) {
+            readySubmissions.push_back(submissionIdx);
+        }
+    }
+
+    std::vector<size_t> submissionOrder;
+    submissionOrder.reserve(submissions.size());
+    auto pickNextReadySubmission = [&](const std::vector<size_t>& candidates) {
+        return *std::min_element(
+            candidates.begin(),
+            candidates.end(),
+            [&](size_t lhs, size_t rhs) {
+                const NodeSubmission& lhsSubmission = submissions[lhs];
+                const NodeSubmission& rhsSubmission = submissions[rhs];
+                const RenderNode& lhsNode = renderGraph[lhsSubmission.nodeIdx];
+                const RenderNode& rhsNode = renderGraph[rhsSubmission.nodeIdx];
+                const bool lhsPreferAsyncLane = lhsNode.lane && lhsNode.lane->preferAsync;
+                const bool rhsPreferAsyncLane = rhsNode.lane && rhsNode.lane->preferAsync;
+                const bool lhsIncomingCompute = hasIncomingFromCompute(lhsSubmission);
+                const bool rhsIncomingCompute = hasIncomingFromCompute(rhsSubmission);
+
+                int lhsBucket = 3;
+                int rhsBucket = 3;
+                if (lhsSubmission.queueClass == NodeQueueClass::Graphics && !lhsIncomingCompute && lhsPreferAsyncLane) {
+                    lhsBucket = 0;
+                } else if (lhsSubmission.queueClass == NodeQueueClass::Compute) {
+                    lhsBucket = 1;
+                } else if (lhsSubmission.queueClass == NodeQueueClass::Graphics && !lhsIncomingCompute) {
+                    lhsBucket = 2;
+                }
+                if (rhsSubmission.queueClass == NodeQueueClass::Graphics && !rhsIncomingCompute && rhsPreferAsyncLane) {
+                    rhsBucket = 0;
+                } else if (rhsSubmission.queueClass == NodeQueueClass::Compute) {
+                    rhsBucket = 1;
+                } else if (rhsSubmission.queueClass == NodeQueueClass::Graphics && !rhsIncomingCompute) {
+                    rhsBucket = 2;
+                }
+
+                if (lhsBucket != rhsBucket) {
+                    return lhsBucket < rhsBucket;
+                }
+
+                if (lhsSubmission.queueClass == NodeQueueClass::Compute && rhsSubmission.queueClass == NodeQueueClass::Compute) {
+                    const size_t lhsProducerOrder = earliestCrossQueueProducerOrder(lhsSubmission);
+                    const size_t rhsProducerOrder = earliestCrossQueueProducerOrder(rhsSubmission);
+                    if (lhsProducerOrder != rhsProducerOrder) {
+                        return lhsProducerOrder < rhsProducerOrder;
+                    }
+                    if (lhsSubmission.incomingCrossQueueEdges.size() != rhsSubmission.incomingCrossQueueEdges.size()) {
+                        return lhsSubmission.incomingCrossQueueEdges.size() < rhsSubmission.incomingCrossQueueEdges.size();
+                    }
+                }
+
+                return lhs < rhs;
+            }
+        );
+    };
+
+    while (!readySubmissions.empty()) {
+        const size_t nextSubmission = pickNextReadySubmission(readySubmissions);
+        readySubmissions.erase(std::find(readySubmissions.begin(), readySubmissions.end(), nextSubmission));
+        submissionOrder.push_back(nextSubmission);
+        for (size_t dependentIdx : submissionDependents[nextSubmission]) {
+            if (remainingDependencies[dependentIdx] == 0) {
+                continue;
+            }
+            remainingDependencies[dependentIdx]--;
+            if (remainingDependencies[dependentIdx] == 0) {
+                readySubmissions.push_back(dependentIdx);
+            }
+        }
+    }
+
+    if (submissionOrder.size() != submissions.size()) {
+        submissionOrder.clear();
+        submissionOrder.reserve(submissions.size());
+        for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+            submissionOrder.push_back(submissionIdx);
+        }
+    }
+
+    size_t imageAvailableWaitOrderPos = submissionOrder.size();
+    for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+        const RenderNode& node = renderGraph[submissions[submissionOrder[orderPos]].nodeIdx];
+        if (node.passInfo && node.passInfo->usesSwapchain) {
+            imageAvailableWaitOrderPos = orderPos;
+            break;
+        }
+    }
+    if (imageAvailableWaitOrderPos == submissionOrder.size() && !submissionOrder.empty()) {
+        for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+            if (submissions[submissionOrder[orderPos]].queueClass == NodeQueueClass::Graphics) {
+                imageAvailableWaitOrderPos = orderPos;
+                break;
+            }
+        }
+        if (imageAvailableWaitOrderPos == submissionOrder.size()) {
+            imageAvailableWaitOrderPos = 0;
+        }
+    }
+
+    for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+        const size_t submissionIdx = submissionOrder[orderPos];
+        const NodeSubmission& submission = submissions[submissionIdx];
+        const bool isLastSubmission = orderPos + 1 == submissionOrder.size();
+
+        std::vector<VkSemaphore> waitSemaphores;
+        std::vector<VkPipelineStageFlags> waitStages;
+        std::vector<VkSemaphore> signalSemaphores;
+
+        const bool shouldWaitOnImageAvailable = orderPos == imageAvailableWaitOrderPos;
+        if (shouldWaitOnImageAvailable) {
+            waitSemaphores.push_back(imageAvailableSemaphores[currentFrame]);
+            waitStages.push_back(submission.queueClass == NodeQueueClass::Compute
+                ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+        }
+
+        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
+            waitSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
+            waitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+        }
+        for (size_t edgeIdx : submission.outgoingCrossQueueEdges) {
+            signalSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
+        }
+        if (isLastSubmission) {
+            signalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
+        }
+
+        const VkFence submitFence = isLastSubmission ? inFlightFences[currentFrame] : VK_NULL_HANDLE;
+        VkQueue submitQueue = submission.queueClass == NodeQueueClass::Compute ? computeQueue : graphicsQueue;
+        if (submitNode(
+                submitQueue,
+                submission.commandBuffer,
+                waitSemaphores,
+                waitStages,
+                signalSemaphores,
+                submitFence) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to submit node command buffer!");
+        }
     }
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[drawFrame] submit done" << std::endl;
@@ -349,7 +844,12 @@ void engine::Renderer::drawFrame() {
     fpsFrameCount++;
 }
 
-void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+void engine::Renderer::recordCommandBuffer(
+    VkCommandBuffer commandBuffer,
+    uint32_t imageIndex,
+    const std::vector<size_t>* nodeOrder,
+    bool doFramePrep
+) {
     VkCommandBufferBeginInfo beginInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
     };
@@ -361,28 +861,44 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
     }
     auto& renderGraph = shaderManager->getRenderGraph();
     const size_t nodeCount = renderGraph.size();
+    const auto& scheduledOrder = shaderManager->getScheduledNodeOrder();
+    std::vector<size_t> fallbackOrder;
+    const std::vector<size_t>* resolvedOrder = nodeOrder;
+    if (!resolvedOrder) {
+        if (scheduledOrder.size() == nodeCount) {
+            resolvedOrder = &scheduledOrder;
+        } else {
+            fallbackOrder.resize(nodeCount);
+            for (size_t idx = 0; idx < nodeCount; ++idx) {
+                fallbackOrder[idx] = idx;
+            }
+            resolvedOrder = &fallbackOrder;
+        }
+    }
 
-    if (!paused) {
+    if (doFramePrep && !paused) {
         entityManager->updateAll(deltaTime);
         audioManager->update();
         particleManager->updateAll(deltaTime);
         volumetricManager->updateAll(deltaTime);
     }
-    particleManager->updateParticleBuffer(currentFrame);
-    volumetricManager->updateVolumetricBuffer(currentFrame);
-    if (entityManager->getCamera()) {
+    if (doFramePrep) {
+        particleManager->updateParticleBuffer(currentFrame);
+        volumetricManager->updateVolumetricBuffer(currentFrame);
+    }
+    if (doFramePrep && entityManager->getCamera()) {
         Camera* cam = entityManager->getCamera();
         glm::vec3 pos = cam->getWorldPosition();
         glm::vec3 fwd = -glm::normalize(glm::vec3(cam->getWorldTransform()[2]));
         glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
         audioManager->updateListener(pos, fwd, up);
     }
-    lightManager->renderShadows(commandBuffer, currentFrame);
-    irradianceManager->renderDynamicIrradiance(commandBuffer, currentFrame);
-    lightManager->updateLightsUBO(currentFrame);
-    irradianceManager->updateIrradianceProbesUBO(currentFrame);
 
-    for (size_t nodeIdx = 0; nodeIdx < nodeCount; ++nodeIdx) {
+    for (size_t nodeOrderIdx = 0; nodeOrderIdx < resolvedOrder->size(); ++nodeOrderIdx) {
+        const size_t nodeIdx = (*resolvedOrder)[nodeOrderIdx];
+        if (nodeIdx >= nodeCount) {
+            continue;
+        }
         auto& node = renderGraph[nodeIdx];
         if (!node.passInfo) {
             continue;
@@ -443,8 +959,83 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
             });
             swapChainImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         }
-        if (node.passInfo->images.has_value()) {
+        if (node.usePassManagedTransitions && node.passInfo->images.has_value()) {
+            const VkPipelineStageFlags2 shaderReadStages =
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            auto linkedReadStagesForImage = [&](const std::string& attachmentName) {
+                VkPipelineStageFlags2 linkedStages = 0;
+
+                auto producerHasShaderName = [&](const std::string& shaderName) {
+                    return std::find(node.shaderNames.begin(), node.shaderNames.end(), shaderName) != node.shaderNames.end();
+                };
+
+                for (size_t consumerIdx = 0; consumerIdx < nodeCount; ++consumerIdx) {
+                    if (consumerIdx == nodeIdx) {
+                        continue;
+                    }
+
+                    const RenderNode& consumer = renderGraph[consumerIdx];
+                    if (std::find(consumer.resolvedDependencies.begin(), consumer.resolvedDependencies.end(), nodeIdx)
+                        == consumer.resolvedDependencies.end()) {
+                        continue;
+                    }
+
+                    bool readsViaGraphicsBinding = false;
+                    for (GraphicsShader* shader : consumer.shaders) {
+                        if (!shader) {
+                            continue;
+                        }
+                        for (const auto& binding : shader->config.inputBindings) {
+                            if (binding.attachmentName != attachmentName) {
+                                continue;
+                            }
+                            if (binding.sourceShaderName.empty() || !producerHasShaderName(binding.sourceShaderName)) {
+                                continue;
+                            }
+                            readsViaGraphicsBinding = true;
+                            break;
+                        }
+                        if (readsViaGraphicsBinding) {
+                            break;
+                        }
+                    }
+
+                    bool readsViaComputeBinding = false;
+                    for (ComputeShader* shader : consumer.computeShaders) {
+                        if (!shader) {
+                            continue;
+                        }
+                        for (const auto& binding : shader->config.inputBindings) {
+                            if (binding.attachmentName != attachmentName) {
+                                continue;
+                            }
+                            if (binding.sourceShaderName.empty() || !producerHasShaderName(binding.sourceShaderName)) {
+                                continue;
+                            }
+                            readsViaComputeBinding = true;
+                            break;
+                        }
+                        if (readsViaComputeBinding) {
+                            break;
+                        }
+                    }
+
+                    if (readsViaGraphicsBinding) {
+                        linkedStages |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+                    }
+                    if (readsViaComputeBinding) {
+                        linkedStages |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                    }
+                }
+
+                if (linkedStages == 0) {
+                    linkedStages = shaderReadStages;
+                }
+                return linkedStages;
+            };
+
             for (auto& image : node.passInfo->images.value()) {
+                const VkPipelineStageFlags2 linkedReadStages = linkedReadStagesForImage(image.name);
                 const bool isDepth = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
                 const bool isStorage = (image.usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
                 const VkImageAspectFlags aspect = isDepth
@@ -458,7 +1049,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                     VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
                     VkAccessFlags2 srcAccess = VK_ACCESS_2_NONE;
                     if (image.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                        srcStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        srcStage = shaderReadStages;
                         srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
                     } else if (image.currentLayout == attachmentLayout) {
                         srcStage = isDepth
@@ -491,7 +1082,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                         postBarriers.push_back({
                             .srcStageMask = node.storageWriteStage,
                             .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-                            .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                            .dstStageMask = linkedReadStages,
                             .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                             .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
                             .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -514,7 +1105,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                     VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
                     VkAccessFlags2 srcAccess = VK_ACCESS_2_NONE;
                     if (image.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                        srcStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        srcStage = shaderReadStages;
                         srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
                     } else if (image.currentLayout == attachmentLayout) {
                         srcStage = isDepth
@@ -558,7 +1149,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                             .srcAccessMask = isDepth
                                 ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
                                 : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                            .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                            .dstStageMask = linkedReadStages,
                             .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                             .oldLayout = attachmentLayout,
                             .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -612,6 +1203,8 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
             );
         }
         const bool usesRendering = node.usesRendering;
+        bool beganRendering = false;
+        bool renderingBlocked = false;
         VkRenderingInfo renderingInfo{};
         VkRenderingAttachmentInfo swapColor{};
         if (usesRendering) {
@@ -638,38 +1231,106 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
                 renderingInfo.colorAttachmentCount = static_cast<uint32_t>(node.passInfo->colorAttachments.size());
                 renderingInfo.pColorAttachments = node.passInfo->colorAttachments.data();
                 renderingInfo.pDepthAttachment = node.passInfo->hasDepthAttachment ? &node.passInfo->depthAttachment.value() : nullptr;
-                if (node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
-                    const auto& firstImage = (*node.passInfo->images)[0];
-                    const uint32_t divider = firstImage.resolutionDivider > 0 ? firstImage.resolutionDivider : 1;
-                    renderingInfo.renderArea.extent = {
-                        .width = firstImage.width == 0 ? swapChainExtent.width / divider : firstImage.width,
-                        .height = firstImage.height == 0 ? swapChainExtent.height / divider : firstImage.height
-                    };
+                if (node.passInfo->images.has_value()) {
+                    bool foundAttachmentExtent = false;
+                    uint32_t attachmentWidth = 0;
+                    uint32_t attachmentHeight = 0;
+                    for (const auto& image : *node.passInfo->images) {
+                        const bool isAttachment =
+                            (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0 ||
+                            (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+                        if (!isAttachment) {
+                            continue;
+                        }
+                        uint32_t imageWidth = image.allocatedWidth;
+                        uint32_t imageHeight = image.allocatedHeight;
+                        if (imageWidth == 0 || imageHeight == 0) {
+                            const uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
+                            imageWidth = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
+                            imageHeight = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
+                        }
+                        if (!foundAttachmentExtent) {
+                            attachmentWidth = imageWidth;
+                            attachmentHeight = imageHeight;
+                            foundAttachmentExtent = true;
+                        } else {
+                            attachmentWidth = std::min(attachmentWidth, imageWidth);
+                            attachmentHeight = std::min(attachmentHeight, imageHeight);
+                        }
+                    }
+                    if (foundAttachmentExtent) {
+                        renderingInfo.renderArea.extent = {
+                            .width = attachmentWidth,
+                            .height = attachmentHeight
+                        };
+                    }
                 }
             }
 
-            fpCmdBeginRendering(commandBuffer, &renderingInfo);
-            VkViewport viewport = {
-                .x = static_cast<float>(renderingInfo.renderArea.offset.x),
-                .y = static_cast<float>(renderingInfo.renderArea.offset.y),
-                .width = static_cast<float>(renderingInfo.renderArea.extent.width),
-                .height = static_cast<float>(renderingInfo.renderArea.extent.height),
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f
-            };
-            VkRect2D scissor = {
-                .offset = renderingInfo.renderArea.offset,
-                .extent = renderingInfo.renderArea.extent
-            };
-            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            const bool hasColorAttachments = renderingInfo.colorAttachmentCount > 0 && renderingInfo.pColorAttachments != nullptr;
+            const bool hasDepthAttachment = renderingInfo.pDepthAttachment != nullptr;
+            if (!hasColorAttachments && !hasDepthAttachment) {
+                if (DEBUG_RENDER_LOGS) {
+                    std::cout << "[record] skipping pass '" << node.passInfo->name
+                              << "' because it has no render attachments" << std::endl;
+                }
+                renderingBlocked = true;
+            }
+
+            bool hasInvalidAttachment = false;
+            if (!renderingBlocked && hasColorAttachments) {
+                for (uint32_t i = 0; i < renderingInfo.colorAttachmentCount; ++i) {
+                    if (renderingInfo.pColorAttachments[i].imageView == VK_NULL_HANDLE) {
+                        hasInvalidAttachment = true;
+                        break;
+                    }
+                }
+            }
+            if (!renderingBlocked && !hasInvalidAttachment && hasDepthAttachment && renderingInfo.pDepthAttachment->imageView == VK_NULL_HANDLE) {
+                hasInvalidAttachment = true;
+            }
+            if (hasInvalidAttachment) {
+                if (DEBUG_RENDER_LOGS) {
+                    std::cout << "[record] skipping pass '" << node.passInfo->name
+                              << "' due to null attachment image view" << std::endl;
+                }
+                renderingBlocked = true;
+            }
+
+            if (!renderingBlocked && DEBUG_RENDER_LOGS) {
+                std::cout << "[record] begin pass '" << node.passInfo->name
+                          << "' extent=" << renderingInfo.renderArea.extent.width << "x"
+                          << renderingInfo.renderArea.extent.height
+                          << " colorCount=" << renderingInfo.colorAttachmentCount
+                          << " hasDepth=" << (hasDepthAttachment ? 1 : 0) << std::endl;
+            }
+
+            if (!renderingBlocked) {
+                fpCmdBeginRendering(commandBuffer, &renderingInfo);
+                beganRendering = true;
+                VkViewport viewport = {
+                    .x = static_cast<float>(renderingInfo.renderArea.offset.x),
+                    .y = static_cast<float>(renderingInfo.renderArea.offset.y),
+                    .width = static_cast<float>(renderingInfo.renderArea.extent.width),
+                    .height = static_cast<float>(renderingInfo.renderArea.extent.height),
+                    .minDepth = 0.0f,
+                    .maxDepth = 1.0f
+                };
+                VkRect2D scissor = {
+                    .offset = renderingInfo.renderArea.offset,
+                    .extent = renderingInfo.renderArea.extent
+                };
+                vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+                vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            }
         }
 
         const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
+        const bool passCannotRender = usesRendering && !beganRendering;
 
-        if (passIsInactive || skipDraw) {
+        if (passIsInactive || skipDraw || passCannotRender) {
             if (DEBUG_RENDER_LOGS) {
-                std::cout << "[record] pass " << node.passInfo->name << " skipping draw (inactive or skip condition)" << std::endl;
+                std::cout << "[record] pass " << node.passInfo->name << " skipping draw (inactive, skip condition, or blocked rendering)" << std::endl;
             }
         } else if (node.customRenderFunc) {
             if (DEBUG_RENDER_LOGS) {
@@ -687,7 +1348,7 @@ void engine::Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32
             }
             draw2DPass(commandBuffer, node);
         }
-        if (usesRendering) {
+        if (beganRendering) {
             fpCmdEndRendering(commandBuffer);
         }
 
@@ -906,6 +1567,9 @@ void engine::Renderer::createLogicalDevice() {
         indices.graphicsFamily.value(),
         indices.presentFamily.value()
     };
+    if (indices.computeFamily.has_value()) {
+        uniqueQueueFamilies.insert(indices.computeFamily.value());
+    }
     float queuePriority = 1.0f;
     for (uint32_t queueFamily : uniqueQueueFamilies) {
         VkDeviceQueueCreateInfo queueCreateInfo = {
@@ -928,21 +1592,34 @@ void engine::Renderer::createLogicalDevice() {
         .synchronization2 = VK_TRUE,
         .dynamicRendering = VK_TRUE
     };
+    VkPhysicalDeviceVulkan12Features vulkan12Features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &vulkan13Features,
+        .shaderFloat16 = VK_TRUE
+    };
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &vulkan13Features
+        .pNext = &vulkan12Features
     };
     vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
+    if (vulkan12Features.shaderFloat16 != VK_TRUE) {
+        std::cout << "Warning: shaderFloat16 is not supported; f16 compute shaders may fail to create.\n";
+    }
     VkDeviceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = &vulkan13Features,
+        .pNext = &vulkan12Features,
         .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
         .pQueueCreateInfos = queueCreateInfos.data()
     };
     VkPhysicalDeviceVulkan13Features enabledVulkan13Features = vulkan13Features;
+    VkPhysicalDeviceVulkan12Features enabledVulkan12Features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &enabledVulkan13Features,
+        .shaderFloat16 = vulkan12Features.shaderFloat16
+    };
     VkPhysicalDeviceFeatures2 enabledFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &enabledVulkan13Features,
+        .pNext = &enabledVulkan12Features,
         .features = deviceFeatures
     };
     createInfo.pNext = &enabledFeatures2;
@@ -967,6 +1644,9 @@ void engine::Renderer::createLogicalDevice() {
     }
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+    uint32_t computeFamilyIndex = indices.computeFamily.value_or(indices.graphicsFamily.value());
+    vkGetDeviceQueue(device, computeFamilyIndex, 0, &computeQueue);
+    hasAsyncComputeQueue = indices.computeFamily.has_value() && indices.computeFamily.value() != indices.graphicsFamily.value();
     fpCmdBeginRendering = reinterpret_cast<PFN_vkCmdBeginRendering>(vkGetDeviceProcAddr(device, "vkCmdBeginRendering"));
     if (!fpCmdBeginRendering) {
         fpCmdBeginRendering = reinterpret_cast<PFN_vkCmdBeginRendering>(vkGetDeviceProcAddr(device, "vkCmdBeginRenderingKHR"));
@@ -1039,6 +1719,14 @@ void engine::Renderer::createSwapChain(VkSwapchainKHR oldSwapchain) {
         .clipped = VK_TRUE,
         .oldSwapchain = oldSwapchain
     };
+    uint32_t extentRetryCount = 0;
+    while ((extent.width <= 1 || extent.height <= 1) && extentRetryCount < 120) {
+        glfwWaitEventsTimeout(1.0 / 60.0);
+        swapChainSupport = querySwapChainSupport(physicalDevice);
+        extent = chooseSwapExtent(swapChainSupport.capabilities);
+        createInfo.imageExtent = extent;
+        ++extentRetryCount;
+    }
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {
         indices.graphicsFamily.value(),
@@ -1234,6 +1922,12 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
     uint32_t arrayLayers,
     VkImageCreateFlags flags
 ) {
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    uint32_t queueFamilyIndices[] = {
+        indices.graphicsFamily.value(),
+        indices.computeFamily.value_or(indices.graphicsFamily.value())
+    };
+    const bool shareAcrossQueues = hasAsyncComputeQueue && queueFamilyIndices[0] != queueFamilyIndices[1];
     VkImageCreateInfo imageInfo = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags = flags,
@@ -1249,7 +1943,9 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
         .samples = samples,
         .tiling = tiling,
         .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .sharingMode = shareAcrossQueues ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = shareAcrossQueues ? 2u : 0u,
+        .pQueueFamilyIndices = shareAcrossQueues ? queueFamilyIndices : nullptr,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
     };
     VkImage image;
@@ -1272,11 +1968,19 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
 }
 
 std::pair<VkBuffer, VkDeviceMemory> engine::Renderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    uint32_t queueFamilyIndices[] = {
+        indices.graphicsFamily.value(),
+        indices.computeFamily.value_or(indices.graphicsFamily.value())
+    };
+    const bool shareAcrossQueues = hasAsyncComputeQueue && queueFamilyIndices[0] != queueFamilyIndices[1];
     VkBufferCreateInfo bufferInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
         .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE
+        .sharingMode = shareAcrossQueues ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = shareAcrossQueues ? 2u : 0u,
+        .pQueueFamilyIndices = shareAcrossQueues ? queueFamilyIndices : nullptr
     };
     VkBuffer buffer;
     if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
@@ -1306,6 +2010,7 @@ void engine::Renderer::transitionImageLayout(
     uint32_t layerCount
 ) {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+    const VkPipelineStageFlags shaderReadStages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     if (format == VK_FORMAT_D16_UNORM ||
         format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
@@ -1344,7 +2049,7 @@ void engine::Renderer::transitionImageLayout(
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -1354,11 +2059,11 @@ void engine::Renderer::transitionImageLayout(
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        sourceStage = shaderReadStages;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
         throw std::invalid_argument("Unsupported layout transition!");
@@ -1383,6 +2088,7 @@ void engine::Renderer::transitionImageLayoutInline(
     uint32_t mipLevels,
     uint32_t layerCount
 ) {
+    const VkPipelineStageFlags shaderReadStages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     if (format == VK_FORMAT_D16_UNORM ||
         format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
@@ -1421,7 +2127,7 @@ void engine::Renderer::transitionImageLayoutInline(
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -1431,21 +2137,21 @@ void engine::Renderer::transitionImageLayoutInline(
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        sourceStage = shaderReadStages;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        sourceStage = shaderReadStages;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = 0;
@@ -1456,11 +2162,11 @@ void engine::Renderer::transitionImageLayoutInline(
         barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        sourceStage = shaderReadStages;
         destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -1475,7 +2181,7 @@ void engine::Renderer::transitionImageLayoutInline(
     } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        sourceStage = shaderReadStages;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1491,7 +2197,7 @@ void engine::Renderer::transitionImageLayoutInline(
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        destinationStage = shaderReadStages;
     } else {
         throw std::invalid_argument("Unsupported layout transition!");
     }
@@ -1727,6 +2433,8 @@ void engine::Renderer::createAttachmentResources() {
                     vkFreeMemory(device, image.memory, nullptr);
                     image.memory = VK_NULL_HANDLE;
                 }
+                image.allocatedWidth = 0;
+                image.allocatedHeight = 0;
             }
         }
     };
@@ -1767,8 +2475,8 @@ void engine::Renderer::createAttachmentResources() {
         renderPass.colorAttachments.reserve(images.size());
         for (auto& image : images) {
             const uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
-            const uint32_t width = image.width == 0 ? swapChainExtent.width / divider : image.width;
-            const uint32_t height = image.height == 0 ? swapChainExtent.height / divider : image.height;
+            const uint32_t width = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
+            const uint32_t height = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
             VkImage createdImage;
             VkDeviceMemory createdMemory;
             std::tie(createdImage, createdMemory) = createImage(
@@ -1786,6 +2494,8 @@ void engine::Renderer::createAttachmentResources() {
             image.image = createdImage;
             image.memory = createdMemory;
             image.currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            image.allocatedWidth = width;
+            image.allocatedHeight = height;
 
             const bool isDepthAttachment = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
             const bool isColorAttachment = (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
@@ -1852,6 +2562,15 @@ void engine::Renderer::createCommandPool() {
     };
     if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create command pool!");
+    }
+
+    VkCommandPoolCreateInfo computePoolInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queueFamilyIndices.computeFamily.value_or(queueFamilyIndices.graphicsFamily.value())
+    };
+    if (vkCreateCommandPool(device, &computePoolInfo, nullptr, &computeCommandPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compute command pool!");
     }
 }
 
@@ -2575,6 +3294,8 @@ void engine::Renderer::createComputeDescriptorSets() {
 
 void engine::Renderer::createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    graphicsSegmentCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    computeSegmentCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     VkCommandBufferAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = commandPool,
@@ -2589,6 +3310,7 @@ void engine::Renderer::createCommandBuffers() {
 void engine::Renderer::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    crossQueueSegmentSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
     VkSemaphoreCreateInfo semaphoreInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
@@ -2716,17 +3438,33 @@ engine::Renderer::QueueFamilyIndices engine::Renderer::findQueueFamilies(VkPhysi
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    std::optional<uint32_t> fallbackComputeFamily;
     for (uint32_t i = 0; i < queueFamilyCount; ++i) {
         if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphicsFamily = i;
+        }
+        if (queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            if (!(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && !indices.computeFamily.has_value()) {
+                indices.computeFamily = i;
+            }
+            if (!fallbackComputeFamily.has_value()) {
+                fallbackComputeFamily = i;
+            }
         }
         VkBool32 presentSupport = false;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
         if (presentSupport) {
             indices.presentFamily = i;
         }
-        if (indices.isComplete()) {
+        if (indices.graphicsFamily.has_value() && indices.presentFamily.has_value() && indices.computeFamily.has_value()) {
             break;
+        }
+    }
+    if (!indices.computeFamily.has_value()) {
+        if (fallbackComputeFamily.has_value()) {
+            indices.computeFamily = fallbackComputeFamily;
+        } else {
+            indices.computeFamily = indices.graphicsFamily;
         }
     }
     return indices;

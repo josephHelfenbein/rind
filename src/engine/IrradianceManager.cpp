@@ -2,6 +2,7 @@
 #include <engine/ShaderManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/Camera.h>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <functional>
@@ -20,8 +21,12 @@ void engine::IrradianceProbe::destroy() {
         if (bakedCubemapFaceViews[i] != VK_NULL_HANDLE) {
             vkDestroyImageView(device, bakedCubemapFaceViews[i], nullptr);
         }
-        if (dynamicCubemapFaceViews[i] != VK_NULL_HANDLE) {
-            vkDestroyImageView(device, dynamicCubemapFaceViews[i], nullptr);
+    }
+    for (size_t frame = 0; frame < dynamicCubemapFaceViews.size(); ++frame) {
+        for (uint32_t i = 0; i < 6; ++i) {
+            if (dynamicCubemapFaceViews[frame][i] != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, dynamicCubemapFaceViews[frame][i], nullptr);
+            }
         }
     }
     if (bakedCubemapView != VK_NULL_HANDLE) {
@@ -33,15 +38,25 @@ void engine::IrradianceProbe::destroy() {
     if (bakedCubemapMemory != VK_NULL_HANDLE) {
         vkFreeMemory(device, bakedCubemapMemory, nullptr);
     }
-    if (dynamicCubemapView != VK_NULL_HANDLE) {
-        vkDestroyImageView(device, dynamicCubemapView, nullptr);
+    for (VkImageView dynamicView : dynamicCubemapViews) {
+        if (dynamicView != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, dynamicView, nullptr);
+        }
     }
-    if (dynamicCubemapImage != VK_NULL_HANDLE) {
-        vkDestroyImage(device, dynamicCubemapImage, nullptr);
+    for (VkImage dynamicImage : dynamicCubemapImages) {
+        if (dynamicImage != VK_NULL_HANDLE) {
+            vkDestroyImage(device, dynamicImage, nullptr);
+        }
     }
-    if (dynamicCubemapMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, dynamicCubemapMemory, nullptr);
+    for (VkDeviceMemory dynamicMemory : dynamicCubemapMemories) {
+        if (dynamicMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, dynamicMemory, nullptr);
+        }
     }
+    dynamicCubemapFaceViews.clear();
+    dynamicCubemapViews.clear();
+    dynamicCubemapImages.clear();
+    dynamicCubemapMemories.clear();
     if (cubemapSampler != VK_NULL_HANDLE) {
         vkDestroySampler(device, cubemapSampler, nullptr);
     }
@@ -54,10 +69,10 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
     }
     
     bakedImageReady = false;
-    dynamicImageReady = false;
-    dynamicCubemapDirty = false;
-    shComputePending = false;
-    initialSHComputed = false;
+    dynamicImageReady.clear();
+    dynamicCubemapDirty.clear();
+    shComputePending.clear();
+    initialSHComputed.clear();
     
     std::tie(bakedCubemapImage, bakedCubemapMemory) = renderer->createImage(
         cubemapSize, cubemapSize,
@@ -95,40 +110,52 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
         vkCreateImageView(renderer->getDevice(), &viewInfo, nullptr, &bakedCubemapFaceViews[i]);
     }
     
-    std::tie(dynamicCubemapImage, dynamicCubemapMemory) = renderer->createImage(
-        cubemapSize, cubemapSize,
-        1,
-        VK_SAMPLE_COUNT_1_BIT,
-        VK_FORMAT_R16G16B16A16_SFLOAT,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        6,
-        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
-    );
-    dynamicCubemapView = renderer->createImageView(
-        dynamicCubemapImage,
-        VK_FORMAT_R16G16B16A16_SFLOAT,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        1,
-        VK_IMAGE_VIEW_TYPE_CUBE,
-        6
-    );
-    for (uint32_t i = 0; i < 6; ++i) {
-        VkImageViewCreateInfo dynamicViewInfo = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = dynamicCubemapImage,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = i,
-                .layerCount = 1
-            }
-        };
-        vkCreateImageView(renderer->getDevice(), &dynamicViewInfo, nullptr, &dynamicCubemapFaceViews[i]);
+    const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
+    dynamicCubemapImages.assign(framesInFlight, VK_NULL_HANDLE);
+    dynamicCubemapViews.assign(framesInFlight, VK_NULL_HANDLE);
+    dynamicCubemapMemories.assign(framesInFlight, VK_NULL_HANDLE);
+    dynamicCubemapFaceViews.assign(framesInFlight, {});
+    dynamicImageReady.assign(framesInFlight, 0u);
+    dynamicCubemapDirty.assign(framesInFlight, 0u);
+    shComputePending.assign(framesInFlight, 0u);
+    initialSHComputed.assign(framesInFlight, 0u);
+
+    for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
+        std::tie(dynamicCubemapImages[frame], dynamicCubemapMemories[frame]) = renderer->createImage(
+            cubemapSize, cubemapSize,
+            1,
+            VK_SAMPLE_COUNT_1_BIT,
+            VK_FORMAT_R16G16B16A16_SFLOAT,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            6,
+            VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+        );
+        dynamicCubemapViews[frame] = renderer->createImageView(
+            dynamicCubemapImages[frame],
+            VK_FORMAT_R16G16B16A16_SFLOAT,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            1,
+            VK_IMAGE_VIEW_TYPE_CUBE,
+            6
+        );
+        for (uint32_t i = 0; i < 6; ++i) {
+            VkImageViewCreateInfo dynamicViewInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = dynamicCubemapImages[frame],
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = i,
+                    .layerCount = 1
+                }
+            };
+            vkCreateImageView(renderer->getDevice(), &dynamicViewInfo, nullptr, &dynamicCubemapFaceViews[frame][i]);
+        }
     }
     
     cubemapSampler = renderer->createTextureSampler(
@@ -163,88 +190,106 @@ void engine::IrradianceProbe::createComputeResources(Renderer* renderer) {
     numWorkgroupsY = (cubemapSize + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
     totalWorkgroups = numWorkgroupsX * numWorkgroupsY * 6;
     
+    const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
     const size_t outputBufferSize = totalWorkgroups * 9 * sizeof(float) * 4;
-    std::tie(shOutputBuffer, shOutputMemory) = renderer->createBuffer(
-        outputBufferSize,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    );
-    
-    vkMapMemory(renderer->getDevice(), shOutputMemory, 0, outputBufferSize, 0, &shOutputMappedData);
+    shOutputBuffers.assign(framesInFlight, VK_NULL_HANDLE);
+    shOutputMemories.assign(framesInFlight, VK_NULL_HANDLE);
+    shOutputMappedData.assign(framesInFlight, nullptr);
+    shDescriptorSets.assign(framesInFlight, VK_NULL_HANDLE);
+
+    for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
+        std::tie(shOutputBuffers[frame], shOutputMemories[frame]) = renderer->createBuffer(
+            outputBufferSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(renderer->getDevice(), shOutputMemories[frame], 0, outputBufferSize, 0, &shOutputMappedData[frame]);
+    }
     
     ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
     if (!shCompute) {
         throw std::runtime_error("sh compute shader not found!");
     }
     
+    std::vector<VkDescriptorSetLayout> layouts(framesInFlight, shCompute->descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = shCompute->descriptorPool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &shCompute->descriptorSetLayout
+        .descriptorSetCount = framesInFlight,
+        .pSetLayouts = layouts.data()
     };
-    if (vkAllocateDescriptorSets(device, &allocInfo, &shDescriptorSet) != VK_SUCCESS) {
+    if (vkAllocateDescriptorSets(device, &allocInfo, shDescriptorSets.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate SH compute descriptor set!");
     }
-    
-    VkDescriptorBufferInfo bufferInfo = {
-        .buffer = shOutputBuffer,
-        .offset = 0,
-        .range = VK_WHOLE_SIZE
-    };
-    VkDescriptorImageInfo imageInfo = {
-        .sampler = cubemapSampler,
-        .imageView = dynamicCubemapView,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    };
-    std::array<VkWriteDescriptorSet, 2> descriptorWrites = {{
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = shDescriptorSet,
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &bufferInfo
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = shDescriptorSet,
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &imageInfo
-        }
-    }};
-    vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+
+    for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
+        VkDescriptorBufferInfo bufferInfo = {
+            .buffer = shOutputBuffers[frame],
+            .offset = 0,
+            .range = VK_WHOLE_SIZE
+        };
+        VkDescriptorImageInfo imageInfo = {
+            .sampler = cubemapSampler,
+            .imageView = frame < dynamicCubemapViews.size() ? dynamicCubemapViews[frame] : VK_NULL_HANDLE,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        };
+        std::array<VkWriteDescriptorSet, 2> descriptorWrites = {{
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = shDescriptorSets[frame],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo = &bufferInfo
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = shDescriptorSets[frame],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &imageInfo
+            }
+        }};
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }
     
     computeResourcesCreated = true;
 }
 
 void engine::IrradianceProbe::cleanupComputeResources(Renderer* renderer) {
     VkDevice device = renderer->getDevice();
-    
-    if (shDescriptorSet != VK_NULL_HANDLE) {
+
+    if (!shDescriptorSets.empty()) {
         ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
         if (shCompute) {
-            vkFreeDescriptorSets(device, shCompute->descriptorPool, 1, &shDescriptorSet);
+            vkFreeDescriptorSets(
+                device,
+                shCompute->descriptorPool,
+                static_cast<uint32_t>(shDescriptorSets.size()),
+                shDescriptorSets.data()
+            );
         }
-        shDescriptorSet = VK_NULL_HANDLE;
+        shDescriptorSets.clear();
     }
-    
-    if (shOutputBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, shOutputBuffer, nullptr);
-        shOutputBuffer = VK_NULL_HANDLE;
-    }
-    if (shOutputMemory != VK_NULL_HANDLE) {
-        if (shOutputMappedData != nullptr) {
-            vkUnmapMemory(device, shOutputMemory);
-            shOutputMappedData = nullptr;
+
+    for (size_t frame = 0; frame < shOutputBuffers.size(); ++frame) {
+        if (frame < shOutputMappedData.size() && shOutputMappedData[frame] != nullptr && frame < shOutputMemories.size() && shOutputMemories[frame] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, shOutputMemories[frame]);
+            shOutputMappedData[frame] = nullptr;
         }
-        vkFreeMemory(device, shOutputMemory, nullptr);
-        shOutputMemory = VK_NULL_HANDLE;
+        if (shOutputBuffers[frame] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, shOutputBuffers[frame], nullptr);
+        }
+        if (frame < shOutputMemories.size() && shOutputMemories[frame] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, shOutputMemories[frame], nullptr);
+        }
     }
+    shOutputBuffers.clear();
+    shOutputMemories.clear();
+    shOutputMappedData.clear();
     
     computeResourcesCreated = false;
 }
@@ -386,12 +431,22 @@ void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer co
     bakedImageReady = true;
 }
 
-void engine::IrradianceProbe::copyBakedToDynamic(Renderer* renderer, VkCommandBuffer commandBuffer) {
+void engine::IrradianceProbe::copyBakedToDynamic(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t frameIndex) {
     if (!bakedImageReady) return;
+
+    if (dynamicCubemapImages.empty()) {
+        return;
+    }
+    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapImages.size());
+    VkImage dynamicCubemapImage = dynamicCubemapImages[frameIdx];
+    if (dynamicCubemapImage == VK_NULL_HANDLE) {
+        return;
+    }
+    const bool frameDynamicReady = frameIdx < dynamicImageReady.size() && dynamicImageReady[frameIdx] != 0u;
     
-    VkImageLayout dynamicOldLayout = dynamicImageReady ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
-    VkAccessFlags dynamicSrcAccess = dynamicImageReady ? VK_ACCESS_SHADER_READ_BIT : 0;
-    VkPipelineStageFlags srcStage = dynamicImageReady 
+    VkImageLayout dynamicOldLayout = frameDynamicReady ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+    VkAccessFlags dynamicSrcAccess = frameDynamicReady ? VK_ACCESS_SHADER_READ_BIT : 0;
+    VkPipelineStageFlags srcStage = frameDynamicReady
         ? (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)
         : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     
@@ -517,11 +572,24 @@ void engine::IrradianceProbe::copyBakedToDynamic(Renderer* renderer, VkCommandBu
         static_cast<uint32_t>(postBarriers.size()), postBarriers.data()
     );
     
-    dynamicImageReady = true;
+    if (frameIdx < dynamicImageReady.size()) {
+        dynamicImageReady[frameIdx] = 1u;
+    }
 }
 
 void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame) {
-    if (!dynamicImageReady) return;
+    if (dynamicCubemapImages.empty() || dynamicCubemapFaceViews.empty()) {
+        return;
+    }
+    const uint32_t frameIdx = currentFrame % static_cast<uint32_t>(dynamicCubemapImages.size());
+    VkImage dynamicCubemapImage = dynamicCubemapImages[frameIdx];
+    if (dynamicCubemapImage == VK_NULL_HANDLE || frameIdx >= dynamicCubemapFaceViews.size()) {
+        return;
+    }
+    if (frameIdx >= dynamicImageReady.size() || dynamicImageReady[frameIdx] == 0u) {
+        return;
+    }
+
     ParticleManager* particleManager = renderer->getParticleManager();
     const std::vector<Particle>& particles = particleManager->getParticles();
     size_t currentParticleCount = particles.size();
@@ -531,13 +599,17 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
     lastParticleCount = currentParticleCount;
     
     if (!particlesChanged) {
-        dynamicCubemapDirty = false;
+        if (frameIdx < dynamicCubemapDirty.size()) {
+            dynamicCubemapDirty[frameIdx] = 0u;
+        }
         return;
     }
     
-    dynamicCubemapDirty = true;
+    if (frameIdx < dynamicCubemapDirty.size()) {
+        dynamicCubemapDirty[frameIdx] = 1u;
+    }
     
-    copyBakedToDynamic(renderer, commandBuffer);
+    copyBakedToDynamic(renderer, commandBuffer, frameIdx);
     
     if (particles.empty()) return;
 
@@ -589,7 +661,7 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
     for (uint32_t face = 0u; face < 6u; ++face) {
         VkRenderingAttachmentInfo colorAttachment = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = dynamicCubemapFaceViews[face],
+            .imageView = dynamicCubemapFaceViews[frameIdx][face],
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE
@@ -642,8 +714,15 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
     );
 }
 
-void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuffer commandBuffer) {
-    if (!dynamicImageReady || (initialSHComputed && !dynamicCubemapDirty)) {
+void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t frameIndex) {
+    if (dynamicCubemapImages.empty()) {
+        return;
+    }
+    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapImages.size());
+    const bool frameDynamicReady = frameIdx < dynamicImageReady.size() && dynamicImageReady[frameIdx] != 0u;
+    const bool frameInitialComputed = frameIdx < initialSHComputed.size() && initialSHComputed[frameIdx] != 0u;
+    const bool frameDynamicDirty = frameIdx < dynamicCubemapDirty.size() && dynamicCubemapDirty[frameIdx] != 0u;
+    if (!frameDynamicReady || (frameInitialComputed && !frameDynamicDirty)) {
         return;
     }
     
@@ -651,8 +730,12 @@ void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuf
         createComputeResources(renderer);
     }
     
-    initialSHComputed = true;
-    shComputePending = true;
+    if (frameIdx < initialSHComputed.size()) {
+        initialSHComputed[frameIdx] = 1u;
+    }
+    if (frameIdx < shComputePending.size()) {
+        shComputePending[frameIdx] = 1u;
+    }
     
     ComputeShader* shCompute = renderer->getShaderManager()->getComputeShader("sh");
     if (!shCompute) {
@@ -668,7 +751,7 @@ void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuf
         shCompute->pipelineLayout,
         0,
         1,
-        &shDescriptorSet,
+        &shDescriptorSets[frameIdx],
         0,
         nullptr
     );
@@ -684,36 +767,20 @@ void engine::IrradianceProbe::dispatchSHCompute(Renderer* renderer, VkCommandBuf
     );
     
     vkCmdDispatch(commandBuffer, numWorkgroupsX, numWorkgroupsY, 6);
-    
-    VkBufferMemoryBarrier bufferBarrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = shOutputBuffer,
-        .offset = 0,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_HOST_BIT,
-        0,
-        0, nullptr,
-        1, &bufferBarrier,
-        0, nullptr
-    );
 }
 
-void engine::IrradianceProbe::processSHProjection(Renderer* renderer) {
-    if (!shComputePending || shOutputMappedData == nullptr) {
+void engine::IrradianceProbe::processSHProjection(Renderer* renderer, uint32_t frameIndex) {
+    if (shOutputMappedData.empty()) {
+        return;
+    }
+    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(shOutputMappedData.size());
+    if (frameIdx >= shComputePending.size() || shComputePending[frameIdx] == 0u || shOutputMappedData[frameIdx] == nullptr) {
         return;
     }
     
-    shComputePending = false;
+    shComputePending[frameIdx] = 0u;
     
-    float* outputData = static_cast<float*>(shOutputMappedData);
+    float* outputData = static_cast<float*>(shOutputMappedData[frameIdx]);
     
     std::array<glm::vec3, 9> shAccum{};
     for (int i = 0; i < 9; ++i) {
@@ -824,28 +891,42 @@ void engine::IrradianceManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer
 
 void engine::IrradianceManager::recordIrradianceReadback(VkCommandBuffer commandBuffer) {
     for (auto& probe : getIrradianceProbes()) {
-        probe.copyBakedToDynamic(renderer, commandBuffer);
-        probe.dispatchSHCompute(renderer, commandBuffer);
+        probe.copyBakedToDynamic(renderer, commandBuffer, 0);
+        probe.dispatchSHCompute(renderer, commandBuffer, 0);
     }
 }
 
-void engine::IrradianceManager::renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+void engine::IrradianceManager::renderDynamicIrradianceGraphics(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
     engine::Camera* camera = renderer->getEntityManager()->getCamera();
     if (!camera) return;
     for (auto& probe : getIrradianceProbes()) {
-        probe.processSHProjection(renderer);
+        probe.processSHProjection(renderer, currentFrame);
     }
     for (auto& probe : getIrradianceProbes()) {
         if (camera->isSphereInFrustum(probe.getWorldPosition(), probe.getRadius())) {
             probe.renderDynamicCubemap(renderer, commandBuffer, currentFrame);
-            probe.dispatchSHCompute(renderer, commandBuffer);
         }
     }
 }
 
+void engine::IrradianceManager::dispatchDynamicIrradianceSH(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    engine::Camera* camera = renderer->getEntityManager()->getCamera();
+    if (!camera) return;
+    for (auto& probe : getIrradianceProbes()) {
+        if (camera->isSphereInFrustum(probe.getWorldPosition(), probe.getRadius())) {
+            probe.dispatchSHCompute(renderer, commandBuffer, currentFrame);
+        }
+    }
+}
+
+void engine::IrradianceManager::renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    renderDynamicIrradianceGraphics(commandBuffer, currentFrame);
+    dispatchDynamicIrradianceSH(commandBuffer, currentFrame);
+}
+
 void engine::IrradianceManager::processIrradianceSH() {
     for (auto& probe : getIrradianceProbes()) {
-        probe.processSHProjection(renderer);
+        probe.processSHProjection(renderer, 0);
     }
     irradianceBakingPending = false;
 }

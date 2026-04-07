@@ -127,8 +127,10 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float maxStep = baseStep * MAX_STEP_SCALE;
     float extinction = vol.color.w;
     float3 tint = vol.color.rgb;
+    half extinction16 = half(extinction);
+    half3 tint16 = half3(tint);
 
-    float4 accum = float4(0.0, 0.0, 0.0, 0.0);
+    half4 accum = half4(0.0, 0.0, 0.0, 0.0);
     float jitter = hash3(float3(fragCoord.xy, vol.age)) * baseStep;
     float t = tNear + jitter;
     float stepSize = baseStep;
@@ -140,10 +142,10 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     [loop]
     while (t < tFar && steps < maxSteps) {
         steps++;
-        if (accum.a >= 0.99) break;
+        if (accum.a >= half(0.99)) break;
         float3 localMid = localOrigin + (t + stepSize * 0.5) * localDir;
-        float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves);
-        if (density <= THRESHOLD) {
+        half density = half(sampleDensity(localMid, vol.age, ageFade, fbmOctaves));
+        if (density <= half(THRESHOLD)) {
             stepSize = min(stepSize * 1.5, maxStep);
             t += stepSize;
             continue;
@@ -155,13 +157,14 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
             continue;
         }
 
-        float transmittance = 1.0 - accum.a;
-        float contrib = (1.0 - exp(-density * extinction * stepSize)) * transmittance;
-        accum.rgb += contrib * tint;
+        half transmittance = half(1.0) - accum.a;
+        half opticalDepth = density * extinction16 * half(stepSize);
+        half contrib = (half(1.0) - exp(-opticalDepth)) * transmittance;
+        accum.rgb += contrib * tint16;
         accum.a += contrib;
         t += stepSize;
     }
 
-    if (accum.a < 0.001) discard;
-    return accum;
+    if (accum.a < half(0.001)) discard;
+    return float4(accum);
 }

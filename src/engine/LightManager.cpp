@@ -8,6 +8,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+constexpr float kShadowCullFovDegrees = 92.0f;
+constexpr float kShadowCullNear = 0.05f;
+constexpr float kShadowCullFarScale = 1.01f;
+
 engine::Light::Light(
     LightManager* lightManager,
     const std::string& name,
@@ -70,41 +74,50 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
      // 256, 512, 1024, 1024
     shadowMapSize = static_cast<uint32_t>(pow(2, 8 + std::min(static_cast<int>(settingsValue), 2)));
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
-    
-    std::tie(shadowDepthImage, shadowDepthMemory) = renderer->createImage(
-        shadowMapSize, shadowMapSize,
-        1,
-        VK_SAMPLE_COUNT_1_BIT,
-        depthFormat,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        6,
-        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
-    );
-    shadowDepthImageView = renderer->createImageView(
-        shadowDepthImage,
-        depthFormat,
-        VK_IMAGE_ASPECT_DEPTH_BIT,
-        1,
-        VK_IMAGE_VIEW_TYPE_CUBE,
-        6
-    );
-    for (uint32_t i = 0; i < 6; ++i) {
-        VkImageViewCreateInfo viewInfo = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = shadowDepthImage,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = depthFormat,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = i,
-                .layerCount = 1
-            }
-        };
-        vkCreateImageView(renderer->getDevice(), &viewInfo, nullptr, &shadowDepthFaceViews[i]);
+
+    const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
+    shadowDepthImages.assign(framesInFlight, VK_NULL_HANDLE);
+    shadowDepthMemories.assign(framesInFlight, VK_NULL_HANDLE);
+    shadowDepthImageViews.assign(framesInFlight, VK_NULL_HANDLE);
+    shadowDepthFaceViews.assign(framesInFlight, {});
+    shadowImageReady.assign(framesInFlight, 0u);
+
+    for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
+        std::tie(shadowDepthImages[frame], shadowDepthMemories[frame]) = renderer->createImage(
+            shadowMapSize, shadowMapSize,
+            1,
+            VK_SAMPLE_COUNT_1_BIT,
+            depthFormat,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            6,
+            VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+        );
+        shadowDepthImageViews[frame] = renderer->createImageView(
+            shadowDepthImages[frame],
+            depthFormat,
+            VK_IMAGE_ASPECT_DEPTH_BIT,
+            1,
+            VK_IMAGE_VIEW_TYPE_CUBE,
+            6
+        );
+        for (uint32_t i = 0; i < 6; ++i) {
+            VkImageViewCreateInfo viewInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = shadowDepthImages[frame],
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = depthFormat,
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = i,
+                    .layerCount = 1
+                }
+            };
+            vkCreateImageView(renderer->getDevice(), &viewInfo, nullptr, &shadowDepthFaceViews[frame][i]);
+        }
     }
     
     std::tie(bakedShadowImage, bakedShadowMemory) = renderer->createImage(
@@ -171,7 +184,31 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
     
     glm::vec3 lightPos = getWorldPosition();
     for (int i = 0; i < 6; ++i) {
-        viewProjs[i] = shadowProj * glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
+        glm::mat4 faceView = glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
+        viewProjs[i] = shadowProj * faceView;
+        glm::mat4 cullProj = glm::perspective(
+            glm::radians(kShadowCullFovDegrees),
+            1.0f,
+            kShadowCullNear,
+            radius * kShadowCullFarScale
+        );
+        glm::mat4 viewProj = glm::transpose(cullProj * faceView);
+        // Left
+        frustumPlanes[i][0] = viewProj[3] + viewProj[0];
+        // Right
+        frustumPlanes[i][1] = viewProj[3] - viewProj[0];
+        // Bottom
+        frustumPlanes[i][2] = viewProj[3] + viewProj[1];
+        // Top
+        frustumPlanes[i][3] = viewProj[3] - viewProj[1];
+        // Near
+        frustumPlanes[i][4] = viewProj[3] + viewProj[2];
+        // Far
+        frustumPlanes[i][5] = viewProj[3] - viewProj[2];
+        for (auto& plane : frustumPlanes[i]) {
+            float length = glm::length(glm::vec3(plane));
+            plane /= length;
+        }
     }
     std::vector<Entity*>& rootEntities = renderer->getEntityManager()->getRootEntities();
     VkBuffer dummySkinningBuffer = renderer->getEntityManager()->getDummySkinningBuffer();
@@ -318,7 +355,16 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         }
     };
     
-    VkImageLayout previousDepthLayout = shadowImageReady
+    const uint32_t frameIdx = shadowDepthImages.empty()
+        ? 0u
+        : (currentFrame % static_cast<uint32_t>(shadowDepthImages.size()));
+    VkImage shadowDepthImage = shadowDepthImages.empty() ? VK_NULL_HANDLE : shadowDepthImages[frameIdx];
+    if (shadowDepthImage == VK_NULL_HANDLE) {
+        return;
+    }
+
+    const bool frameShadowReady = frameIdx < shadowImageReady.size() && shadowImageReady[frameIdx] != 0u;
+    VkImageLayout previousDepthLayout = frameShadowReady
         ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         : VK_IMAGE_LAYOUT_UNDEFINED;
     renderer->transitionImageLayoutInline(
@@ -383,15 +429,16 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
             .extent = {shadowMapSize, shadowMapSize}
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-        auto drawMovableEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj) -> void {
+        auto drawMovableEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj, int face) -> void {
             if (entity->getModel() 
              && !notShadowTypes.contains(entity->getType())
-             && entity->getCastShadow()) {
+             && entity->getCastShadow()
+             && isAABBInFrustum(face, entity->getModel()->getAABB(), entity->getWorldTransform())) {
                 Model* model = entity->getModel();
                 const auto& shadowDS = entity->getShadowDescriptorSets();
                 if (shadowDS.empty()) {
                     for (Entity* child : entity->getChildren()) {
-                        self(self, child, viewProj);
+                        self(self, child, viewProj, face);
                     }
                     return;
                 }
@@ -438,13 +485,13 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
                 vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
             }
             for (Entity* child : entity->getChildren()) {
-                self(self, child, viewProj);
+                self(self, child, viewProj, face);
             }
         };
         for (int face = 0; face < 6; ++face) {
             VkRenderingAttachmentInfo depthAttachment = {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = shadowDepthFaceViews[face],
+                .imageView = shadowDepthFaceViews[frameIdx][face],
                 .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                 .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                 .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -463,7 +510,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
             };
             renderer->getFpCmdBeginRendering()(commandBuffer, &renderInfo);
             for (Entity* entity : movableEntities) {
-                drawMovableEntity(drawMovableEntity, entity, viewProjs[face]);
+                drawMovableEntity(drawMovableEntity, entity, viewProjs[face], face);
             }
             renderer->getFpCmdEndRendering()(commandBuffer);
         }
@@ -478,28 +525,38 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         1,
         6
     );
-    shadowImageReady = true;
+    if (frameIdx < shadowImageReady.size()) {
+        shadowImageReady[frameIdx] = 1u;
+    }
 }
 
 void engine::Light::destroyShadowResources(VkDevice device) {
-    if (shadowDepthImageView) {
-        vkDestroyImageView(device, shadowDepthImageView, nullptr);
-        shadowDepthImageView = VK_NULL_HANDLE;
-    }
-    for(int i=0; i<6; i++) {
-        if (shadowDepthFaceViews[i]) {
-            vkDestroyImageView(device, shadowDepthFaceViews[i], nullptr);
-            shadowDepthFaceViews[i] = VK_NULL_HANDLE;
+    for (size_t frame = 0; frame < shadowDepthImageViews.size(); ++frame) {
+        if (shadowDepthImageViews[frame]) {
+            vkDestroyImageView(device, shadowDepthImageViews[frame], nullptr);
+            shadowDepthImageViews[frame] = VK_NULL_HANDLE;
+        }
+        if (frame < shadowDepthFaceViews.size()) {
+            for (int i = 0; i < 6; ++i) {
+                if (shadowDepthFaceViews[frame][i]) {
+                    vkDestroyImageView(device, shadowDepthFaceViews[frame][i], nullptr);
+                    shadowDepthFaceViews[frame][i] = VK_NULL_HANDLE;
+                }
+            }
+        }
+        if (frame < shadowDepthImages.size() && shadowDepthImages[frame]) {
+            vkDestroyImage(device, shadowDepthImages[frame], nullptr);
+            shadowDepthImages[frame] = VK_NULL_HANDLE;
+        }
+        if (frame < shadowDepthMemories.size() && shadowDepthMemories[frame]) {
+            vkFreeMemory(device, shadowDepthMemories[frame], nullptr);
+            shadowDepthMemories[frame] = VK_NULL_HANDLE;
         }
     }
-    if (shadowDepthImage) {
-        vkDestroyImage(device, shadowDepthImage, nullptr);
-        shadowDepthImage = VK_NULL_HANDLE;
-    }
-    if (shadowDepthMemory) {
-        vkFreeMemory(device, shadowDepthMemory, nullptr);
-        shadowDepthMemory = VK_NULL_HANDLE;
-    }
+    shadowDepthImageViews.clear();
+    shadowDepthFaceViews.clear();
+    shadowDepthImages.clear();
+    shadowDepthMemories.clear();
     if (bakedShadowImageView) {
         vkDestroyImageView(device, bakedShadowImageView, nullptr);
         bakedShadowImageView = VK_NULL_HANDLE;
@@ -520,7 +577,7 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     }
     
     hasShadowMap = false;
-    shadowImageReady = false;
+    shadowImageReady.clear();
     shadowBaked = false;
     bakedImageReady = false;
     if (lightManager) {
