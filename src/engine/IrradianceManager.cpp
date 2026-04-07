@@ -610,7 +610,7 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
     }
     
     copyBakedToDynamic(renderer, commandBuffer, frameIdx);
-    
+
     if (particles.empty()) return;
 
     VkImageMemoryBarrier toColorAttachment = {
@@ -890,9 +890,12 @@ void engine::IrradianceManager::bakeIrradianceMaps(VkCommandBuffer commandBuffer
 }
 
 void engine::IrradianceManager::recordIrradianceReadback(VkCommandBuffer commandBuffer) {
+    const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
     for (auto& probe : getIrradianceProbes()) {
-        probe.copyBakedToDynamic(renderer, commandBuffer, 0);
-        probe.dispatchSHCompute(renderer, commandBuffer, 0);
+        for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
+            probe.copyBakedToDynamic(renderer, commandBuffer, frame);
+            probe.dispatchSHCompute(renderer, commandBuffer, frame);
+        }
     }
 }
 

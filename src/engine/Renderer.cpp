@@ -742,6 +742,7 @@ void engine::Renderer::drawFrame() {
         irradianceManager->recordIrradianceReadback(cmdBuffer);
         endSingleTimeCommands(cmdBuffer);
         irradianceManager->processIrradianceSH();
+        irradianceManager->setIrradianceBakingPending(false);
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             irradianceManager->updateIrradianceProbesUBO(i);
         }
@@ -1019,6 +1020,13 @@ void engine::Renderer::recordCommandBuffer(
         }
         auto& node = renderGraph[nodeIdx];
         if (!node.passInfo) {
+            const bool skipDraw = node.skipCondition && node.skipCondition(this);
+            if (!skipDraw && node.customRenderFunc && !node.usesRendering) {
+                if (DEBUG_RENDER_LOGS) {
+                    std::cout << "[record] executing passless custom render function for node '" << node.name << "'" << std::endl;
+                }
+                node.customRenderFunc(this, commandBuffer, currentFrame);
+            }
             continue;
         }
         const bool skipDraw = node.skipCondition && node.skipCondition(this);
