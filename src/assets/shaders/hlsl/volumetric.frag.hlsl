@@ -3,6 +3,11 @@
 struct VSOutput {
     [[vk::location(0)]] float3 worldPos : TEXCOORD0;
     [[vk::location(1)]] nointerpolation uint instanceID : TEXCOORD1;
+    [[vk::location(2)]] nointerpolation uint maxSteps : TEXCOORD2;
+    [[vk::location(3)]] nointerpolation float baseDivs : TEXCOORD3;
+    [[vk::location(4)]] nointerpolation uint fbmOctaves : TEXCOORD4;
+    [[vk::location(5)]] nointerpolation uint doRefinement : TEXCOORD5;
+    [[vk::location(6)]] nointerpolation float ageFade : TEXCOORD6;
 };
 
 struct VolumetricData {
@@ -27,8 +32,6 @@ struct PushConstants {
 
 static const float MAX_STEP_SCALE = 4.0;
 static const float THRESHOLD = 0.01;
-static const float LOD_NEAR = 4.0;
-static const float LOD_FAR = 20.0;
 
 float hash3(float3 p) {
     p = frac(p * float3(443.897, 441.423, 437.195));
@@ -113,14 +116,10 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
         }
     }
 
-    float3 volCenter = vol.model[3].xyz;
-    float camDist = length(volCenter - pc.camPos);
-    float lodT = saturate((camDist - LOD_NEAR) / (LOD_FAR - LOD_NEAR));
-    float waveLodT = WaveActiveMax(lodT);
-    int maxSteps = (int) lerp(48.0, 8.0, waveLodT);
-    float baseDivs = lerp(24.0, 6.0, waveLodT);
-    int fbmOctaves = (int) lerp(5.0, 2.0, waveLodT);
-    bool doRefinement = waveLodT < 0.7;
+    int maxSteps = max(1, (int) input.maxSteps);
+    float baseDivs = max(input.baseDivs, 1.0);
+    int fbmOctaves = max(1, (int) input.fbmOctaves);
+    bool doRefinement = (input.doRefinement != 0u);
 
     float totalLen = tFar - tNear;
     float baseStep = totalLen / baseDivs;
@@ -134,9 +133,7 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float jitter = hash3(float3(fragCoord.xy, vol.age)) * baseStep;
     float t = tNear + jitter;
     float stepSize = baseStep;
-    float time = vol.age / max(vol.lifetime, 0.0001);
-    float x = saturate(1.0 - time);
-    float ageFade = x * x * (1.0 + 0.2 * x);
+    float ageFade = input.ageFade;
     int steps = 0;
 
     [loop]
