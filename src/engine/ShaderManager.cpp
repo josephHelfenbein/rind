@@ -784,7 +784,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     engine::BlurArrayPC pc = {
                         .invProj = glm::mat4(1.0f),
                         .blurDirection = 0,
-                        .taps = 2,
+                        .taps = 4,
                         .layerCount = activeShadowLayers
                     };
                     if (engine::Camera* camera = renderer->getEntityManager()->getCamera()) {
@@ -870,7 +870,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     engine::BlurArrayPC pc = {
                         .invProj = glm::mat4(1.0f),
                         .blurDirection = 1,
-                        .taps = 2,
+                        .taps = 4,
                         .layerCount = activeShadowLayers
                     };
                     if (engine::Camera* camera = renderer->getEntityManager()->getCamera()) {

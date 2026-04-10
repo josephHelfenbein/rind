@@ -1233,15 +1233,22 @@ void rind::Player::shoot() {
 }
 
 void rind::Player::throwGrenade() {
-    glm::vec3 forward = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
+    glm::vec3 cameraForward = -glm::normalize(glm::vec3(camera->getWorldTransform()[2]));
     glm::vec3 playerForward = -glm::normalize(glm::vec3(getWorldTransform()[2]));
+    playerForward.y = 0.0f;
+    if (glm::length2(playerForward) > 1e-6f) {
+        playerForward = glm::normalize(playerForward);
+    } else {
+        playerForward = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+    const float verticalAim = cameraForward.y;
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     glm::vec3 playerVel = getVelocity();
     Grenade* grenade = new Grenade(
         getEntityManager(),
         this,
-        glm::translate(glm::mat4(1.0f), gunPos + forward * 0.2f + playerVel * 0.1f + playerForward * 0.5f),
-        forward * 20.0f + glm::vec3(0.0f, 3.0f, 0.0f) + playerVel * 0.25f,
+        glm::translate(glm::mat4(1.0f), gunPos + playerForward * 0.7f + glm::vec3(0.0f, verticalAim * 0.2f, 0.0f)),
+        playerForward * 20.0f + glm::vec3(0.0f, 3.0f + verticalAim * 20.0f, 0.0f) + playerVel * 0.25f,
         trailColor,
         6.0f
     );

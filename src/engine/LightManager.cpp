@@ -8,7 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-constexpr float kShadowCullFovDegrees = 92.0f;
+constexpr float kShadowCullFovDegrees = 100.0f;
 constexpr float kShadowCullNear = 0.05f;
 constexpr float kShadowCullFarScale = 1.01f;
 
@@ -71,8 +71,8 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
         destroyShadowResources(renderer->getDevice());
     }
     float settingsValue = renderer->getSettingsManager()->getSettings()->shadowQuality;
-     // 256, 512, 1024, 1024
-    shadowMapSize = static_cast<uint32_t>(pow(2, 8 + std::min(static_cast<int>(settingsValue), 2)));
+     // 512, 1024, 2048, 2048
+    shadowMapSize = static_cast<uint32_t>(pow(2, 9 + std::min(static_cast<int>(settingsValue), 2)));
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
 
     const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
@@ -433,7 +433,9 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
             if (entity->getModel() 
              && !notShadowTypes.contains(entity->getType())
              && entity->getCastShadow()
-             && isAABBInFrustum(face, entity->getModel()->getAABB(), entity->getWorldTransform())) {
+             && intersectsShadowRange(entity->getModel()->getAABB(), entity->getWorldTransform())
+             && (shouldSkipFaceFrustumCull(entity->getModel()->getAABB(), entity->getWorldTransform())
+                 || isAABBInFrustum(face, entity->getModel()->getAABB(), entity->getWorldTransform()))) {
                 Model* model = entity->getModel();
                 const auto& shadowDS = entity->getShadowDescriptorSets();
                 if (shadowDS.empty()) {

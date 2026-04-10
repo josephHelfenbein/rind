@@ -62,6 +62,33 @@ namespace engine {
 
         glm::mat4 viewProjs[6];
         std::array<glm::vec4, 6> frustumPlanes[6];
+        glm::vec3 getWorldAABBCenter(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
+            const glm::vec3 localCenter = (aabb.min + aabb.max) * 0.5f;
+            return glm::vec3(worldTransform * glm::vec4(localCenter, 1.0f));
+        }
+        float getWorldAABBBoundingRadius(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
+            const glm::vec3 localExtents = (aabb.max - aabb.min) * 0.5f;
+            glm::mat3 basis = glm::mat3(worldTransform);
+            basis[0] = glm::abs(basis[0]);
+            basis[1] = glm::abs(basis[1]);
+            basis[2] = glm::abs(basis[2]);
+            const glm::vec3 worldExtents = basis * localExtents;
+            return glm::length(worldExtents);
+        }
+        bool intersectsShadowRange(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
+            const glm::vec3 center = getWorldAABBCenter(aabb, worldTransform);
+            const float boundsRadius = getWorldAABBBoundingRadius(aabb, worldTransform);
+            const float distanceToLight = glm::length(center - getWorldPosition());
+            const float cullRangeScale = 1.02f;
+            return (distanceToLight - boundsRadius) <= (radius * cullRangeScale);
+        }
+        bool shouldSkipFaceFrustumCull(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
+            const glm::vec3 center = getWorldAABBCenter(aabb, worldTransform);
+            const float boundsRadius = getWorldAABBBoundingRadius(aabb, worldTransform);
+            const float distanceToLight = glm::length(center - getWorldPosition());
+            const float overlapDistance = std::max(1.0f, radius * 0.35f) + boundsRadius;
+            return distanceToLight <= overlapDistance;
+        }
         float getShadowCullPlaneSlack() const {
             return std::max(0.05f, radius * 0.005f);
         }
