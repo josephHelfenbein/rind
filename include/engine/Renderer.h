@@ -166,6 +166,7 @@ namespace engine {
         void setFPSFrameCount(uint32_t count) { fpsFrameCount = count; }
         VkSampler getMainTextureSampler() const { return mainTextureSampler; }
         VkSampler getNearestSampler() const { return nearestSampler; }
+        uint32_t getCurrentFrameIndex() const { return currentFrame; }
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }

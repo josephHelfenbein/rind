@@ -1493,13 +1493,15 @@ void engine::Renderer::dispatchComputePass(VkCommandBuffer commandBuffer, Render
     VkExtent2D extent = swapChainExtent;
     uint32_t width = extent.width;
     uint32_t height = extent.height;
-    uint32_t layers = 1;
+    uint32_t layerLimit = 1;
+    bool hasLayerLimit = false;
     if (node.passInfo && node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
         const auto& img = node.passInfo->images->at(0);
         const uint32_t divider = img.resolutionDivider > 0 ? img.resolutionDivider : 1;
         width = img.width == 0 ? width / divider : img.width;
         height = img.height == 0 ? height / divider : img.height;
-        layers = img.arrayLayers > 0 ? img.arrayLayers : 1;
+        layerLimit = img.arrayLayers > 0 ? img.arrayLayers : 1;
+        hasLayerLimit = true;
     }
     if (width == 0 || height == 0) {
         return;
@@ -1532,13 +1534,29 @@ void engine::Renderer::dispatchComputePass(VkCommandBuffer commandBuffer, Render
         uint32_t wgX = shader->config.workgroupSizeX == 0 ? 1u : shader->config.workgroupSizeX;
         uint32_t wgY = shader->config.workgroupSizeY == 0 ? 1u : shader->config.workgroupSizeY;
         uint32_t wgZ = shader->config.workgroupSizeZ == 0 ? 1u : shader->config.workgroupSizeZ;
-        uint32_t groupX = (width + wgX - 1) / wgX;
-        uint32_t groupY = (height + wgY - 1) / wgY;
+        uint32_t dispatchWidth = width;
+        uint32_t dispatchHeight = height;
+        if (shader->config.getDispatchWidth) {
+            dispatchWidth = shader->config.getDispatchWidth(this, shader);
+        }
+        if (shader->config.getDispatchHeight) {
+            dispatchHeight = shader->config.getDispatchHeight(this, shader);
+        }
+        if (dispatchWidth == 0u || dispatchHeight == 0u) {
+            continue;
+        }
+        uint32_t groupX = (dispatchWidth + wgX - 1) / wgX;
+        uint32_t groupY = (dispatchHeight + wgY - 1) / wgY;
         uint32_t dispatchLayers = 1;
         if (shader->config.getDispatchLayerCount) {
-            dispatchLayers = std::max(1u, shader->config.getDispatchLayerCount(this, shader));
+            dispatchLayers = shader->config.getDispatchLayerCount(this, shader);
         }
-        dispatchLayers = std::min(dispatchLayers, layers);
+        if (hasLayerLimit) {
+            dispatchLayers = std::min(dispatchLayers, layerLimit);
+        }
+        if (dispatchLayers == 0u) {
+            continue;
+        }
         uint32_t groupZ = (dispatchLayers + wgZ - 1) / wgZ;
         vkCmdDispatch(commandBuffer, groupX, groupY, groupZ);
     }

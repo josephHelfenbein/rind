@@ -187,6 +187,8 @@ namespace engine {
             }
             std::function<void(engine::Renderer*, ComputeShader*, VkCommandBuffer)> fillPushConstants = nullptr;
             std::function<uint32_t(engine::Renderer*, ComputeShader*)> getDispatchLayerCount = nullptr;
+            std::function<uint32_t(engine::Renderer*, ComputeShader*)> getDispatchWidth = nullptr;
+            std::function<uint32_t(engine::Renderer*, ComputeShader*)> getDispatchHeight = nullptr;
 
             struct InputBinding {
                 uint32_t binding;

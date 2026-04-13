@@ -72,6 +72,8 @@ namespace engine {
         void createParticleDescriptorSets();
         std::vector<VkDescriptorSet> getDescriptorSets() const { return descriptorSets; }
         std::vector<Particle> getParticles() const { return particles; }
+        const std::vector<VkBuffer>& getParticleBuffers() const { return particleBuffers; }
+        uint32_t getParticleCount() const { return static_cast<uint32_t>(particles.size()); }
 
         void updateAll(float deltaTime);
         void renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame);

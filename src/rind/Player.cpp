@@ -1070,7 +1070,7 @@ void rind::Player::damage(float amount) {
         engine::SceneManager* sceneManager = getEntityManager()->getRenderer()->getSceneManager();
         engine::ButtonObject* quitButton = new engine::ButtonObject(
             uiManager,
-            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -300.0f, -2.0f)), glm::vec3(0.15, 0.05, 1.0)),
+            glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -150.0f, -2.0f)), glm::vec3(0.15, 0.05, 1.0)),
             "deathMenuButton",
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),

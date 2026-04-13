@@ -26,6 +26,10 @@ struct IrradianceProbesUBO {
     uint4 numProbes;
 };
 
+struct ProbeSHData {
+    float4 coeffs[9];
+};
+
 static const uint INVALID_SHADOW_INDEX = 0xFFFFFFFF;
 
 [[vk::binding(0)]]
@@ -33,6 +37,9 @@ ConstantBuffer<LightsUBO> lightsUBO;
 
 [[vk::binding(1)]]
 ConstantBuffer<IrradianceProbesUBO> irradianceProbesUBO;
+
+[[vk::binding(10)]]
+StructuredBuffer<ProbeSHData> irradianceProbeSH;
 
 [[vk::binding(2)]]
 Texture2D<float4> gBufferAlbedo;
@@ -134,15 +141,15 @@ void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, o
             float t = saturate(1.0 - dist / probeRadius);
             float weight = t * t;
             
-            float3 L00 = irradianceProbesUBO.probes[i].shCoeffs[0].xyz;
-            float3 L1m1 = irradianceProbesUBO.probes[i].shCoeffs[1].xyz;
-            float3 L10 = irradianceProbesUBO.probes[i].shCoeffs[2].xyz;
-            float3 L11 = irradianceProbesUBO.probes[i].shCoeffs[3].xyz;
-            float3 L2m2 = irradianceProbesUBO.probes[i].shCoeffs[4].xyz;
-            float3 L2m1 = irradianceProbesUBO.probes[i].shCoeffs[5].xyz;
-            float3 L20 = irradianceProbesUBO.probes[i].shCoeffs[6].xyz;
-            float3 L21 = irradianceProbesUBO.probes[i].shCoeffs[7].xyz;
-            float3 L22 = irradianceProbesUBO.probes[i].shCoeffs[8].xyz;
+            float3 L00 = irradianceProbeSH[i].coeffs[0].xyz;
+            float3 L1m1 = irradianceProbeSH[i].coeffs[1].xyz;
+            float3 L10 = irradianceProbeSH[i].coeffs[2].xyz;
+            float3 L11 = irradianceProbeSH[i].coeffs[3].xyz;
+            float3 L2m2 = irradianceProbeSH[i].coeffs[4].xyz;
+            float3 L2m1 = irradianceProbeSH[i].coeffs[5].xyz;
+            float3 L20 = irradianceProbeSH[i].coeffs[6].xyz;
+            float3 L21 = irradianceProbeSH[i].coeffs[7].xyz;
+            float3 L22 = irradianceProbeSH[i].coeffs[8].xyz;
             
             const float c1 = 0.429043;
             const float c2 = 0.511664;

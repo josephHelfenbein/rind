@@ -1020,34 +1020,147 @@ void engine::ShaderManager::createDefaultShaders() {
         addGraphicsShader(std::move(shader));
     }
 
-    // Simple Particle
+    // Simple Particle (for irradiance)
     {
-        GraphicsShader shader = {
+        ComputeShader shader = {
             .name = "particlesimple",
-            .vertex = { shaderPath("particlesimple.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("particlesimple.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .compute = { shaderPath("particlesimple.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
             .config = {
                 .poolMultiplier = 1,
-                .vertexBitBindings = 1,
-                .fragmentBitBindings = 0,
-                .vertexDescriptorCounts = {
-                    1
+                .computeBitBindings = 6,
+                .computeDescriptorCounts = { 1, 32, 1, 1, 32, 1 },
+                .computeDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .vertexDescriptorTypes = {
-                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                .workgroupSizeX = 8,
+                .workgroupSizeY = 8,
+                .workgroupSizeZ = 1,
+                .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
+                    if (!renderer || !shader) {
+                        return;
+                    }
+                    const uint32_t frameIndex = renderer->getCurrentFrameIndex();
+                    IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                    uint32_t activeComputeProbeCount = 0u;
+                    if (irradianceManager) {
+                        activeComputeProbeCount = irradianceManager->getDynamicComputeProbeCount(frameIndex);
+                    }
+                    uint32_t particleCount = 0u;
+                    if (ParticleManager* particleManager = renderer->getParticleManager()) {
+                        particleCount = particleManager->getParticleCount();
+                    }
+                    SimpleParticlePC pc = {
+                        .probePosition = glm::vec4(0.0f),
+                        .particleSize = 0.1f,
+                        .particleCount = particleCount,
+                        .cubemapSize = 32u,
+                        .activeProbeCount = activeComputeProbeCount,
+                        .layerBase = 0u,
+                        .mappingOffset = 0u,
+                        .pad = 0u
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(SimpleParticlePC), &pc);
                 },
-                .cullMode = VK_CULL_MODE_NONE,
-                .depthWrite = false,
-                .enableDepth = false,
-                .passInfo = simpleParticlePass,
-                .blendEnable = true,
-                .blendAdditive = true,
-                .colorAttachmentCount = 1,
-                .getVertexInputDescriptions = nullptr
+                .getDispatchLayerCount = [](Renderer* renderer, ComputeShader*) {
+                    if (!renderer) {
+                        return 0u;
+                    }
+                    IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                    if (!irradianceManager) {
+                        return 0u;
+                    }
+                    const uint32_t frameIndex = renderer->getCurrentFrameIndex();
+                    const uint32_t activeProbeCount = irradianceManager->getDynamicComputeProbeCount(frameIndex);
+                    return activeProbeCount * 6u;
+                },
+                .getDispatchWidth = [](Renderer*, ComputeShader*) {
+                    return 32u;
+                },
+                .getDispatchHeight = [](Renderer*, ComputeShader*) {
+                    return 32u;
+                },
+                .inputBindings = {
+                    {
+                        .binding = 0,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            ParticleManager* particleManager = renderer->getParticleManager();
+                            if (!particleManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            const auto& particleBuffers = particleManager->getParticleBuffers();
+                            if (frameIndex >= particleBuffers.size() || particleBuffers[frameIndex] == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ particleBuffers[frameIndex], 0, VK_WHOLE_SIZE };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    },
+                    {
+                        .binding = 1,
+                        .imageArrayProvider = [](Renderer* renderer, size_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return;
+                            }
+                            irradianceManager->fillDynamicProbeStorageImageInfos(static_cast<uint32_t>(frameIndex), count, imageInfos);
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                    },
+                    {
+                        .binding = 2,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createActiveProbeIndexBuffers();
+                            VkBuffer indexBuffer = irradianceManager->getActiveProbeIndexBuffer(static_cast<uint32_t>(frameIndex));
+                            if (indexBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * 32u };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    },
+                    {
+                        .binding = 3,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            auto& irradianceBuffers = irradianceManager->getIrradianceProbesBuffers();
+                            if (irradianceBuffers.size() < renderer->getMaxFramesInFlight()) {
+                                irradianceManager->createIrradianceProbesUBO();
+                            }
+                            if (frameIndex >= irradianceBuffers.size() || irradianceBuffers[frameIndex] == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ irradianceBuffers[frameIndex], 0, sizeof(IrradianceProbesUBO) };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    },
+                    {
+                        .binding = 4,
+                        .imageArrayProvider = [](Renderer* renderer, size_t, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return;
+                            }
+                            irradianceManager->fillBakedProbeCubemapImageInfos(count, imageInfos);
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    }
+                }
             }
         };
-        shader.config.setPushConstant<SimpleParticlePC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-        addGraphicsShader(std::move(shader));
+        shader.config.setPushConstant<SimpleParticlePC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
     }
 
     // Spherical Harmonics Projection
@@ -1056,10 +1169,201 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = "sh",
             .compute = { shaderPath("sh.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
             .config = {
-                .poolMultiplier = 64,
-                .computeBitBindings = 1,
-                .storageImageCount = 0,
-                .storageBufferCount = 1
+                .poolMultiplier = 1,
+                .computeBitBindings = 4,
+                .computeDescriptorCounts = { 1, 32, 1, 1 },
+                .computeDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                },
+                .workgroupSizeX = 8,
+                .workgroupSizeY = 8,
+                .workgroupSizeZ = 1,
+                .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
+                    if (!renderer || !shader) {
+                        return;
+                    }
+                    uint32_t activeProbeCount = 0u;
+                    if (IrradianceManager* irradianceManager = renderer->getIrradianceManager()) {
+                        const uint32_t frameIndex = renderer->getCurrentFrameIndex();
+                        activeProbeCount = irradianceManager->getDynamicComputeProbeCount(frameIndex);
+                    }
+                    SHPC pc = {
+                        .cubemapSize = 32u,
+                        .activeProbeCount = activeProbeCount,
+                        .pad0 = 0u,
+                        .pad1 = 0u
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(SHPC), &pc);
+                },
+                .getDispatchLayerCount = [](Renderer* renderer, ComputeShader*) {
+                    if (!renderer) {
+                        return 0u;
+                    }
+                    IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                    if (!irradianceManager) {
+                        return 0u;
+                    }
+                    const uint32_t frameIndex = renderer->getCurrentFrameIndex();
+                    return irradianceManager->getDynamicComputeProbeCount(frameIndex) * 6u;
+                },
+                .getDispatchWidth = [](Renderer*, ComputeShader*) {
+                    return 32u;
+                },
+                .getDispatchHeight = [](Renderer*, ComputeShader*) {
+                    return 32u;
+                },
+                .inputBindings = {
+                    {
+                        .binding = 0,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createDynamicSHPartialBuffers();
+                            VkBuffer partialBuffer = irradianceManager->getDynamicSHPartialBuffer(static_cast<uint32_t>(frameIndex));
+                            if (partialBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ partialBuffer, 0, VK_WHOLE_SIZE };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    },
+                    {
+                        .binding = 1,
+                        .imageArrayProvider = [](Renderer* renderer, size_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return;
+                            }
+                            irradianceManager->fillDynamicProbeCubemapImageInfos(static_cast<uint32_t>(frameIndex), count, imageInfos);
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 3,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createActiveProbeIndexBuffers();
+                            VkBuffer indexBuffer = irradianceManager->getActiveProbeIndexBuffer(static_cast<uint32_t>(frameIndex));
+                            if (indexBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * 32u };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    }
+                }
+            }
+        };
+        shader.config.setPushConstant<SHPC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
+    }
+
+    // Spherical Harmonics Reduction
+    {
+        ComputeShader shader = {
+            .name = "shreduce",
+            .compute = { shaderPath("shreduce.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
+            .config = {
+                .poolMultiplier = 1,
+                .computeBitBindings = 3,
+                .computeDescriptorCounts = { 1, 1, 1 },
+                .computeDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                },
+                .workgroupSizeX = 64,
+                .workgroupSizeY = 1,
+                .workgroupSizeZ = 1,
+                .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
+                    if (!renderer || !shader) {
+                        return;
+                    }
+                    uint32_t activeProbeCount = 0u;
+                    if (IrradianceManager* irradianceManager = renderer->getIrradianceManager()) {
+                        const uint32_t frameIndex = renderer->getCurrentFrameIndex();
+                        activeProbeCount = irradianceManager->getDynamicComputeProbeCount(frameIndex);
+                    }
+                    SHPC pc = {
+                        .cubemapSize = 32u,
+                        .activeProbeCount = activeProbeCount,
+                        .pad0 = 0u,
+                        .pad1 = 0u
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(SHPC), &pc);
+                },
+                .getDispatchWidth = [](Renderer* renderer, ComputeShader*) {
+                    if (!renderer) {
+                        return 0u;
+                    }
+                    IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                    if (!irradianceManager) {
+                        return 0u;
+                    }
+                    const uint32_t frameIndex = renderer->getCurrentFrameIndex();
+                    return irradianceManager->getDynamicComputeProbeCount(frameIndex);
+                },
+                .getDispatchHeight = [](Renderer*, ComputeShader*) {
+                    return 1u;
+                },
+                .inputBindings = {
+                    {
+                        .binding = 0,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createDynamicSHOutputBuffers();
+                            VkBuffer outputBuffer = irradianceManager->getDynamicSHOutputBuffer(static_cast<uint32_t>(frameIndex));
+                            if (outputBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ outputBuffer, 0, VK_WHOLE_SIZE };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    },
+                    {
+                        .binding = 1,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createDynamicSHPartialBuffers();
+                            VkBuffer partialBuffer = irradianceManager->getDynamicSHPartialBuffer(static_cast<uint32_t>(frameIndex));
+                            if (partialBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ partialBuffer, 0, VK_WHOLE_SIZE };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    },
+                    {
+                        .binding = 2,
+                        .bufferProvider = [](Renderer* renderer, size_t frameIndex) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createActiveProbeIndexBuffers();
+                            VkBuffer indexBuffer = irradianceManager->getActiveProbeIndexBuffer(static_cast<uint32_t>(frameIndex));
+                            if (indexBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * 32u };
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    }
+                }
             }
         };
         shader.config.setPushConstant<SHPC>(VK_SHADER_STAGE_COMPUTE_BIT);
@@ -1166,14 +1470,14 @@ void engine::ShaderManager::createDefaultShaders() {
             .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 2,
-                .fragmentBitBindings = 8,
+                .fragmentBitBindings = 9,
                 .vertexDescriptorCounts = { 1, 1 },
                 .vertexDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                 },
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1, 1, 1, 1
+                    1, 1, 1, 1, 1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1183,7 +1487,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    VK_DESCRIPTOR_TYPE_SAMPLER
+                    VK_DESCRIPTOR_TYPE_SAMPLER,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                 },
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
@@ -1209,6 +1514,22 @@ void engine::ShaderManager::createDefaultShaders() {
                     }
                 },
                 .inputBindings = {
+                    {
+                        .binding = 10,
+                        .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
+                            IrradianceManager* irradianceManager = renderer->getIrradianceManager();
+                            if (!irradianceManager) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            irradianceManager->createDynamicSHOutputBuffers();
+                            VkBuffer shBuffer = irradianceManager->getDynamicSHOutputBuffer(static_cast<uint32_t>(i));
+                            if (shBuffer == VK_NULL_HANDLE) {
+                                return VkDescriptorBufferInfo{};
+                            }
+                            return VkDescriptorBufferInfo{shBuffer, 0, sizeof(ProbeSHData) * 32u};
+                        },
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    },
                     {
                         .binding = 0,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
@@ -1728,7 +2049,7 @@ void engine::ShaderManager::createDefaultShaders() {
     auto irradianceRenderLane = std::make_shared<RenderLane>(RenderLane{
         .name = "IrradianceRender",
         .allowGraphics = true,
-        .allowCompute = false,
+        .allowCompute = true,
         .preferAsync = true,
         .mustPreserveOrder = false
     });
@@ -1834,15 +2155,41 @@ void engine::ShaderManager::createDefaultShaders() {
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
         },
         {
-            .name = "irradiance_dynamic_render",
+            .name = "irradiance_dynamic_prepare",
             .is2D = false,
             .passInfo = irradiancePass.get(),
             .dependsOnNodeNames = {},
             .lane = irradianceRenderLane,
             .usesRendering = false,
+            .canRunCustomOnComputeQueue = true,
             .usePassManagedTransitions = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
-                renderer->getIrradianceManager()->renderDynamicIrradianceGraphics(cmd, frame);
+                renderer->getIrradianceManager()->prepareDynamicIrradianceCompute(cmd, frame);
+            }
+        },
+        {
+            .name = "irradiance_dynamic_render",
+            .is2D = false,
+            .passInfo = irradiancePass.get(),
+            .shaderNames = { "particlesimple" },
+            .dependsOnNodeNames = { "irradiance_dynamic_prepare" },
+            .lane = irradianceRenderLane,
+            .usesRendering = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        },
+        {
+            .name = "irradiance_dynamic_finalize",
+            .is2D = false,
+            .passInfo = irradiancePass.get(),
+            .dependsOnNodeNames = { "irradiance_dynamic_render" },
+            .lane = irradianceRenderLane,
+            .usesRendering = false,
+            .canRunCustomOnComputeQueue = true,
+            .usePassManagedTransitions = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
+                renderer->getIrradianceManager()->finalizeDynamicIrradianceCompute(cmd, frame);
                 renderer->getIrradianceManager()->updateIrradianceProbesUBO(frame);
             }
         },
@@ -1850,14 +2197,25 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = "irradiance_dynamic_sh",
             .is2D = false,
             .passInfo = irradiancePass.get(),
-            .dependsOnNodeNames = { "irradiance_dynamic_render" },
+            .shaderNames = { "sh" },
+            .dependsOnNodeNames = { "irradiance_dynamic_finalize" },
+            .lane = irradianceSHLane,
+            .usesRendering = false,
+            .usePassManagedTransitions = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        },
+        {
+            .name = "irradiance_dynamic_sh_reduce",
+            .is2D = false,
+            .passInfo = irradiancePass.get(),
+            .dependsOnNodeNames = { "irradiance_dynamic_sh" },
             .lane = irradianceSHLane,
             .usesRendering = false,
             .canRunCustomOnComputeQueue = true,
             .usePassManagedTransitions = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
-                renderer->getIrradianceManager()->dispatchDynamicIrradianceSH(cmd, frame);
+                renderer->getIrradianceManager()->dispatchDynamicIrradianceSHReduce(cmd, frame);
             }
         },
         {
@@ -1865,7 +2223,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .is2D = true,
             .passInfo = lightingPass.get(),
             .shaderNames = { "lighting" },
-            .dependsOnNodeNames = { "irradiance_dynamic_sh", "shadow_blur_v" },
+            .dependsOnNodeNames = { "irradiance_dynamic_sh_reduce", "shadow_blur_v" },
             .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {

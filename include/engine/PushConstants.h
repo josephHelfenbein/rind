@@ -75,6 +75,10 @@ namespace engine {
         glm::uvec4 numProbes;
     };
 
+    struct ProbeSHData {
+        glm::vec4 coeffs[9];
+    };
+
     struct IrradianceBakePC {
         glm::mat4 model;
         glm::mat4 viewProj;
@@ -90,9 +94,14 @@ namespace engine {
     };
 
     struct SimpleParticlePC {
-        glm::mat4 viewProj;
+        glm::vec4 probePosition; // xyz = world position
         float particleSize;
-        float pad[3];
+        uint32_t particleCount;
+        uint32_t cubemapSize;
+        uint32_t activeProbeCount;
+        uint32_t layerBase;
+        uint32_t mappingOffset;
+        uint32_t pad;
     };
 
     struct VolumetricPC {
@@ -121,6 +130,8 @@ namespace engine {
 
     struct SHPC {
         uint32_t cubemapSize;
-        uint32_t pad[3];
+        uint32_t activeProbeCount;
+        uint32_t pad0;
+        uint32_t pad1;
     };
 }
