@@ -606,16 +606,20 @@ void engine::ShaderManager::createDefaultShaders() {
             .vertex = { shaderPath("shadow.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .config = {
                 .poolMultiplier = 512,
-                .vertexBitBindings = 1,
+                .vertexBitBindings = 2,
                 .fragmentBitBindings = 0,
-                .vertexDescriptorCounts = { 1 },
-                .vertexDescriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
+                .vertexDescriptorCounts = { 1, 1 },
+                .vertexDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                },
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = true,
                 .depthCompare = VK_COMPARE_OP_LESS,
                 .enableDepth = true,
                 .passInfo = shadowPass,
                 .colorAttachmentCount = 0,
+                .viewMask = 0x3Fu,
                 .getVertexInputDescriptions = [](std::vector<VkVertexInputBindingDescription>& bindings, std::vector<VkVertexInputAttributeDescription>& attributes) {
                     bindings.resize(2);
                     bindings = {
@@ -1028,7 +1032,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .config = {
                 .poolMultiplier = 1,
                 .computeBitBindings = 6,
-                .computeDescriptorCounts = { 1, 32, 1, 1, 32, 1 },
+                .computeDescriptorCounts = { 1, kMaxIrradianceProbes, 1, 1, kMaxIrradianceProbes, 1 },
                 .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -1123,7 +1127,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             if (indexBuffer == VK_NULL_HANDLE) {
                                 return VkDescriptorBufferInfo{};
                             }
-                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * 32u };
+                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * kMaxIrradianceProbes };
                         },
                         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                     },
@@ -1171,7 +1175,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .config = {
                 .poolMultiplier = 1,
                 .computeBitBindings = 4,
-                .computeDescriptorCounts = { 1, 32, 1, 1 },
+                .computeDescriptorCounts = { 1, kMaxIrradianceProbes, 1, 1 },
                 .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1255,7 +1259,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             if (indexBuffer == VK_NULL_HANDLE) {
                                 return VkDescriptorBufferInfo{};
                             }
-                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * 32u };
+                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * kMaxIrradianceProbes };
                         },
                         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                     }
@@ -1359,7 +1363,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             if (indexBuffer == VK_NULL_HANDLE) {
                                 return VkDescriptorBufferInfo{};
                             }
-                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * 32u };
+                            return VkDescriptorBufferInfo{ indexBuffer, 0, sizeof(uint32_t) * kMaxIrradianceProbes };
                         },
                         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                     }
@@ -1526,7 +1530,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             if (shBuffer == VK_NULL_HANDLE) {
                                 return VkDescriptorBufferInfo{};
                             }
-                            return VkDescriptorBufferInfo{shBuffer, 0, sizeof(ProbeSHData) * 32u};
+                            return VkDescriptorBufferInfo{shBuffer, 0, sizeof(ProbeSHData) * kMaxIrradianceProbes};
                         },
                         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                     },
@@ -3161,6 +3165,7 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
     }
     VkPipelineRenderingCreateInfo pipelineRenderingInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .viewMask = config.viewMask,
         .colorAttachmentCount = static_cast<uint32_t>(config.colorAttachmentCount),
         .pColorAttachmentFormats = config.colorAttachmentCount > 0 ? config.passInfo->attachmentFormats.data() : nullptr,
         .depthAttachmentFormat = config.enableDepth ? config.passInfo->depthAttachmentFormat : VK_FORMAT_UNDEFINED,

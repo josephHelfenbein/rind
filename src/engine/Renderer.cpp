@@ -1675,13 +1675,20 @@ void engine::Renderer::createLogicalDevice() {
         .pNext = &vulkan13Features,
         .shaderFloat16 = VK_TRUE
     };
+    VkPhysicalDeviceVulkan11Features vulkan11Features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext = &vulkan12Features
+    };
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &vulkan12Features
+        .pNext = &vulkan11Features
     };
     vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
     if (vulkan12Features.shaderFloat16 != VK_TRUE) {
         std::cout << "Warning: shaderFloat16 is not supported; f16 compute shaders may fail to create.\n";
+    }
+    if (vulkan11Features.multiview != VK_TRUE) {
+        throw std::runtime_error("Device does not support multiview, which is required for shadow rendering.");
     }
     VkDeviceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -1695,9 +1702,14 @@ void engine::Renderer::createLogicalDevice() {
         .pNext = &enabledVulkan13Features,
         .shaderFloat16 = vulkan12Features.shaderFloat16
     };
+    VkPhysicalDeviceVulkan11Features enabledVulkan11Features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext = &enabledVulkan12Features,
+        .multiview = VK_TRUE
+    };
     VkPhysicalDeviceFeatures2 enabledFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &enabledVulkan12Features,
+        .pNext = &enabledVulkan11Features,
         .features = deviceFeatures
     };
     createInfo.pNext = &enabledFeatures2;

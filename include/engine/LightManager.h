@@ -44,6 +44,7 @@ namespace engine {
             const size_t idx = frameIndex % shadowDepthImageViews.size();
             return shadowDepthImageViews[idx];
         }
+        void fillShadowLightEntry(ShadowLightEntry& entry) const;
 
         void createShadowMaps(engine::Renderer* renderer, bool forceRecreate = false);
         void bakeShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
@@ -126,12 +127,14 @@ namespace engine {
         std::vector<VkDeviceMemory> shadowDepthMemories;
         std::vector<VkImageView> shadowDepthImageViews;
         std::vector<std::array<VkImageView, 6>> shadowDepthFaceViews;
-        
+        std::vector<VkImageView> shadowDepthArrayViews;
+
         // baked shadow map, static
         VkImage bakedShadowImage = VK_NULL_HANDLE;
         VkDeviceMemory bakedShadowMemory = VK_NULL_HANDLE;
         VkImageView bakedShadowImageView = VK_NULL_HANDLE;
         VkImageView bakedShadowFaceViews[6] = { VK_NULL_HANDLE };
+        VkImageView bakedShadowArrayView = VK_NULL_HANDLE;
         
         bool hasShadowMap = false;
         std::vector<uint8_t> shadowImageReady;
@@ -152,9 +155,12 @@ namespace engine {
         std::vector<Light>& getLights() { return lights; }
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
+        void createShadowLightsBuffers();
+        void updateShadowLightsBuffer(uint32_t frameIndex);
         void createAllShadowMaps();
         void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
+        std::vector<VkBuffer>& getShadowLightsBuffers() { return shadowLightsBuffers; }
 
         void markLightsDirty();
 
@@ -169,5 +175,8 @@ namespace engine {
         std::vector<VkDeviceMemory> lightsBuffersMemory;
         std::vector<void*> lightBuffersMapped;
         std::vector<uint8_t> lightsDirty;
+        std::vector<VkBuffer> shadowLightsBuffers;
+        std::vector<VkDeviceMemory> shadowLightsMemories;
+        std::vector<void*> shadowLightsMapped;
     };
 }

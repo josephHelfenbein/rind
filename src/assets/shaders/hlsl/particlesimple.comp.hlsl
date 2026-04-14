@@ -12,8 +12,10 @@ struct IrradianceProbeData {
     float4 shCoeffs[9];
 };
 
+static const uint kMaxIrradianceProbes = 64u;
+
 struct IrradianceProbesUBO {
-    IrradianceProbeData probes[32];
+    IrradianceProbeData probes[kMaxIrradianceProbes];
     uint4 numProbes;
 };
 
@@ -21,7 +23,7 @@ struct IrradianceProbesUBO {
 StructuredBuffer<ParticleData> particles;
 
 [[vk::binding(1)]]
-RWTexture2DArray<float4> outputCubemaps[32];
+RWTexture2DArray<float4> outputCubemaps[kMaxIrradianceProbes];
 
 [[vk::binding(2)]]
 StructuredBuffer<uint> activeProbeIndices;
@@ -30,7 +32,7 @@ StructuredBuffer<uint> activeProbeIndices;
 ConstantBuffer<IrradianceProbesUBO> irradianceProbes;
 
 [[vk::binding(4)]]
-TextureCube<float4> bakedCubemaps[32];
+TextureCube<float4> bakedCubemaps[kMaxIrradianceProbes];
 
 [[vk::binding(5)]]
 SamplerState cubemapSampler;
@@ -116,11 +118,11 @@ void main(uint3 dispatchId : SV_DispatchThreadID) {
     const uint dispatchLayer = pc.mappingOffset + pc.layerBase + dispatchId.z;
     const uint mappedProbeLocalIndex = dispatchLayer / 6u;
     const uint mappedFace = dispatchLayer % 6u;
-    if (mappedProbeLocalIndex >= pc.activeProbeCount || mappedProbeLocalIndex >= 32u) {
+    if (mappedProbeLocalIndex >= pc.activeProbeCount || mappedProbeLocalIndex >= kMaxIrradianceProbes) {
         return;
     }
     const uint mappedProbeIndex = activeProbeIndices[mappedProbeLocalIndex];
-    if (mappedProbeIndex >= 32u) {
+    if (mappedProbeIndex >= kMaxIrradianceProbes) {
         return;
     }
     const float3 probePosition = irradianceProbes.probes[mappedProbeIndex].position.xyz;

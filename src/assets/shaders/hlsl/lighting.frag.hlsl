@@ -21,8 +21,10 @@ struct IrradianceProbe {
     float4 shCoeffs[9];
 };
 
+static const uint kMaxIrradianceProbes = 64u;
+
 struct IrradianceProbesUBO {
-    IrradianceProbe probes[32];
+    IrradianceProbe probes[kMaxIrradianceProbes];
     uint4 numProbes;
 };
 

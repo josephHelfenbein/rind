@@ -1158,7 +1158,7 @@ void engine::IrradianceManager::updateIrradianceProbesUBO(uint32_t frameIndex) {
     }
     IrradianceProbesUBO* irradianceProbesUBO = static_cast<IrradianceProbesUBO*>(irradianceBuffersMapped[frameIndex]);
     std::vector<IrradianceProbe>& probes = getIrradianceProbes();
-    size_t count = std::min(probes.size(), static_cast<size_t>(32));
+    size_t count = std::min(probes.size(), static_cast<size_t>(kMaxIrradianceProbes));
     for (size_t i = 0; i < count; ++i) {
         irradianceProbesUBO->probes[i] = probes[i].getProbeData();
     }

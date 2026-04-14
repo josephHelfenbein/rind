@@ -122,7 +122,7 @@ namespace engine {
         Renderer* renderer;
         std::vector<IrradianceProbe> irradianceProbes;
         bool irradianceBakingPending = false;
-        static constexpr uint32_t maxActiveProbesPerFrame = 32u;
+        static constexpr uint32_t maxActiveProbesPerFrame = kMaxIrradianceProbes;
         std::vector<ActiveProbeFrame> activeProbeFrames;
         std::vector<uint8_t> activeProbeFrameBuilt;
         std::vector<VkBuffer> irradianceBuffers;

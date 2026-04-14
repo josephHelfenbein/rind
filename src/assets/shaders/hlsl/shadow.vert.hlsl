@@ -12,12 +12,10 @@ struct VSOutput {
 
 struct PushConstants {
     float4x4 model;
-    float4x4 viewProj;
-    float4 lightPos; // xyz = pos, w = radius (far plane)
+    uint lightIndex;
     uint flags;
     uint pad0;
     uint pad1;
-    uint pad2;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -27,10 +25,16 @@ struct JointMatricesUBO {
 };
 [[vk::binding(0, 0)]] ConstantBuffer<JointMatricesUBO> joints;
 
-VSOutput main(VSInput input) {
+struct ShadowLightEntry {
+    float4x4 viewProjs[6];
+    float4 lightPosRadius; // xyz = pos, w = radius
+};
+[[vk::binding(1, 0)]] StructuredBuffer<ShadowLightEntry> shadowLights;
+
+VSOutput main(VSInput input, uint viewId : SV_ViewID) {
     VSOutput output;
     float3 skinnedPos = input.inPosition;
-    
+
     if ((pc.flags & 1) != 0) {
         float4x4 skinMatrix = mul(input.inWeights.x, joints.jointMatrices[uint(input.inJoints.x)]) +
                             mul(input.inWeights.y, joints.jointMatrices[uint(input.inJoints.y)]) +
@@ -38,11 +42,12 @@ VSOutput main(VSInput input) {
                             mul(input.inWeights.w, joints.jointMatrices[uint(input.inJoints.w)]);
         skinnedPos = mul(float4(input.inPosition, 1.0), skinMatrix).xyz;
     }
-    
+
+    ShadowLightEntry light = shadowLights[pc.lightIndex];
     float4 worldPos = mul(float4(skinnedPos, 1.0), pc.model);
-    float4 clipPos = mul(worldPos, pc.viewProj);
-    float distance = length(worldPos.xyz - pc.lightPos.xyz);
-    float linearDepth = clamp(distance / pc.lightPos.w, 0.0, 1.0);
+    float4 clipPos = mul(worldPos, light.viewProjs[viewId]);
+    float distance = length(worldPos.xyz - light.lightPosRadius.xyz);
+    float linearDepth = clamp(distance / light.lightPosRadius.w, 0.0, 1.0);
     output.gl_Position = float4(clipPos.x, clipPos.y, linearDepth * clipPos.w, clipPos.w);
     return output;
 }

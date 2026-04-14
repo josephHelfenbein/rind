@@ -2,6 +2,8 @@
 #include <glm/glm.hpp>
 
 namespace engine {
+    inline constexpr uint32_t kMaxIrradianceProbes = 64u;
+
     struct GBufferPC {
         glm::mat4 model;
         glm::mat4 view;
@@ -32,10 +34,20 @@ namespace engine {
 
     struct ShadowPC {
         glm::mat4 model;
-        glm::mat4 viewProj;
-        glm::vec4 lightPos; // xyz = pos, w = radius
+        uint32_t lightIndex;
         uint32_t flags; // bit 0 = has skinning
-        uint32_t pad[3];
+        uint32_t pad0;
+        uint32_t pad1;
+    };
+
+    struct ShadowLightEntry {
+        glm::mat4 viewProjs[6];
+        glm::vec4 lightPosRadius; // xyz = pos, w = radius
+    };
+
+    static constexpr uint32_t kMaxShadowLights = 64;
+    struct ShadowLightsSSBO {
+        ShadowLightEntry lights[kMaxShadowLights];
     };
 
     struct SSRPC {
@@ -71,7 +83,7 @@ namespace engine {
     };
 
     struct IrradianceProbesUBO {
-        IrradianceProbeData probes[32];
+        IrradianceProbeData probes[kMaxIrradianceProbes];
         glm::uvec4 numProbes;
     };
 

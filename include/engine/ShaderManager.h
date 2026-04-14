@@ -118,6 +118,7 @@ namespace engine {
             bool blendAdditive = false;
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
+            uint32_t viewMask = 0u;
             std::type_index pushConstantType = std::type_index(typeid(void));
 
             template<typename T>

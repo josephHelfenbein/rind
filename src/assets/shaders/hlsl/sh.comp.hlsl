@@ -4,11 +4,13 @@ struct SHOutput {
     float4 coeffs[9];
 };
 
+static const uint kMaxIrradianceProbes = 64u;
+
 [[vk::binding(0)]]
 RWStructuredBuffer<SHOutput> outputSH;
 
 [[vk::binding(1)]]
-TextureCube<float4> inputCubemaps[32];
+TextureCube<float4> inputCubemaps[kMaxIrradianceProbes];
 
 [[vk::binding(2)]]
 SamplerState cubemapSampler;
@@ -63,12 +65,12 @@ void main(
     const uint probeLocalIndex = layer / 6u;
     const uint face = layer % 6u;
 
-    if (probeLocalIndex >= pc.activeProbeCount || probeLocalIndex >= 32u) {
+    if (probeLocalIndex >= pc.activeProbeCount || probeLocalIndex >= kMaxIrradianceProbes) {
         return;
     }
 
     const uint probeIndex = activeProbeIndices[probeLocalIndex];
-    if (probeIndex >= 32u) {
+    if (probeIndex >= kMaxIrradianceProbes) {
         return;
     }
 

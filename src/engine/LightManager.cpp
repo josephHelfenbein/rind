@@ -80,6 +80,7 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
     shadowDepthMemories.assign(framesInFlight, VK_NULL_HANDLE);
     shadowDepthImageViews.assign(framesInFlight, VK_NULL_HANDLE);
     shadowDepthFaceViews.assign(framesInFlight, {});
+    shadowDepthArrayViews.assign(framesInFlight, VK_NULL_HANDLE);
     shadowImageReady.assign(framesInFlight, 0u);
 
     for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
@@ -118,8 +119,22 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
             };
             vkCreateImageView(renderer->getDevice(), &viewInfo, nullptr, &shadowDepthFaceViews[frame][i]);
         }
+        VkImageViewCreateInfo arrayViewInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = shadowDepthImages[frame],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+            .format = depthFormat,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 6
+            }
+        };
+        vkCreateImageView(renderer->getDevice(), &arrayViewInfo, nullptr, &shadowDepthArrayViews[frame]);
     }
-    
+
     std::tie(bakedShadowImage, bakedShadowMemory) = renderer->createImage(
         shadowMapSize, shadowMapSize,
         1,
@@ -155,7 +170,44 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
         };
         vkCreateImageView(renderer->getDevice(), &viewInfo, nullptr, &bakedShadowFaceViews[i]);
     }
-    
+    VkImageViewCreateInfo bakedArrayViewInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = bakedShadowImage,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+        .format = depthFormat,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 6
+        }
+    };
+    vkCreateImageView(renderer->getDevice(), &bakedArrayViewInfo, nullptr, &bakedShadowArrayView);
+
+    glm::vec3 lightPos = getWorldPosition();
+    for (int i = 0; i < 6; ++i) {
+        glm::mat4 faceView = glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
+        viewProjs[i] = shadowProj * faceView;
+        glm::mat4 cullProj = glm::perspective(
+            glm::radians(kShadowCullFovDegrees),
+            1.0f,
+            kShadowCullNear,
+            radius * kShadowCullFarScale
+        );
+        glm::mat4 viewProj = glm::transpose(cullProj * faceView);
+        frustumPlanes[i][0] = viewProj[3] + viewProj[0];
+        frustumPlanes[i][1] = viewProj[3] - viewProj[0];
+        frustumPlanes[i][2] = viewProj[3] + viewProj[1];
+        frustumPlanes[i][3] = viewProj[3] - viewProj[1];
+        frustumPlanes[i][4] = viewProj[3] + viewProj[2];
+        frustumPlanes[i][5] = viewProj[3] - viewProj[2];
+        for (auto& plane : frustumPlanes[i]) {
+            float length = glm::length(glm::vec3(plane));
+            plane /= length;
+        }
+    }
+
     hasShadowMap = true;
     if (lightManager) {
         lightManager->markLightsDirty();
@@ -182,34 +234,6 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
         6
     );
     
-    glm::vec3 lightPos = getWorldPosition();
-    for (int i = 0; i < 6; ++i) {
-        glm::mat4 faceView = glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
-        viewProjs[i] = shadowProj * faceView;
-        glm::mat4 cullProj = glm::perspective(
-            glm::radians(kShadowCullFovDegrees),
-            1.0f,
-            kShadowCullNear,
-            radius * kShadowCullFarScale
-        );
-        glm::mat4 viewProj = glm::transpose(cullProj * faceView);
-        // Left
-        frustumPlanes[i][0] = viewProj[3] + viewProj[0];
-        // Right
-        frustumPlanes[i][1] = viewProj[3] - viewProj[0];
-        // Bottom
-        frustumPlanes[i][2] = viewProj[3] + viewProj[1];
-        // Top
-        frustumPlanes[i][3] = viewProj[3] - viewProj[1];
-        // Near
-        frustumPlanes[i][4] = viewProj[3] + viewProj[2];
-        // Far
-        frustumPlanes[i][5] = viewProj[3] - viewProj[2];
-        for (auto& plane : frustumPlanes[i]) {
-            float length = glm::length(glm::vec3(plane));
-            plane /= length;
-        }
-    }
     std::vector<Entity*>& rootEntities = renderer->getEntityManager()->getRootEntities();
     VkBuffer dummySkinningBuffer = renderer->getEntityManager()->getDummySkinningBuffer();
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
@@ -218,26 +242,28 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
         .y = 0.0f,
         .width = static_cast<float>(shadowMapSize),
         .height = static_cast<float>(shadowMapSize),
-        .minDepth = 0.0f, 
+        .minDepth = 0.0f,
         .maxDepth = 1.0f
     };
     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
     VkRect2D scissor = {
-        .offset = { 0, 0 }, 
+        .offset = { 0, 0 },
         .extent = { shadowMapSize, shadowMapSize }
     };
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    auto drawStaticEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj) -> void {
+    const uint32_t lightIndex = lightIdx;
+    auto drawStaticEntity = [&](auto& self, Entity* entity) -> void {
         if (!entity->getIsMovable()
          && entity->getModel()
          && entity->getType() == Entity::EntityType::Static
-         && entity->getCastShadow()) {
+         && entity->getCastShadow()
+         && intersectsShadowRange(entity->getModel()->getAABB(), entity->getWorldTransform())) {
             Model* model = entity->getModel();
             const auto& shadowDS = entity->getShadowDescriptorSets();
             if (shadowDS.empty()) {
                 for (Entity* child : entity->getChildren()) {
-                    self(self, child, viewProj);
+                    self(self, child);
                 }
                 return;
             }
@@ -264,8 +290,8 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
             );
             ShadowPC pc = {
                 .model = entity->getWorldTransform(),
-                .viewProj = viewProj,
-                .lightPos = glm::vec4(lightPos, radius)
+                .lightIndex = lightIndex,
+                .flags = model->hasSkinning() ? 1u : 0u
             };
             vkCmdPushConstants(
                 commandBuffer,
@@ -278,36 +304,35 @@ void engine::Light::bakeShadowMap(Renderer* renderer, VkCommandBuffer commandBuf
             vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
         }
         for (Entity* child : entity->getChildren()) {
-            self(self, child, viewProj);
+            self(self, child);
         }
     };
-    
-    for (uint32_t face = 0u; face < 6u; ++face) {
-        VkRenderingAttachmentInfo depthAttachment = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = bakedShadowFaceViews[face],
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = { .depthStencil = { 1.0f, 0 } }
-        };
-        VkRenderingInfo renderInfo = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = {
-                .offset = { 0, 0 },
-                .extent = { shadowMapSize, shadowMapSize }
-            },
-            .layerCount = 1,
-            .colorAttachmentCount = 0,
-            .pColorAttachments = nullptr,
-            .pDepthAttachment = &depthAttachment
-        };
-        renderer->getFpCmdBeginRendering()(commandBuffer, &renderInfo);
-        for (Entity* entity : rootEntities) {
-            drawStaticEntity(drawStaticEntity, entity, viewProjs[face]);
-        }
-        renderer->getFpCmdEndRendering()(commandBuffer);
+
+    VkRenderingAttachmentInfo depthAttachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = bakedShadowArrayView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = { .depthStencil = { 1.0f, 0 } }
+    };
+    VkRenderingInfo renderInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = {
+            .offset = { 0, 0 },
+            .extent = { shadowMapSize, shadowMapSize }
+        },
+        .layerCount = 1,
+        .viewMask = 0x3Fu,
+        .colorAttachmentCount = 0,
+        .pColorAttachments = nullptr,
+        .pDepthAttachment = &depthAttachment
+    };
+    renderer->getFpCmdBeginRendering()(commandBuffer, &renderInfo);
+    for (Entity* entity : rootEntities) {
+        drawStaticEntity(drawStaticEntity, entity);
     }
+    renderer->getFpCmdEndRendering()(commandBuffer);
     renderer->transitionImageLayoutInline(
         commandBuffer,
         bakedShadowImage,
@@ -411,7 +436,6 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
         1,
         6
     );
-    glm::vec3 lightPos = getWorldPosition();
     std::vector<Entity*>& movableEntities = renderer->getEntityManager()->getMovableEntities();
     if (!movableEntities.empty()) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
@@ -420,27 +444,26 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
             .y = 0.0f,
             .width = static_cast<float>(shadowMapSize),
             .height = static_cast<float>(shadowMapSize),
-            .minDepth = 0.0f, 
+            .minDepth = 0.0f,
             .maxDepth = 1.0f
         };
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
         VkRect2D scissor = {
-            .offset = {0, 0}, 
+            .offset = {0, 0},
             .extent = {shadowMapSize, shadowMapSize}
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-        auto drawMovableEntity = [&](auto& self, Entity* entity, glm::mat4& viewProj, int face) -> void {
-            if (entity->getModel() 
+        const uint32_t lightIndex = lightIdx;
+        auto drawMovableEntity = [&](auto& self, Entity* entity) -> void {
+            if (entity->getModel()
              && !notShadowTypes.contains(entity->getType())
              && entity->getCastShadow()
-             && intersectsShadowRange(entity->getModel()->getAABB(), entity->getWorldTransform())
-             && (shouldSkipFaceFrustumCull(entity->getModel()->getAABB(), entity->getWorldTransform())
-                 || isAABBInFrustum(face, entity->getModel()->getAABB(), entity->getWorldTransform()))) {
+             && intersectsShadowRange(entity->getModel()->getAABB(), entity->getWorldTransform())) {
                 Model* model = entity->getModel();
                 const auto& shadowDS = entity->getShadowDescriptorSets();
                 if (shadowDS.empty()) {
                     for (Entity* child : entity->getChildren()) {
-                        self(self, child, viewProj, face);
+                        self(self, child);
                     }
                     return;
                 }
@@ -449,7 +472,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
                 VkDeviceSize offsets[] = { 0 };
                 vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
                 vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
-                
+
                 if (model->hasSkinning()) {
                     VkBuffer skinBuffers[] = { model->getSkinningBuffer().first };
                     vkCmdBindVertexBuffers(commandBuffer, 1, 1, skinBuffers, offsets);
@@ -468,13 +491,11 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
                     0,
                     nullptr
                 );
-                
+
                 ShadowPC pc = {
                     .model = entity->getWorldTransform(),
-                    .viewProj = viewProj,
-                    .lightPos = glm::vec4(lightPos, radius),
-                    .flags = model->hasSkinning() ? 1u : 0u,
-                    .pad = {0, 0, 0}
+                    .lightIndex = lightIndex,
+                    .flags = model->hasSkinning() ? 1u : 0u
                 };
                 vkCmdPushConstants(
                     commandBuffer,
@@ -487,35 +508,34 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
                 vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
             }
             for (Entity* child : entity->getChildren()) {
-                self(self, child, viewProj, face);
+                self(self, child);
             }
         };
-        for (int face = 0; face < 6; ++face) {
-            VkRenderingAttachmentInfo depthAttachment = {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = shadowDepthFaceViews[frameIdx][face],
-                .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue = { .depthStencil = {1.0f, 0} }
-            };
-            VkRenderingInfo renderInfo = {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {
-                    .offset = {0, 0},
-                    .extent = {shadowMapSize, shadowMapSize}
-                },
-                .layerCount = 1,
-                .colorAttachmentCount = 0,
-                .pColorAttachments = nullptr,
-                .pDepthAttachment = &depthAttachment
-            };
-            renderer->getFpCmdBeginRendering()(commandBuffer, &renderInfo);
-            for (Entity* entity : movableEntities) {
-                drawMovableEntity(drawMovableEntity, entity, viewProjs[face], face);
-            }
-            renderer->getFpCmdEndRendering()(commandBuffer);
+        VkRenderingAttachmentInfo depthAttachment = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = shadowDepthArrayViews[frameIdx],
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = { .depthStencil = {1.0f, 0} }
+        };
+        VkRenderingInfo renderInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = {
+                .offset = {0, 0},
+                .extent = {shadowMapSize, shadowMapSize}
+            },
+            .layerCount = 1,
+            .viewMask = 0x3Fu,
+            .colorAttachmentCount = 0,
+            .pColorAttachments = nullptr,
+            .pDepthAttachment = &depthAttachment
+        };
+        renderer->getFpCmdBeginRendering()(commandBuffer, &renderInfo);
+        for (Entity* entity : movableEntities) {
+            drawMovableEntity(drawMovableEntity, entity);
         }
+        renderer->getFpCmdEndRendering()(commandBuffer);
     }
     
     renderer->transitionImageLayoutInline(
@@ -546,6 +566,10 @@ void engine::Light::destroyShadowResources(VkDevice device) {
                 }
             }
         }
+        if (frame < shadowDepthArrayViews.size() && shadowDepthArrayViews[frame]) {
+            vkDestroyImageView(device, shadowDepthArrayViews[frame], nullptr);
+            shadowDepthArrayViews[frame] = VK_NULL_HANDLE;
+        }
         if (frame < shadowDepthImages.size() && shadowDepthImages[frame]) {
             vkDestroyImage(device, shadowDepthImages[frame], nullptr);
             shadowDepthImages[frame] = VK_NULL_HANDLE;
@@ -557,6 +581,7 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     }
     shadowDepthImageViews.clear();
     shadowDepthFaceViews.clear();
+    shadowDepthArrayViews.clear();
     shadowDepthImages.clear();
     shadowDepthMemories.clear();
     if (bakedShadowImageView) {
@@ -569,6 +594,10 @@ void engine::Light::destroyShadowResources(VkDevice device) {
             bakedShadowFaceViews[i] = VK_NULL_HANDLE;
         }
     }
+    if (bakedShadowArrayView) {
+        vkDestroyImageView(device, bakedShadowArrayView, nullptr);
+        bakedShadowArrayView = VK_NULL_HANDLE;
+    }
     if (bakedShadowImage) {
         vkDestroyImage(device, bakedShadowImage, nullptr);
         bakedShadowImage = VK_NULL_HANDLE;
@@ -577,7 +606,7 @@ void engine::Light::destroyShadowResources(VkDevice device) {
         vkFreeMemory(device, bakedShadowMemory, nullptr);
         bakedShadowMemory = VK_NULL_HANDLE;
     }
-    
+
     hasShadowMap = false;
     shadowImageReady.clear();
     shadowBaked = false;
@@ -585,6 +614,13 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     if (lightManager) {
         lightManager->markLightsDirty();
     }
+}
+
+void engine::Light::fillShadowLightEntry(ShadowLightEntry& entry) const {
+    for (uint32_t i = 0; i < 6; ++i) {
+        entry.viewProjs[i] = viewProjs[i];
+    }
+    entry.lightPosRadius = glm::vec4(getWorldPosition(), radius);
 }
 
 engine::LightManager::LightManager(engine::Renderer* renderer) : renderer(renderer) {
@@ -611,6 +647,23 @@ engine::LightManager::~LightManager() {
     lightsBuffers.clear();
     lightsBuffersMemory.clear();
     lightBuffersMapped.clear();
+    for (size_t i = 0; i < shadowLightsMapped.size(); ++i) {
+        if (shadowLightsMapped[i] != nullptr && i < shadowLightsMemories.size() && shadowLightsMemories[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, shadowLightsMemories[i]);
+            shadowLightsMapped[i] = nullptr;
+        }
+    }
+    for (size_t i = 0; i < shadowLightsBuffers.size(); ++i) {
+        if (shadowLightsBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, shadowLightsBuffers[i], nullptr);
+        }
+        if (i < shadowLightsMemories.size() && shadowLightsMemories[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, shadowLightsMemories[i], nullptr);
+        }
+    }
+    shadowLightsBuffers.clear();
+    shadowLightsMemories.clear();
+    shadowLightsMapped.clear();
 }
 
 void engine::LightManager::addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius) {
@@ -672,6 +725,53 @@ void engine::LightManager::createLightsUBO() {
     }
 }
 
+void engine::LightManager::createShadowLightsBuffers() {
+    const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
+    if (shadowLightsBuffers.size() == frames) {
+        return;
+    }
+    VkDevice device = renderer->getDevice();
+    for (size_t i = 0; i < shadowLightsMapped.size(); ++i) {
+        if (shadowLightsMapped[i] != nullptr && i < shadowLightsMemories.size() && shadowLightsMemories[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, shadowLightsMemories[i]);
+            shadowLightsMapped[i] = nullptr;
+        }
+    }
+    for (size_t i = 0; i < shadowLightsBuffers.size(); ++i) {
+        if (shadowLightsBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, shadowLightsBuffers[i], nullptr);
+        }
+        if (i < shadowLightsMemories.size() && shadowLightsMemories[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(device, shadowLightsMemories[i], nullptr);
+        }
+    }
+    shadowLightsBuffers.assign(frames, VK_NULL_HANDLE);
+    shadowLightsMemories.assign(frames, VK_NULL_HANDLE);
+    shadowLightsMapped.assign(frames, nullptr);
+    for (size_t frame = 0; frame < frames; ++frame) {
+        std::tie(shadowLightsBuffers[frame], shadowLightsMemories[frame]) = renderer->createBuffer(
+            sizeof(ShadowLightsSSBO),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(device, shadowLightsMemories[frame], 0, sizeof(ShadowLightsSSBO), 0, &shadowLightsMapped[frame]);
+    }
+}
+
+void engine::LightManager::updateShadowLightsBuffer(uint32_t frameIndex) {
+    if (shadowLightsBuffers.size() < static_cast<size_t>(renderer->getFramesInFlight())) {
+        createShadowLightsBuffers();
+    }
+    if (frameIndex >= shadowLightsBuffers.size() || shadowLightsMapped[frameIndex] == nullptr) {
+        return;
+    }
+    ShadowLightsSSBO* gpuData = static_cast<ShadowLightsSSBO*>(shadowLightsMapped[frameIndex]);
+    const size_t count = std::min(lights.size(), static_cast<size_t>(kMaxShadowLights));
+    for (size_t i = 0; i < count; ++i) {
+        lights[i].fillShadowLightEntry(gpuData->lights[i]);
+    }
+}
+
 void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
     if (lightsBuffers.size() < static_cast<size_t>(renderer->getFramesInFlight())) {
         createLightsUBO();
@@ -716,6 +816,8 @@ void engine::LightManager::createAllShadowMaps() {
 }
 
 void engine::LightManager::renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    createShadowLightsBuffers();
+    updateShadowLightsBuffer(currentFrame);
     std::vector<Light>& lights = getLights();
     for (auto& light : lights) {
         light.renderShadowMap(renderer, commandBuffer, currentFrame);

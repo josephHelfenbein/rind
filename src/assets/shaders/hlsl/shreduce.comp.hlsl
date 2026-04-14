@@ -4,6 +4,8 @@ struct SHOutput {
     float4 coeffs[9];
 };
 
+static const uint kMaxIrradianceProbes = 64u;
+
 [[vk::binding(0)]]
 RWStructuredBuffer<SHOutput> outputSH;
 
@@ -31,12 +33,12 @@ void main(
     uint localIndex : SV_GroupIndex
 ) {
     const uint probeLocalIndex = groupID.x;
-    if (probeLocalIndex >= pc.activeProbeCount || probeLocalIndex >= 32u) {
+    if (probeLocalIndex >= pc.activeProbeCount || probeLocalIndex >= kMaxIrradianceProbes) {
         return;
     }
 
     const uint probeIndex = activeProbeIndices[probeLocalIndex];
-    if (probeIndex >= 32u) {
+    if (probeIndex >= kMaxIrradianceProbes) {
         return;
     }
 
