@@ -74,6 +74,7 @@ namespace engine {
         const std::string& getShader() const { return shader; }
 
         const std::vector<std::string>& getTextures() const { return textures; }
+        void setTextures(const std::vector<std::string>& textures);
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         void setDescriptorSets(const std::vector<VkDescriptorSet>& sets) { descriptorSets = sets; }
         const std::vector<VkDescriptorSet>& getShadowDescriptorSets() const { return shadowDescriptorSets; }

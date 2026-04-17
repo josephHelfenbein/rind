@@ -13,6 +13,8 @@
 #include <rind/FlyingEnemy.h>
 #include <rind/BashingEnemy.h>
 #include <rind/EnemySpawner.h>
+#include <rind/FlyingBoss.h>
+#include <rind/BashingBoss.h>
 
 rind::GameInstance::GameInstance() {
     std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
@@ -492,6 +494,28 @@ rind::GameInstance::GameInstance() {
             1,
             1,
             5.5f
+        );
+        rind::EnemySpawner<rind::FlyingBoss>* enemySpawner4 = new rind::EnemySpawner<rind::FlyingBoss>(
+            entityManager,
+            this,
+            player,
+            "flyingBossSpawner",
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f)),
+            0,
+            1,
+            5.0f,
+            0.01f
+        );
+        rind::EnemySpawner<rind::BashingBoss>* enemySpawner5 = new rind::EnemySpawner<rind::BashingBoss>(
+            entityManager,
+            this,
+            player,
+            "bashingBossSpawner",
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f)),
+            0,
+            1,
+            5.0f,
+            0.01f
         );
 
         for (int i = -3; i <= 3; ++i) {

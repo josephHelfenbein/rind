@@ -19,8 +19,9 @@ namespace rind {
             const glm::mat4& transform,
             uint32_t maxEnemyMultiplier,
             uint32_t baseMaxEnemies,
-            float baseSpawnRate
-        ) : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player), baseSpawnRate(baseSpawnRate), baseMaxEnemies(baseMaxEnemies), maxEnemyMultiplier(maxEnemyMultiplier) {}
+            float baseSpawnRate,
+            float spawnChance = 0.0f
+        ) : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player), baseSpawnRate(baseSpawnRate), baseMaxEnemies(baseMaxEnemies), maxEnemyMultiplier(maxEnemyMultiplier), spawnChance(spawnChance) {}
 
         void update(float deltaTime) override {
             countTimer += deltaTime;
@@ -42,6 +43,12 @@ namespace rind {
             float timeRandomness = dist(rng) * baseSpawnRate * 0.25f; // +-25% of base spawn rate
             float adjustedSpawnInterval = (baseSpawnRate + timeRandomness) * ((5.0f - gameInstance->getDifficultyLevel()) / 5.0f);
             if (spawnTimer >= adjustedSpawnInterval) {
+                if (spawnChance > 1e-9f) {
+                    float spawnRoll = (dist(rng) + 1.0f) * 0.5f; // 0 to 1
+                    if (spawnRoll > spawnChance) {
+                        return;
+                    }
+                }
                 spawnTimer = 0.0f;
                 spawnEnemy();
             }
@@ -72,6 +79,7 @@ namespace rind {
 
         rind::Player* targetPlayer = nullptr;
         float baseSpawnRate;
+        float spawnChance = 0.0f;
         float spawnTimer = 0.0f;
         float countTimer = 0.0f;
         bool readyToSpawn = false;
