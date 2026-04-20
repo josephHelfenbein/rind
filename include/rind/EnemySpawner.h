@@ -46,6 +46,7 @@ namespace rind {
                 if (spawnChance > 1e-9f) {
                     float spawnRoll = (dist(rng) + 1.0f) * 0.5f; // 0 to 1
                     if (spawnRoll > spawnChance) {
+                        spawnTimer = 0.0f;
                         return;
                     }
                 }

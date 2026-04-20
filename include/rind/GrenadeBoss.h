@@ -3,9 +3,9 @@
 #include <rind/FlyingEnemy.h>
 
 namespace rind {
-    class FlyingBoss : public FlyingEnemy {
+    class GrenadeBoss : public FlyingEnemy {
     public:
-        FlyingBoss(
+        GrenadeBoss(
             engine::EntityManager* entityManager,
             rind::Player* player,
             rind::GameInstance* gameInstance,
@@ -14,10 +14,8 @@ namespace rind {
             uint32_t& enemyCount
         );
 
-        void update(float deltaTime) override;
+        void shoot() override;
     private:
         uint32_t getScoreWorth() const override { return 500u; }
-        long long dashCooldown = 500; // ms
-        std::chrono::steady_clock::time_point lastDashTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(dashCooldown);
     };
 };

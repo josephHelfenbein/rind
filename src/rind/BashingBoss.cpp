@@ -32,7 +32,8 @@ void rind::BashingBoss::update(float deltaTime) {
     BashingEnemy::update(deltaTime);
     if (glm::dot(getPressed(), getPressed()) > 0.0f) {
         float dashChance = (dist(rng) + 1.0f) * 0.5f; // 0.0 to 1.0
-        if (dashChance >= 0.975f) { // 2.5% chance each frame to dash
+        // 5% chance each frame to dash if moving, with a cooldown
+        if (dashChance >= 0.95f && std::chrono::steady_clock::now() - lastDashTime > std::chrono::milliseconds(dashCooldown)) {
             glm::vec3 dashDirection = glm::normalize(getPressed());
             dash(dashDirection, 100.0f);
             particleManager->burstParticles(
@@ -54,6 +55,7 @@ void rind::BashingBoss::update(float deltaTime) {
                 0.5f
             );
             audioManager->playSound3D("player_dash", getWorldPosition(), 0.5f, 0.15f);
+            lastDashTime = std::chrono::steady_clock::now();
         }
     }
 }

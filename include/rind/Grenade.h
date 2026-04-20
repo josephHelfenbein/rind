@@ -141,17 +141,19 @@ namespace rind {
                 if (other->getType() == engine::Entity::EntityType::Enemy) {
                     rind::Enemy* enemy = static_cast<rind::Enemy*>(other);
                     enemy->damage(damage);
-                    showHitmarker = true;
-                    if (enemy->getHealth() - damage <= 0.0f) {
-                        hitmarkerColor = glm::vec3(1.0f, 0.2f, 0.2f);
-                    } else if (hitmarkerColor != glm::vec3(1.0f, 1.0f, 1.0f)) {
-                        hitmarkerColor = glm::vec3(1.0f, 1.0f, 1.0f);
+                    if (player) {
+                        showHitmarker = true;
+                        if (enemy->getHealth() - damage <= 0.0f) {
+                            hitmarkerColor = glm::vec3(1.0f, 0.2f, 0.2f);
+                        } else if (hitmarkerColor != glm::vec3(1.0f, 1.0f, 1.0f)) {
+                            hitmarkerColor = glm::vec3(1.0f, 1.0f, 1.0f);
+                        }
                     }
                 } else if (other->getType() == engine::Entity::EntityType::Player) {
-                    player->damage(damage);
+                    static_cast<rind::Player*>(other)->damage(damage);
                 }
             }
-            if (showHitmarker) {
+            if (player && showHitmarker) {
                 player->showHitmarker(hitmarkerColor);
             }
             audioManager->playSound3D("grenade_explode", getWorldPosition(), 1.2f, 0.15f);

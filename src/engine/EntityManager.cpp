@@ -351,7 +351,7 @@ void engine::Entity::updateAnimation(float deltaTime) {
 
 void engine::Entity::setTextures(const std::vector<std::string>& textures) {
     this->textures = textures;
-    getEntityManager()->loadTextures();
+    getEntityManager()->markTexturesDirty();
 }
 
 engine::EntityManager::EntityManager(engine::Renderer* renderer) : renderer(renderer) {
