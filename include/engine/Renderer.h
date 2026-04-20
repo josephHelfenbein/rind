@@ -141,6 +141,15 @@ namespace engine {
             uint32_t arrayLayers,
             VkImageCreateFlags flags
         );
+        void generateMipmaps(
+            VkImage image,
+            VkFormat format,
+            uint32_t width,
+            uint32_t height,
+            uint32_t mipLevels,
+            uint32_t layerCount = 1
+        );
+        bool formatSupportsLinearBlit(VkFormat format);
 
         void ensureFallbackShadowCubeTexture();
         void ensureFallback2DTexture();

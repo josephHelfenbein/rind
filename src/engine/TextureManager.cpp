@@ -7,6 +7,8 @@
 #include <iostream>
 #include <functional>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 
 static inline uint16_t floatToHalf(float value) {
     union { float f; uint32_t i; } v;
@@ -101,6 +103,14 @@ void engine::TextureManager::init() {
             format = isNoncolorMap ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB;
             pixelSize = static_cast<VkDeviceSize>(texWidth) * static_cast<VkDeviceSize>(texHeight) * 4 * sizeof(uint8_t);
         }
+        const bool canMipmap = renderer->formatSupportsLinearBlit(format);
+        const uint32_t mipLevels = canMipmap
+            ? static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1
+            : 1;
+        VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        if (mipLevels > 1) {
+            imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        }
         VkImage textureImage;
         VkDeviceMemory textureImageMemory;
         std::tie(textureImage, textureImageMemory) = renderer->createImageFromPixels(
@@ -108,11 +118,11 @@ void engine::TextureManager::init() {
             pixelSize,
             texWidth,
             texHeight,
-            1,
+            mipLevels,
             VK_SAMPLE_COUNT_1_BIT,
             format,
             VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            imageUsage,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             1,
             0
@@ -120,15 +130,24 @@ void engine::TextureManager::init() {
         if (!isHDR) {
             stbi_image_free(pixels);
         }
-        renderer->transitionImageLayout(
+        if (mipLevels > 1) {
+            renderer->generateMipmaps(textureImage, format, texWidth, texHeight, mipLevels, 1);
+        } else {
+            renderer->transitionImageLayout(
+                textureImage,
+                format,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                1,
+                1
+            );
+        }
+        VkImageView textureImageView = renderer->createImageView(
             textureImage,
             format,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            1,
-            1
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            mipLevels
         );
-        VkImageView textureImageView = renderer->createImageView(textureImage, format);
         VkSampler textureSampler;
         textureSampler = renderer->createTextureSampler(
             VK_FILTER_LINEAR,
@@ -143,7 +162,7 @@ void engine::TextureManager::init() {
             VK_FALSE,
             VK_COMPARE_OP_ALWAYS,
             0.0f,
-            0.0f,
+            static_cast<float>(mipLevels),
             VK_BORDER_COLOR_INT_OPAQUE_BLACK,
             VK_FALSE
         );

@@ -2425,6 +2425,109 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImageFromPixels(
     return std::make_pair(textureImage, textureImageMemory);
 }
 
+bool engine::Renderer::formatSupportsLinearBlit(VkFormat format) {
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+    const VkFormatFeatureFlags required =
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
+        VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+        VK_FORMAT_FEATURE_BLIT_DST_BIT;
+    return (props.optimalTilingFeatures & required) == required;
+}
+
+void engine::Renderer::generateMipmaps(
+    VkImage image,
+    VkFormat format,
+    uint32_t width,
+    uint32_t height,
+    uint32_t mipLevels,
+    uint32_t layerCount
+) {
+    if (mipLevels <= 1) {
+        return;
+    }
+    if (!formatSupportsLinearBlit(format)) {
+        throw std::runtime_error("Texture format does not support linear blit for mipmap generation!");
+    }
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = layerCount
+        }
+    };
+    int32_t mipWidth = static_cast<int32_t>(width);
+    int32_t mipHeight = static_cast<int32_t>(height);
+    for (uint32_t i = 1; i < mipLevels; ++i) {
+        barrier.subresourceRange.baseMipLevel = i - 1;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier
+        );
+        const int32_t nextWidth = mipWidth > 1 ? mipWidth / 2 : 1;
+        const int32_t nextHeight = mipHeight > 1 ? mipHeight / 2 : 1;
+        VkImageBlit blit = {
+            .srcSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = i - 1,
+                .baseArrayLayer = 0,
+                .layerCount = layerCount
+            },
+            .srcOffsets = { {0, 0, 0}, {mipWidth, mipHeight, 1} },
+            .dstSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = i,
+                .baseArrayLayer = 0,
+                .layerCount = layerCount
+            },
+            .dstOffsets = { {0, 0, 0}, {nextWidth, nextHeight, 1} }
+        };
+        vkCmdBlitImage(
+            commandBuffer,
+            image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1, &blit,
+            VK_FILTER_LINEAR
+        );
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier
+        );
+        mipWidth = nextWidth;
+        mipHeight = nextHeight;
+    }
+    barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier
+    );
+    endSingleTimeCommands(commandBuffer);
+}
+
 VkImageView engine::Renderer::createImageView(
     VkImage image,
     VkFormat format,
@@ -2490,13 +2593,13 @@ VkSampler engine::Renderer::createTextureSampler(
         .addressModeU = addressModeU,
         .addressModeV = addressModeV,
         .addressModeW = addressModeW,
-        .mipLodBias = 0.0f,
+        .mipLodBias = mipLodBias,
         .anisotropyEnable = anisotropyEnable,
         .maxAnisotropy = maxAnisotropy,
         .compareEnable = compareEnable,
         .compareOp = compareOp,
-        .minLod = 0.0f,
-        .maxLod = 0.0f,
+        .minLod = minLod,
+        .maxLod = maxLod,
         .borderColor = borderColor,
         .unnormalizedCoordinates = unnormalizedCoordinates
     };
