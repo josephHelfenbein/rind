@@ -53,7 +53,7 @@ namespace engine {
 
         VkSampler cubemapSampler = VK_NULL_HANDLE;
 
-        const uint32_t cubemapSize = 32;
+        const uint32_t cubemapSize = 16;
 
         bool hasImageMap = false;
         bool bakedImageReady = false;

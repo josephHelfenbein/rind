@@ -48,10 +48,10 @@ VSOutput main(float3 localPos : POSITION, uint instanceID : SV_InstanceID) {
     output.gl_Position = mul(float4(worldPos, 1.0), pc.viewProj);
     output.worldPos = worldPos;
     output.instanceID = instanceID;
-    output.maxSteps = (uint) lerp(48.0, 8.0, lodT);
+    output.maxSteps = (uint) lerp(32.0, 8.0, lodT);
     output.baseDivs = lerp(24.0, 6.0, lodT);
-    output.fbmOctaves = (uint) lerp(5.0, 2.0, lodT);
-    output.doRefinement = lodT < 0.7 ? 1u : 0u;
+    output.fbmOctaves = (uint) lerp(3.0, 2.0, lodT);
+    output.doRefinement = lodT < 0.5 ? 1u : 0u;
     output.ageFade = x * x * (1.0 + 0.2 * x);
     return output;
 }

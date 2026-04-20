@@ -978,7 +978,7 @@ void engine::IrradianceManager::createDynamicSHOutputBuffers() {
 
 void engine::IrradianceManager::createDynamicSHPartialBuffers() {
     const size_t frames = static_cast<size_t>(std::max(1u, renderer->getFramesInFlight()));
-    constexpr uint32_t kCubemapSize = 32u;
+    constexpr uint32_t kCubemapSize = 16u;
     constexpr uint32_t kWorkgroupSize = 8u;
     const uint32_t numGroupsX = (kCubemapSize + kWorkgroupSize - 1u) / kWorkgroupSize;
     const uint32_t numGroupsY = (kCubemapSize + kWorkgroupSize - 1u) / kWorkgroupSize;
@@ -1334,7 +1334,7 @@ void engine::IrradianceManager::dispatchDynamicIrradianceSH(VkCommandBuffer comm
     );
 
     SHPC pc = {
-        .cubemapSize = 32u,
+        .cubemapSize = 16u,
         .activeProbeCount = activeProbeCount,
         .pad0 = 0u,
         .pad1 = 0u
@@ -1404,7 +1404,7 @@ void engine::IrradianceManager::dispatchDynamicIrradianceSHReduce(VkCommandBuffe
     );
 
     SHPC pc = {
-        .cubemapSize = 32u,
+        .cubemapSize = 16u,
         .activeProbeCount = activeProbeCount,
         .pad0 = 0u,
         .pad1 = 0u

@@ -60,8 +60,8 @@ float vnoise(float3 p) {
 
 float fbm(float3 p, int octaves) {
     float v = 0.0;
-    float amp = 0.500;
-    float freq = 1.0;
+    float amp = 0.7;
+    float freq = 1.3;
     if (octaves >= 1) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }
     if (octaves >= 2) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }
     if (octaves >= 3) { v += vnoise(p * freq) * amp; amp *= 0.5; freq *= 2.0; }

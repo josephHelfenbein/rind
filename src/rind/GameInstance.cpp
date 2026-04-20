@@ -534,7 +534,7 @@ rind::GameInstance::GameInstance() {
             for (int j = -3; j <= 3; ++j) {
                 irradianceManager->addIrradianceProbe(
                     "gameProbe" + std::to_string(i) + std::to_string(j),
-                    glm::translate(glm::mat4(1.0f), glm::vec3(i * 8.0f, 5.0f, j * 8.0f)),
+                    glm::translate(glm::mat4(1.0f), glm::vec3(i * 8.0f, 4.0f, j * 8.0f)),
                     8.0f
                 );
             }

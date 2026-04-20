@@ -375,7 +375,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .resolutionDivider = 2, // half
             .clearValue = { .color = { {1.0f, 1.0f, 1.0f, 1.0f} } },
             .format = VK_FORMAT_R8_UNORM,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+            .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         aoPass->images = images;
     }
@@ -935,27 +935,24 @@ void engine::ShaderManager::createDefaultShaders() {
 
     // AO
     {
-        GraphicsShader shader = {
+        ComputeShader shader = {
             .name = "ao",
-            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("ao.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .compute = { shaderPath("ao.comp"), VK_SHADER_STAGE_COMPUTE_BIT },
             .config = {
-                .vertexBitBindings = 0,
-                .fragmentBitBindings = 3,
-                .fragmentDescriptorCounts = {
-                    1, 1, 1
+                .computeBitBindings = 4,
+                .computeDescriptorCounts = {
+                    1, 1, 1, 1
                 },
-                .fragmentDescriptorTypes = {
+                .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .cullMode = VK_CULL_MODE_NONE,
-                .depthWrite = false,
-                .enableDepth = false,
-                .passInfo = aoPass,
-                .colorAttachmentCount = 1,
-                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                .workgroupSizeX = 16,
+                .workgroupSizeY = 16,
+                .workgroupSizeZ = 1,
+                .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
                         glm::mat4 invProj = glm::inverse(camera->getProjectionMatrix());
@@ -978,13 +975,29 @@ void engine::ShaderManager::createDefaultShaders() {
                     }
                 },
                 .inputBindings = {
-                    { 0, "gbuffer", "Depth" },
-                    { 1, "gbuffer", "Normal" }
+                    {
+                        .binding = 0,
+                        .sourceShaderName = "gbuffer",
+                        .attachmentName = "Depth",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 1,
+                        .sourceShaderName = "gbuffer",
+                        .attachmentName = "Normal",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                    },
+                    {
+                        .binding = 2,
+                        .sourceShaderName = "ao",
+                        .attachmentName = "AOColor",
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                    }
                 }
             }
         };
-        shader.config.setPushConstant<AOPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
-        addGraphicsShader(std::move(shader));
+        shader.config.setPushConstant<AOPC>(VK_SHADER_STAGE_COMPUTE_BIT);
+        addComputeShader(std::move(shader));
     }
 
     // Particle
@@ -1062,7 +1075,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         .probePosition = glm::vec4(0.0f),
                         .particleSize = 0.1f,
                         .particleCount = particleCount,
-                        .cubemapSize = 32u,
+                        .cubemapSize = 16u,
                         .activeProbeCount = activeComputeProbeCount,
                         .layerBase = 0u,
                         .mappingOffset = 0u,
@@ -1083,10 +1096,10 @@ void engine::ShaderManager::createDefaultShaders() {
                     return activeProbeCount * 6u;
                 },
                 .getDispatchWidth = [](Renderer*, ComputeShader*) {
-                    return 32u;
+                    return 16u;
                 },
                 .getDispatchHeight = [](Renderer*, ComputeShader*) {
-                    return 32u;
+                    return 16u;
                 },
                 .inputBindings = {
                     {
@@ -1195,7 +1208,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         activeProbeCount = irradianceManager->getDynamicComputeProbeCount(frameIndex);
                     }
                     SHPC pc = {
-                        .cubemapSize = 32u,
+                        .cubemapSize = 16u,
                         .activeProbeCount = activeProbeCount,
                         .pad0 = 0u,
                         .pad1 = 0u
@@ -1214,10 +1227,10 @@ void engine::ShaderManager::createDefaultShaders() {
                     return irradianceManager->getDynamicComputeProbeCount(frameIndex) * 6u;
                 },
                 .getDispatchWidth = [](Renderer*, ComputeShader*) {
-                    return 32u;
+                    return 16u;
                 },
                 .getDispatchHeight = [](Renderer*, ComputeShader*) {
-                    return 32u;
+                    return 16u;
                 },
                 .inputBindings = {
                     {
@@ -1297,7 +1310,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         activeProbeCount = irradianceManager->getDynamicComputeProbeCount(frameIndex);
                     }
                     SHPC pc = {
-                        .cubemapSize = 32u,
+                        .cubemapSize = 16u,
                         .activeProbeCount = activeProbeCount,
                         .pad0 = 0u,
                         .pad1 = 0u
@@ -1443,7 +1456,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .cullMode = VK_CULL_MODE_NONE,
+                .cullMode = VK_CULL_MODE_BACK_BIT,
                 .depthWrite = false,
                 .enableDepth = false,
                 .passInfo = volumetricPass,
@@ -2036,6 +2049,13 @@ void engine::ShaderManager::createDefaultShaders() {
         .preferAsync = false,
         .mustPreserveOrder = false
     });
+    auto volumetricLane = std::make_shared<RenderLane>(RenderLane{
+        .name = "Volumetric",
+        .allowGraphics = true,
+        .allowCompute = false,
+        .preferAsync = true,
+        .mustPreserveOrder = false
+    });
     auto shadowLane = std::make_shared<RenderLane>(RenderLane{
         .name = "Shadow",
         .allowGraphics = true,
@@ -2098,7 +2118,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .passInfo = volumetricPass.get(),
             .shaderNames = { "volumetric" },
             .dependsOnNodeNames = { "gbuffer" },
-            .lane = generalGraphicsLane,
+            .lane = volumetricLane,
             .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
                 renderer->getVolumetricManager()->renderVolumetrics(cmd, frame);
             }
@@ -2121,7 +2141,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .is2D = false,
             .passInfo = shadowImagePass.get(),
             .shaderNames = { "shadowimage" },
-            .dependsOnNodeNames = { "shadow_prep", "gbuffer" },
+            .dependsOnNodeNames = { "shadow_prep", "gbuffer", "irradiance_dynamic_render" },
             .lane = shadowLane,
             .usesRendering = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -2162,7 +2182,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = "irradiance_dynamic_prepare",
             .is2D = false,
             .passInfo = irradiancePass.get(),
-            .dependsOnNodeNames = {},
+            .dependsOnNodeNames = { "gbuffer", "volumetric" },
             .lane = irradianceRenderLane,
             .usesRendering = false,
             .canRunCustomOnComputeQueue = true,
@@ -2227,7 +2247,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .is2D = true,
             .passInfo = lightingPass.get(),
             .shaderNames = { "lighting" },
-            .dependsOnNodeNames = { "irradiance_dynamic_sh_reduce", "shadow_blur_v" },
+            .dependsOnNodeNames = { "irradiance_dynamic_sh_reduce", "shadow_blur_v", "volumetric", "particle" },
             .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
@@ -2260,6 +2280,8 @@ void engine::ShaderManager::createDefaultShaders() {
             .shaderNames = { "ao" },
             .dependsOnNodeNames = { "gbuffer" },
             .lane = generalGraphicsLane,
+            .usesRendering = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         },
         {
             .name = "bloom",

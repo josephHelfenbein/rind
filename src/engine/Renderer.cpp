@@ -3766,30 +3766,37 @@ void engine::Renderer::processInput(GLFWwindow* window) {
     }
     if (!pressing) {
         renderer->clicking = false;
-    } else if (renderer->getHoveredObject() && pressing) {
+    } else if (pressing) {
+        UIObject* hovered = renderer->getHoveredObject();
+        if (!hovered) {
+            return;
+        }
         if (!renderer->clicking) {
-            if (renderer->getHoveredObject()->getType() == UIType::Button) {
-                ButtonObject* button = static_cast<ButtonObject*>(renderer->getHoveredObject());
+            if (hovered->getType() == UIType::Button) {
+                ButtonObject* button = static_cast<ButtonObject*>(hovered);
                 button->click();
                 renderer->clicking = true;
                 if (renderer->uiManager) {
                     renderer->uiManager->processPendingRemovals();
                 }
                 return;
-            } else if (renderer->getHoveredObject()->getType() == UIType::Checkbox) {
-                CheckboxObject* toggle = static_cast<CheckboxObject*>(renderer->getHoveredObject());
+            } else if (hovered->getType() == UIType::Checkbox) {
+                CheckboxObject* toggle = static_cast<CheckboxObject*>(hovered);
                 toggle->toggle();
                 renderer->clicking = true;
             }
         }
-        if (renderer->getHoveredObject()->getType() == UIType::Slider) {
-            SliderObject* slider = static_cast<SliderObject*>(renderer->getHoveredObject());
+        if (hovered->getType() == UIType::Slider) {
+            SliderObject* slider = static_cast<SliderObject*>(hovered);
             slider->setValue(slider->getSliderValueFromMouse(window));
             renderer->clicking = true;
-        } else if (renderer->getHoveredObject()->getParent()->getType() == UIType::Slider) {
-            SliderObject* slider = static_cast<SliderObject*>(renderer->getHoveredObject()->getParent());
-            slider->setValue(slider->getSliderValueFromMouse(window));
-            renderer->clicking = true;
+        } else {
+            UIObject* hoveredParent = hovered->getParent();
+            if (hoveredParent && hoveredParent->getType() == UIType::Slider) {
+                SliderObject* slider = static_cast<SliderObject*>(hoveredParent);
+                slider->setValue(slider->getSliderValueFromMouse(window));
+                renderer->clicking = true;
+            }
         }
     } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
     && !renderer->inputManager->getCursorLocked() && !renderer->inputManager->getUIFocused()) {
