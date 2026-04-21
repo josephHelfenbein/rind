@@ -16,6 +16,7 @@
 #include <rind/FlyingBoss.h>
 #include <rind/BashingBoss.h>
 #include <rind/GrenadeBoss.h>
+#include <rind/MissileBoss.h>
 
 rind::GameInstance::GameInstance() {
     std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
@@ -528,6 +529,17 @@ rind::GameInstance::GameInstance() {
             1,
             10.0f,
             0.05f
+        );
+        rind::EnemySpawner<rind::MissileBoss>* enemySpawner7 = new rind::EnemySpawner<rind::MissileBoss>(
+            entityManager,
+            this,
+            player,
+            "missileBossSpawner",
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f)),
+            0,
+            1,
+            7.0f,
+            0.02f
         );
 
         for (int i = -3; i <= 3; ++i) {

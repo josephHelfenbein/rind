@@ -3,9 +3,9 @@
 #include <rind/FlyingEnemy.h>
 
 namespace rind {
-    class GrenadeBoss : public FlyingEnemy {
+    class MissileBoss : public FlyingEnemy {
     public:
-        GrenadeBoss(
+        MissileBoss(
             engine::EntityManager* entityManager,
             rind::Player* player,
             rind::GameInstance* gameInstance,
@@ -16,8 +16,8 @@ namespace rind {
 
         void shoot() override;
     protected:
-        glm::vec3 getTrailColor() const override { return glm::vec3(1.0f, 0.5f, 0.0f); }
+        glm::vec3 getTrailColor() const override { return glm::vec3(1.0f, 0.15f, 0.65f); }
     private:
-        uint32_t getScoreWorth() const override { return 500u; }
+        uint32_t getScoreWorth() const override { return 1000u; }
     };
 };

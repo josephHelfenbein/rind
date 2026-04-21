@@ -20,10 +20,10 @@ rind::BashingBoss::BashingBoss(
             glm::scale(transform, glm::vec3(1.5f))
         );
         std::vector<std::string> bossMaterial = {
-            "materials_boss_albedo",
-            "materials_boss_metallic",
-            "materials_boss_roughness",
-            "materials_boss_normal"
+            "materials_miniboss_albedo",
+            "materials_miniboss_metallic",
+            "materials_miniboss_roughness",
+            "materials_miniboss_normal"
         };
         enemyModel->setTextures(bossMaterial);
     }

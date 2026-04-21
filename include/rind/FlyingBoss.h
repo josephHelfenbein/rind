@@ -16,7 +16,7 @@ namespace rind {
 
         void update(float deltaTime) override;
     private:
-        uint32_t getScoreWorth() const override { return 500u; }
+        uint32_t getScoreWorth() const override { return 350u; }
         long long dashCooldown = 500; // ms
         std::chrono::steady_clock::time_point lastDashTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(dashCooldown);
     };
