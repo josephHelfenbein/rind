@@ -70,6 +70,7 @@ namespace engine {
         ~SettingsManager() {
             cleanupTempStorage();
             delete currentSettings;
+            delete tempSettings;
         }
 
         void addToDefs(std::vector<SettingsDefinition> newDefs) {
@@ -372,7 +373,7 @@ namespace engine {
             if (!settingsUIObject) return;
             cleanupTempStorage();
             renderer->setHoveredObject(nullptr);
-            renderer->getUIManager()->removeObject(settingsUIObject->getName());
+            renderer->getUIManager()->removeObjectDeferred(settingsUIObject->getName());
             settingsUIObject = nullptr;
             renderer->refreshDescriptorSets();
         }
@@ -382,8 +383,8 @@ namespace engine {
         }
 
     private:
-        Settings* currentSettings;
-        Settings* tempSettings;
+        Settings* currentSettings = nullptr;
+        Settings* tempSettings = nullptr;
         Renderer* renderer;
         UIObject* settingsUIObject = nullptr;
 

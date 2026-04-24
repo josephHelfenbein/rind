@@ -25,9 +25,12 @@ namespace engine {
         ~SceneManager() = default;
 
         void setActiveScene(int index);
+        void setActiveSceneDeferred(int index);
+        void processPendingSceneChange();
 
     private:
         Renderer* renderer;
         std::vector<std::unique_ptr<Scene>> scenes;
+        int pendingSceneIndex = -1;
     };
 };

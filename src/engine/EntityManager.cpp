@@ -477,8 +477,11 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
 void engine::EntityManager::clear() {
     movableEntities.clear();
     colliders.clear();
+    dynamicColliders.clear();
     spatialGrid.clear();
     entities.clear();
+    pendingDeletions.clear();
+    pendingAdditions.clear();
     auto roots = std::move(rootEntities);
     rootEntities.clear();
     for (Entity* root : roots) {

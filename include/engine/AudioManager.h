@@ -14,6 +14,7 @@ namespace engine {
     struct SoundData {
         ma_sound sound;
         bool isLoaded = false;
+        std::string filePath;
     };
 
     class AudioManager {

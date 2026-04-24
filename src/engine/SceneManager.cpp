@@ -32,3 +32,14 @@ void engine::SceneManager::setActiveScene(int index) {
     renderer->getIrradianceManager()->setIrradianceBakingPending(true);
     renderer->refreshDescriptorSets();
 }
+
+void engine::SceneManager::setActiveSceneDeferred(int index) {
+    pendingSceneIndex = index;
+}
+
+void engine::SceneManager::processPendingSceneChange() {
+    if (pendingSceneIndex != -1) {
+        setActiveScene(pendingSceneIndex);
+        pendingSceneIndex = -1;
+    }
+}

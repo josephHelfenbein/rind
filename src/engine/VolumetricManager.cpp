@@ -138,12 +138,12 @@ void engine::VolumetricManager::createVolumetricDescriptorSets() {
 
 void engine::VolumetricManager::updateVolumetricBuffer(uint32_t currentFrame) {
     VkDevice device = renderer->getDevice();
+    if (volumetrics.size() > hardCap) {
+        size_t toRemove = volumetrics.size() - hardCap;
+        volumetrics.erase(volumetrics.begin(), volumetrics.begin() + toRemove);
+    }
     if (volumetrics.size() > maxVolumetrics) {
         vkDeviceWaitIdle(device);
-        if (volumetrics.size() > hardCap) {
-            size_t toRemove = volumetrics.size() - hardCap;
-            volumetrics.erase(volumetrics.begin(), volumetrics.begin() + toRemove);
-        }
         maxVolumetrics = std::min(std::max(maxVolumetrics * 2, static_cast<uint32_t>(volumetrics.size())), hardCap);
         for (size_t i = 0; i < volumetricBuffersMapped.size(); ++i) {
             if (volumetricBuffersMapped[i] != nullptr && i < volumetricBufferMemory.size() && volumetricBufferMemory[i] != VK_NULL_HANDLE) {

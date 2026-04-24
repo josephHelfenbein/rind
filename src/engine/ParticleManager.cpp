@@ -301,12 +301,12 @@ void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3
 
 void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
     VkDevice device = renderer->getDevice();
+    if (particles.size() > hardCap) {
+        size_t toRemove = particles.size() - hardCap;
+        particles.erase(particles.begin(), particles.begin() + toRemove);
+    }
     if (particles.size() > maxParticles) {
         vkDeviceWaitIdle(device);
-        if (particles.size() > hardCap) {
-            size_t toRemove = particles.size() - hardCap;
-            particles.erase(particles.begin(), particles.begin() + toRemove);
-        }
         maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.size())), hardCap);
         for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {
             if (particleBuffersMapped[i] != nullptr && i < particleBufferMemory.size() && particleBufferMemory[i] != VK_NULL_HANDLE) {

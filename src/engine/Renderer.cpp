@@ -264,6 +264,8 @@ void engine::Renderer::mainLoop() {
             recreateSwapChain();
         }
         processInput(window);
+        sceneManager->processPendingSceneChange();
+        uiManager->processPendingRemovals();
         drawFrame();
     }
     vkDeviceWaitIdle(device);
@@ -3776,9 +3778,6 @@ void engine::Renderer::processInput(GLFWwindow* window) {
                 ButtonObject* button = static_cast<ButtonObject*>(hovered);
                 button->click();
                 renderer->clicking = true;
-                if (renderer->uiManager) {
-                    renderer->uiManager->processPendingRemovals();
-                }
                 return;
             } else if (hovered->getType() == UIType::Checkbox) {
                 CheckboxObject* toggle = static_cast<CheckboxObject*>(hovered);

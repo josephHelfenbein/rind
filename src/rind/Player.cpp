@@ -732,7 +732,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
             this->inputManager->unregisterCallback("playerHealthbarResize");
             this->inputManager->resetKeyStates();
             this->hidePauseMenu();
-            this->getEntityManager()->getRenderer()->getSceneManager()->setActiveScene(0);
+            this->getEntityManager()->getRenderer()->getSceneManager()->setActiveSceneDeferred(0);
         },
         engine::Corner::Top
     ));
@@ -762,7 +762,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
 void rind::Player::hidePauseMenu(bool uiOnly) {
     if (pauseUIObject) {
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
-        uiManager->removeObject(pauseUIObject->getName());
+        uiManager->removeObjectDeferred(pauseUIObject->getName());
         pauseUIObject = nullptr;
     }
     engine::Renderer* renderer = getEntityManager()->getRenderer();
@@ -1078,7 +1078,7 @@ void rind::Player::damage(float amount) {
             "MENU",
             "Lato",
             [sceneManager]() {
-                sceneManager->setActiveScene(0);
+                sceneManager->setActiveSceneDeferred(0);
             }
         );
         windowTint->addChild(quitButton);

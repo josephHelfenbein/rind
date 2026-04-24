@@ -45,7 +45,7 @@ rind::GameInstance::GameInstance() {
             "START",
             "Lato",
             [sceneManager]() {
-                sceneManager->setActiveScene(1);
+                sceneManager->setActiveSceneDeferred(1);
             }
         );
         engine::ButtonObject* quitButton = new engine::ButtonObject(
@@ -69,7 +69,7 @@ rind::GameInstance::GameInstance() {
             renderer->getUIManager()->removeObject(quitButton->getName());
             renderer->getSettingsManager()->setUIOnClose(
                 [renderer](){
-                    renderer->getSceneManager()->setActiveScene(0);
+                    renderer->getSceneManager()->setActiveSceneDeferred(0);
                 }
             );
         };

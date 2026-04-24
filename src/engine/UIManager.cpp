@@ -430,6 +430,7 @@ void engine::UIManager::clear() {
     auto roots = std::move(rootObjects);
     rootObjects.clear();
     objects.clear();
+    pendingRemovals.clear();
     cursor = nullptr;
     for (const auto& [name, obj] : roots) {
         if (std::holds_alternative<TextObject*>(obj)) {

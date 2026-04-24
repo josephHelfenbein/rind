@@ -105,7 +105,7 @@ namespace rind {
             }
             float sizeFactor = dist(rng) * 0.2f + 0.4f; // 0.2 to 0.6
             float randomPhi = dist(rng) * 2.0f * std::numbers::pi_v<float>;
-            float randomCostheta = dist(rng) * 2.0f - 1.0f;
+            float randomCostheta = dist(rng);
             float randomSintheta = sqrt(1.0f - randomCostheta * randomCostheta);
             glm::vec3 randomDir = glm::vec3(
                 cos(randomPhi) * randomSintheta,
