@@ -667,7 +667,7 @@ void rind::Player::showPauseMenu(bool uiOnly) {
     engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();
     pauseUIObject = new engine::UIObject(
         uiManager,
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.28f, 1.0f)),
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.5f, 1.0f)),
         "pauseUI",
         glm::vec4(0.4f, 0.4f, 0.4f, 0.9f),
         "ui_window",
@@ -675,20 +675,20 @@ void rind::Player::showPauseMenu(bool uiOnly) {
     );
     pauseUIObject->addChild(new engine::TextObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.17f, 1.0f)), glm::vec3(0.0f, -120.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.21f, 0.21f, 1.0f)), glm::vec3(0.0f, -150.0f, 0.0f)),
         "pauseTitle",
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "Paused",
-        "Lato",
+        glm::vec4(1.0f, 0.1f, 0.15f, 1.0f),
+        "PAUSE",
+        "RubikGlitch",
         engine::Corner::Top
     ));
     pauseUIObject->addChild(new engine::ButtonObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -1500.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.05f, 1.0f)), glm::vec3(0.0f, -2700.0f, 0.0f)),
         "resumeButton",
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "ui_window",
+        glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+        "ui_empty",
         "RESUME",
         "Lato",
         [this]() {
@@ -699,11 +699,11 @@ void rind::Player::showPauseMenu(bool uiOnly) {
     ));
     pauseUIObject->addChild(new engine::ButtonObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -2700.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.05f, 1.0f)), glm::vec3(0.0f, -3600.0f, 0.0f)),
         "graphicsSettingsButton",
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "ui_window",
+        glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+        "ui_empty",
         "SETTINGS",
         "Lato",
         [this]() {
@@ -720,11 +720,11 @@ void rind::Player::showPauseMenu(bool uiOnly) {
     ));
     pauseUIObject->addChild(new engine::ButtonObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -3900.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.05f, 1.0f)), glm::vec3(0.0f, -4500.0f, 0.0f)),
         "quitButton",
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "ui_window",
+        glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+        "ui_empty",
         "MENU",
         "Lato",
         [this]() {
@@ -738,11 +738,11 @@ void rind::Player::showPauseMenu(bool uiOnly) {
     ));
     pauseUIObject->addChild(new engine::ButtonObject(
         uiManager,
-        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.17f, 0.04f, 1.0f)), glm::vec3(0.0f, -5100.0f, 0.0f)),
+        glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.05f, 1.0f)), glm::vec3(0.0f, -5400.0f, 0.0f)),
         "exitButton",
         glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        "ui_window",
+        glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
+        "ui_empty",
         "QUIT",
         "Lato",
         [this]() {

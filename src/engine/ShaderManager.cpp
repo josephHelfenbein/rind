@@ -1795,7 +1795,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .vertex = { shaderPath("ui.vert"), VK_SHADER_STAGE_VERTEX_BIT },
             .fragment = { shaderPath("text.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
-                .poolMultiplier = 256,
+                .poolMultiplier = 1024,
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
                 .fragmentDescriptorCounts = {

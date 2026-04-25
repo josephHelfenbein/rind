@@ -179,11 +179,17 @@ engine::ButtonObject::ButtonObject(
         setOnHover(new std::function<void()>([this]() {
             glm::vec4 currentTint = this->getTint();
             this->setTint(currentTint + glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+            glm::vec4 textColor = std::get<TextObject*>(this->getChildren()[0])->getTint();
+            std::get<TextObject*>(this->getChildren()[0])->setTint(textColor + glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+            audioManager->playSound("button_onhover", 0.4f, 0.1f, true);
             this->loadTexture();
         }));
         setOnStopHover(new std::function<void()>([this]() {
             glm::vec4 currentTint = this->getTint();
             this->setTint(currentTint - glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+            glm::vec4 textColor = std::get<TextObject*>(this->getChildren()[0])->getTint();
+            std::get<TextObject*>(this->getChildren()[0])->setTint(textColor - glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+            audioManager->playSound("button_offhover", 0.4f, 0.1f, true);
             this->loadTexture();
         }));
         audioManager = uiManager->getRenderer()->getAudioManager();
