@@ -336,6 +336,7 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
         vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
         createParticleDescriptorSets();
+        renderer->createComputeDescriptorSets();
     }
     ParticleGPU* gpuData = static_cast<ParticleGPU*>(particleBuffersMapped[currentFrame]);
     visibleCount = 0;
