@@ -190,8 +190,8 @@ namespace engine {
                 glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.12f, 0.12f, 1.0f)), glm::vec3(0.0f, -200.0f, 0.0f)),
                 "settingsTitle",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                "Settings",
-                "Lato",
+                "SETTINGS",
+                "RubikGlitch",
                 Corner::Top
             ));
             settingsUIObject->addChild(new ButtonObject(
@@ -320,7 +320,7 @@ namespace engine {
                 uiManager,
                 glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f, 0.0375f, 1.0f)), glm::vec3(0.0f, 600.0f, 0.0f)),
                 "applySettingsButton",
-                glm::vec4(0.2f, 0.5f, 0.2f, 1.0f),
+                glm::vec4(0.0f, 0.8f, 0.2f, 1.0f),
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "ui_window",
                 "Apply",
