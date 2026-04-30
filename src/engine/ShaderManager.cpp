@@ -405,7 +405,6 @@ void engine::ShaderManager::createDefaultShaders() {
         std::vector<PassImage> images;
         images.push_back({
             .name = "SceneColor",
-            .resolutionDivider = 2, // half
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT

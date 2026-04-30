@@ -229,8 +229,10 @@ namespace engine {
             const Corner& anchorCorner = Corner::Center,
             std::string textSuffix = "",
             bool isInteger = false,
-            float textMultiplier = 1.0f
-        ) : UIObject(uiManager, transform, name, glm::vec4(1.0f), "ui_slider_background", anchorCorner, nullptr, nullptr, UIType::Slider), minValue(minValue), maxValue(maxValue), boundValue(boundValue), isInteger(isInteger), textSuffix(textSuffix), textMultiplier(textMultiplier) {
+            float textMultiplier = 1.0f,
+            float overrideValue = 0.0f,
+            std::string overrideText = ""
+        ) : UIObject(uiManager, transform, name, glm::vec4(1.0f), "ui_slider_background", anchorCorner, nullptr, nullptr, UIType::Slider), minValue(minValue), maxValue(maxValue), boundValue(boundValue), isInteger(isInteger), textSuffix(textSuffix), textMultiplier(textMultiplier), overrideValue(overrideValue), overrideText(std::move(overrideText)) {
                 knobObject = new UIObject(
                     uiManager,
                     glm::scale(glm::mat4(1.0f), glm::vec3(0.04f, 0.04f, 1.0f)),
@@ -250,11 +252,7 @@ namespace engine {
                     Corner::Right
                 );
                 this->addChild(valueTextObject);
-                if (isInteger) {
-                    valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier + 0.5f)) + textSuffix);
-                } else {
-                    valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
-                }
+                refreshValueText();
                 computeSliderDesignWidth();
                 updateKnobPosition();
             }
@@ -262,11 +260,7 @@ namespace engine {
         void setValue(float value) {
             boundValue = glm::clamp(value, minValue, maxValue);
             updateKnobPosition();
-            if (isInteger) {
-                valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier + 0.5f)) + textSuffix);
-            } else {
-                valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
-            }
+            refreshValueText();
         }
 
         float getValue() const {
@@ -286,7 +280,20 @@ namespace engine {
         float textMultiplier = 1.0f;
         float sliderDesignWidth = 1.0f;
         float sliderDesignPosX = 0.0f;
-        
+        float overrideValue = 0.0f;
+        std::string overrideText;
+
+        void refreshValueText() {
+            float compareValue = isInteger ? static_cast<float>(static_cast<int>(boundValue + 0.5f)) : boundValue;
+            if (!overrideText.empty() && compareValue <= overrideValue) {
+                valueTextObject->setText(overrideText);
+            } else if (isInteger) {
+                valueTextObject->setText(std::to_string(static_cast<int>(boundValue * textMultiplier + 0.5f)) + textSuffix);
+            } else {
+                valueTextObject->setText(std::to_string(boundValue * textMultiplier) + textSuffix);
+            }
+        }
+
         void updateKnobPosition() {
             float ratio = (boundValue - minValue) / (maxValue - minValue);
             float knobScaleX = knobObject->getTransform()[0][0];

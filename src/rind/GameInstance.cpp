@@ -175,6 +175,20 @@ rind::GameInstance::GameInstance() {
             1.5f,
             70.0f
         );
+        lightManager->addLight(
+            "titleLight5",
+            glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 4.0f, -50.0f)),
+            glm::vec3(1.0f),
+            1.0f,
+            50.0f
+        );
+        lightManager->addLight(
+            "titleLight5",
+            glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 2.0f, 0.5f)),
+            glm::vec3(1.0f),
+            3.0f,
+            4.0f
+        );
         for (int i = -2; i <= 2; i++) {
             for (int j = -2; j <= 2; j++) {
                 irradianceManager->addIrradianceProbe(

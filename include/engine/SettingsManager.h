@@ -20,7 +20,7 @@ namespace engine {
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
             uint32_t aaMode = 1; // 0 = none, 1 = FXAA, 2 = SMAA
             uint32_t screenMode = 0; // 0 = windowed, 1 = borderless, 2 = fullscreen
-            float fpsLimit = 0.0f;
+            float fpsLimit = 14.0f;
             float shadowQuality = 2.0f; // 0=256 1 sample, 1=512 2 samples, 2=1024 4 samples, 3=1024 8 samples
             float sensitivity = 0.003f;
             float masterVolume = 1.0f;
@@ -46,6 +46,8 @@ namespace engine {
             float textMultiplier = 1.0f;
             bool roundOnApply = false;
             float clampMin = 0.0f, clampMax = 0.0f; // 0,0 = no clamp
+            float sliderOverrideValue = 0.0f;
+            std::string sliderOverrideText = "";
             
             std::function<void(Settings* prev, Settings* curr, Renderer*)> onChange = nullptr;
 
@@ -306,7 +308,9 @@ namespace engine {
                             Corner::TopRight,
                             def.textSuffix,
                             def.isInt,
-                            def.textMultiplier
+                            def.textMultiplier,
+                            def.sliderOverrideValue,
+                            def.sliderOverrideText
                         );
                         settingsUIObject->addChild(slider);
                         break;
@@ -416,7 +420,7 @@ namespace engine {
             { SettingsDefinition::Bool, "Enable Screen Space Reflections", "ssrEnabled", &Settings::ssrEnabled },
             { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"} },
             { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"} },
-            { SettingsDefinition::Enum, "Screen Mode", "screenMode", nullptr, &Settings::screenMode, {"Windowed", "Borderless", "Fullscreen"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f,
+            { SettingsDefinition::Enum, "Screen Mode", "screenMode", nullptr, &Settings::screenMode, {"Windowed", "Borderless", "Fullscreen"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f, 0.0f, "",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
                     if (prev->screenMode != curr->screenMode) {
                         renderer->recreateSwapChain();
@@ -425,14 +429,14 @@ namespace engine {
             },
             { SettingsDefinition::Slider, "Sensitivity", "sensitivity", nullptr, nullptr, {}, &Settings::sensitivity, 0.0001f, 0.03f, "", true, 10000.0f, false, 0.0f, 0.0f },
             { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
-            { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 0.0f, 240.0f, " FPS", true, 1.0f, true, 0.0f, 240.0f,
+            { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 12.0f, 240.0f, " FPS", true, 1.0f, true, 12.0f, 240.0f, 14.0f, "VSync",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
-                    if ((prev->fpsLimit < 1e-6f) != (curr->fpsLimit < 1e-6f)) {
+                    if ((prev->fpsLimit <= 14.1f) != (curr->fpsLimit <= 14.1f)) {
                         renderer->recreateSwapChain();
                     }
                 }
             },
-            { SettingsDefinition::Slider, "Shadow Quality", "shadowQuality", nullptr, nullptr, {}, &Settings::shadowQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f,
+            { SettingsDefinition::Slider, "Shadow Quality", "shadowQuality", nullptr, nullptr, {}, &Settings::shadowQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
                     if (prev->shadowQuality != curr->shadowQuality) {
                         renderer->requestShadowMapRecreation();

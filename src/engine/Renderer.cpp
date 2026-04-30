@@ -751,7 +751,7 @@ void engine::Renderer::drawFrame() {
         vkDeviceWaitIdle(device);
         createPostProcessDescriptorSets();
     }
-    if (settingsManager->getSettings()->fpsLimit > 1e-6f) {
+    if (settingsManager->getSettings()->fpsLimit > 14.1f) {
         double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);
         double targetTime = lastFrameTime + frameDuration;
         double currentTime = glfwGetTime();
@@ -3710,7 +3710,7 @@ VkSurfaceFormatKHR engine::Renderer::chooseSwapSurfaceFormat(const std::vector<V
 }
 
 VkPresentModeKHR engine::Renderer::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    if (settingsManager->getSettings()->fpsLimit <= 1e-6f) {
+    if (settingsManager->getSettings()->fpsLimit <= 14.1f) {
         return VK_PRESENT_MODE_FIFO_KHR;
     }
     for (const auto& availablePresentMode : availablePresentModes) {

@@ -4,9 +4,22 @@
 #include <audio/audio_registry.h>
 #include <iostream>
 
+ma_result init_engine_with_channels(ma_engine* engine, ma_uint32 channels) {
+    ma_engine_config config = ma_engine_config_init();
+    config.channels = channels;
+    return ma_engine_init(&config, engine);
+}
+
 engine::AudioManager::AudioManager(Renderer* renderer) : renderer(renderer) {
     renderer->registerAudioManager(this);
-    ma_result result = ma_engine_init(NULL, &m_engine);
+    ma_result result = MA_ERROR;
+    const ma_uint32 channelFallbacks[] = {6, 2, 1};
+    for (ma_uint32 channels : channelFallbacks) {
+        result = init_engine_with_channels(&m_engine, channels);
+        if (result == MA_SUCCESS) {
+            break;
+        }
+    }
     if (result != MA_SUCCESS) {
         throw std::runtime_error("Failed to initialize audio engine");
     }
