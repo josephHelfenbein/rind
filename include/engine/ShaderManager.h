@@ -116,6 +116,9 @@ namespace engine {
             VkSampler sampler = VK_NULL_HANDLE;
             bool blendEnable = true;
             bool blendAdditive = false;
+            // Optional per-attachment blend states. When non-empty, overrides the
+            // single uniform blend state above. Size must equal colorAttachmentCount.
+            std::vector<VkPipelineColorBlendAttachmentState> colorBlendOverrides = {};
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
             uint32_t viewMask = 0u;

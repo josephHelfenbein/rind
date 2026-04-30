@@ -14,6 +14,15 @@ Texture2D<float> gBufferDepth;
 Texture2D<float4> gBufferNormal;
 
 [[vk::binding(3)]]
+Texture2D<float4> gBufferMaterial;
+
+[[vk::binding(4)]]
+Texture2D<float> particleDepth;
+
+[[vk::binding(5)]]
+Texture2D<float> volumetricDepth;
+
+[[vk::binding(6)]]
 SamplerState sampleSampler;
 
 struct PushConstants {
@@ -40,12 +49,25 @@ float3 reconstructViewPos(float2 uv, float depth) {
     return viewPos.xyz;
 }
 
+float ndcToViewZ(float ndcZ) {
+    float4 viewH = mul(float4(0.0, 0.0, ndcZ, 1.0), pc.invProj);
+    return viewH.z / viewH.w;
+}
+
+float effectiveDepth(float2 uv) {
+    float gd = gBufferDepth.SampleLevel(sampleSampler, uv, 0);
+    float pd = particleDepth.SampleLevel(sampleSampler, uv, 0);
+    float vd = volumetricDepth.SampleLevel(sampleSampler, uv, 0);
+    return min(gd, min(pd, vd));
+}
+
 bool rayMarch(float3 startScreen, float3 screenStep, int stepCount, float jitter, out float2 hitUV, out float hitDepth) {
     hitUV = float2(0, 0);
     hitDepth = 0;
-    float thickness = max(0.002, abs(screenStep.z) * 2.0);
     float3 curr = startScreen + screenStep * jitter;
     float3 prev = curr;
+    float prevRayVZ = ndcToViewZ(curr.z);
+    float prevDepthDiff = 1.0;
 
     [loop]
     for (int i = 0; i < stepCount; i++) {
@@ -58,15 +80,22 @@ bool rayMarch(float3 startScreen, float3 screenStep, int stepCount, float jitter
             return false;
         }
 
-        float sampledDepth = gBufferDepth.SampleLevel(sampleSampler, curr.xy, 0);
-        float depthDiff = curr.z - sampledDepth;
+        float sampledDepth = effectiveDepth(curr.xy);
+        float currRayVZ = ndcToViewZ(curr.z);
+        float currSurfVZ = ndcToViewZ(sampledDepth);
+        float depthDiff = currSurfVZ - currRayVZ;
 
-        if (depthDiff > 0.0 && depthDiff < thickness) {
+        float stepWorldDist = abs(currRayVZ - prevRayVZ);
+        float thickness = max(0.25, stepWorldDist * 1.5);
+
+        bool crossed = prevDepthDiff <= 0.0 && depthDiff > 0.0 && depthDiff < thickness;
+
+        if (crossed) {
             float3 lo = prev, hi = curr;
             for (int j = 0; j < NUM_BINARY_SEARCH_STEPS; j++) {
                 float3 mid = (lo + hi) * 0.5;
-                float midSampled = gBufferDepth.SampleLevel(sampleSampler, mid.xy, 0);
-                float midDiff = mid.z - midSampled;
+                float midSampled = effectiveDepth(mid.xy);
+                float midDiff = ndcToViewZ(midSampled) - ndcToViewZ(mid.z);
                 if (midDiff > 0.0 && midDiff < thickness) {
                     hi = mid;
                 } else {
@@ -75,8 +104,17 @@ bool rayMarch(float3 startScreen, float3 screenStep, int stepCount, float jitter
             }
             hitUV = (lo.xy + hi.xy) * 0.5;
             hitDepth = (lo.z + hi.z) * 0.5;
+
+            float finalSurfVZ = ndcToViewZ(effectiveDepth(hitUV));
+            float hitVZ = ndcToViewZ(hitDepth);
+            if (abs(finalSurfVZ - hitVZ) > thickness * 1.5) {
+                return false;
+            }
             return true;
         }
+
+        prevRayVZ = currRayVZ;
+        prevDepthDiff = depthDiff;
     }
     return false;
 }
@@ -91,6 +129,19 @@ float4 main(VSOutput input) : SV_Target {
     float depth = gBufferDepth.Load(int3(gid.x, gid.y, 0));
     if (depth >= 0.9999) {
         return float4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    float4 material = gBufferMaterial.Load(int3(gid.x, gid.y, 0));
+    float metallic = material.r;
+    float roughness = material.g;
+
+    float roughnessFade = smoothstep(0.7, 0.3, roughness);
+    if (roughnessFade <= 0.0) {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    float reflectivity = lerp(0.04, 1.0, metallic);
+    if (reflectivity * roughnessFade < 0.02) {
+        return float4(0.0, 0.0, 0.0, 0.0);
     }
 
     float3 normal = normalize(gBufferNormal.Load(int3(gid.x, gid.y, 0)).xyz * 2.0 - 1.0);
@@ -137,14 +188,17 @@ float4 main(VSOutput input) : SV_Target {
     if (hit) {
         float3 hitViewPos = reconstructViewPos(hitUV, hitNdcDepth);
         float rayLength = length(hitViewPos - viewPos);
+        float surfaceDist = length(viewPos);
+        float pathLength = surfaceDist + rayLength;
 
-        float mipLevel = clamp(rayLength * 0.1, 0.0, 4.0);
+        float mipLevel = clamp(pathLength * 0.04 + roughness * roughness * 6.0, 0.0, 4.0);
         float4 reflectionColor = lightingTexture.SampleLevel(sampleSampler, hitUV, mipLevel);
         float2 edgeFade = smoothstep(0.0, 0.1, hitUV) * smoothstep(1.0, 0.9, hitUV);
         float edgeFactor = min(edgeFade.x, edgeFade.y);
-        float fresnelFactor = pow(1.0 - facingRatio, 3.0);
-        float distanceFade = 1.0 - smoothstep(MAX_DISTANCE * 0.7, MAX_DISTANCE, rayLength);
-        float finalAlpha = reflectionColor.a * edgeFactor * fresnelFactor * distanceFade;
+        float fresnelFactor = lerp(pow(1.0 - facingRatio, 3.0), 1.0, metallic);
+        float rayFade = 1.0 - smoothstep(MAX_DISTANCE * 0.7, MAX_DISTANCE, rayLength);
+        float surfaceFade = 1.0 - smoothstep(MAX_DISTANCE * 0.6, MAX_DISTANCE * 1.2, surfaceDist);
+        float finalAlpha = reflectionColor.a * edgeFactor * fresnelFactor * rayFade * surfaceFade * roughnessFade;
         return float4(reflectionColor.rgb, finalAlpha);
     }
 

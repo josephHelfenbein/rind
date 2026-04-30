@@ -20,6 +20,5 @@ SamplerState sampleSampler;
 
 float4 main(VSOutput input) : SV_Target {
     float3 albedo = albedoTexture.Sample(sampleSampler, input.uv).rgb;
-    float3 upDir = float3(0, 1, 0);
     return float4(albedo, 1.0);
 }

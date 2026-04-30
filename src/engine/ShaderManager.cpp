@@ -327,6 +327,12 @@ void engine::ShaderManager::createDefaultShaders() {
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
+        images.push_back({
+            .name = "ParticleDepth",
+            .clearValue = { .color = { {1.0f, 1.0f, 1.0f, 1.0f} } },
+            .format = VK_FORMAT_R32_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
         particlePass->images = images;
     }
 
@@ -359,6 +365,13 @@ void engine::ShaderManager::createDefaultShaders() {
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        images.push_back({
+            .name = "VolumetricDepth",
+            .resolutionDivider = 2,
+            .clearValue = { .depthStencil = { 1.0f, 0 } },
+            .format = VK_FORMAT_D32_SFLOAT,
+            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         volumetricPass->images = images;
     }
@@ -1028,7 +1041,29 @@ void engine::ShaderManager::createDefaultShaders() {
                 .passInfo = particlePass,
                 .blendEnable = true,
                 .blendAdditive = true,
-                .colorAttachmentCount = 1,
+                .colorAttachmentCount = 2,
+                .colorBlendOverrides = {
+                    VkPipelineColorBlendAttachmentState{
+                        .blendEnable = VK_TRUE,
+                        .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .colorBlendOp = VK_BLEND_OP_ADD,
+                        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .alphaBlendOp = VK_BLEND_OP_ADD,
+                        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+                    },
+                    VkPipelineColorBlendAttachmentState{
+                        .blendEnable = VK_TRUE,
+                        .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .colorBlendOp = VK_BLEND_OP_MIN,
+                        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .alphaBlendOp = VK_BLEND_OP_MIN,
+                        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT
+                    }
+                },
                 .getVertexInputDescriptions = nullptr
             }
         };
@@ -1456,8 +1491,9 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
                 .cullMode = VK_CULL_MODE_BACK_BIT,
-                .depthWrite = false,
-                .enableDepth = false,
+                .depthWrite = true,
+                .depthCompare = VK_COMPARE_OP_ALWAYS,
+                .enableDepth = true,
                 .passInfo = volumetricPass,
                 .blendEnable = true,
                 .blendAdditive = true,
@@ -1600,11 +1636,14 @@ void engine::ShaderManager::createDefaultShaders() {
             .fragment = { shaderPath("ssr.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 4,
+                .fragmentBitBindings = 7,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1
+                    1, 1, 1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1637,7 +1676,10 @@ void engine::ShaderManager::createDefaultShaders() {
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { 1, "gbuffer", "Depth" },
-                    { 2, "gbuffer", "Normal" }
+                    { 2, "gbuffer", "Normal" },
+                    { 3, "gbuffer", "Material" },
+                    { 4, "particle", "ParticleDepth" },
+                    { 5, "volumetric", "VolumetricDepth" }
                 }
             }
         };
@@ -3152,7 +3194,15 @@ void engine::GraphicsShader::createPipeline(engine::Renderer* renderer) {
         .alphaBlendOp = VK_BLEND_OP_ADD,
         .colorWriteMask = static_cast<VkColorComponentFlags>(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
     };
-    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments(config.colorAttachmentCount, colorBlendAttachment);
+    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
+    if (!config.colorBlendOverrides.empty()) {
+        if (static_cast<int>(config.colorBlendOverrides.size()) != config.colorAttachmentCount) {
+            throw std::runtime_error("colorBlendOverrides size must equal colorAttachmentCount");
+        }
+        colorBlendAttachments = config.colorBlendOverrides;
+    } else {
+        colorBlendAttachments.assign(config.colorAttachmentCount, colorBlendAttachment);
+    }
     VkPipelineColorBlendStateCreateInfo colorBlending = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         .logicOpEnable = VK_FALSE,

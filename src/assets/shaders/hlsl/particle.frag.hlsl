@@ -18,15 +18,21 @@ struct PushConstants {
 
 [[vk::push_constant]] PushConstants pc;
 
-float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
+struct PSOutput {
+    float4 color : SV_Target0;
+    float depth : SV_Target1;
+};
+
+PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
+    PSOutput o;
     float2 screenUV = fragCoord.xy / pc.screenSize;
     float sceneDepth = gbufferDepth.Sample(gbufferSampler, screenUV);
     if (sceneDepth < 1.0 && fragCoord.z > sceneDepth) {
         discard;
     }
-    
+
     float4 fragColor = input.color;
-    
+
     if (fragColor.a < 0.0) { // trail particle
         float edgeFade = 1.0 - abs(input.uv.x * 2.0 - 1.0);
         edgeFade = pow(edgeFade, 0.5);
@@ -35,9 +41,11 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
         fragColor.rgb = lerp(fragColor.rgb, float3(1.0, 1.0, 1.0), coreness);
         fragColor.rgb *= 2.0;
         fragColor.a = edgeFade * edgeFade * 0.5 + ageFade * 0.5;
-        return fragColor;
+        o.color = fragColor;
+        o.depth = fragCoord.z;
+        return o;
     }
-    
+
     float2 centered = input.uv * 2.0 - 1.0;
     float distX = abs(centered.x);
     float distY = abs(centered.y);
@@ -52,5 +60,7 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     fragColor.rgb = lerp(fragColor.rgb, float3(1.0, 1.0, 1.0), coreness);
     fragColor.rgb *= 1.0 + coreFalloff * 2.0;
     fragColor.a *= falloff * ageFade;
-    return fragColor;
+    o.color = fragColor;
+    o.depth = fragCoord.z;
+    return o;
 }
