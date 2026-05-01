@@ -7,8 +7,9 @@ engine::Volumetric::Volumetric(
     const glm::mat4& initialTransform,
     const glm::mat4& finalTransform,
     const glm::vec4& color,
-    float lifetime
-) : initialTransform(initialTransform), finalTransform(finalTransform), color(color), lifetime(lifetime) {}
+    float lifetime,
+    float acceleration
+) : initialTransform(initialTransform), finalTransform(finalTransform), color(color), lifetime(lifetime), acceleration(acceleration) {}
 
 engine::VolumetricManager::VolumetricManager(engine::Renderer* renderer)
     : renderer(renderer) {

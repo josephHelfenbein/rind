@@ -160,18 +160,6 @@ namespace rind {
             volumetricManager->createVolumetric(
                 glm::scale(
                     getWorldTransform(),
-                    glm::vec3(2.0f, 2.0f, 2.0f)
-                ),
-                glm::scale(
-                    getWorldTransform(),
-                    glm::vec3(10.0f, 10.0f, 10.0f)
-                ),
-                glm::vec4(glm::min(color + glm::vec3(0.2f), glm::vec3(1.0f)), 20.0f),
-                0.5f
-            );
-            volumetricManager->createVolumetric(
-                glm::scale(
-                    getWorldTransform(),
                     glm::vec3(5.0f, 5.0f, 5.0f)
                 ),
                 glm::scale(
@@ -179,7 +167,8 @@ namespace rind {
                     glm::vec3(20.0f, 20.0f, 20.0f)
                 ),
                 glm::vec4(glm::min(color + glm::vec3(0.2f), glm::vec3(1.0f)), 1.0f),
-                2.0f
+                2.0f,
+                6.0f
             );
             volumetricManager->createVolumetric(
                 glm::scale(
@@ -191,7 +180,7 @@ namespace rind {
                     glm::vec3(25.0f, 25.0f, 25.0f)
                 ),
                 glm::vec4(0.1f, 0.1f, 0.1f, 0.4f),
-                4.0f
+                4.5f
             );
             particleManager->burstParticles(
                 getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),

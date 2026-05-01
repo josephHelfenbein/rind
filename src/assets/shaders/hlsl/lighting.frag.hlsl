@@ -184,15 +184,6 @@ void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, o
     specularIrr = max(specularIrr, float3(0.0, 0.0, 0.0));
 }
 
-float3 ACESFilm(float3 x) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
-}
-
 float4 main(VSOutput input) : SV_Target {
     float4 albedoSample = gBufferAlbedo.Sample(sampleSampler, input.fragTexCoord);
     float3 rawNormal = gBufferNormal.Sample(sampleSampler, input.fragTexCoord).xyz * 2.0 - 1.0;
@@ -206,7 +197,7 @@ float4 main(VSOutput input) : SV_Target {
         float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
         float4 volumetricColor = volumetricTexture.Sample(sampleSampler, input.fragTexCoord);
         float3 result = albedoSample.rgb + particleColor.rgb * particleColor.a + volumetricColor.rgb;
-        return float4(ACESFilm(result), particleColor.a + volumetricColor.a);
+        return float4(result, particleColor.a + volumetricColor.a);
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
     float3 toCamera = pc.camPos - fragPos;
@@ -307,5 +298,5 @@ float4 main(VSOutput input) : SV_Target {
     float4 volumetricColor = volumetricTexture.Sample(sampleSampler, input.fragTexCoord);
     Lo += particleColor.rgb * particleColor.a + volumetricColor.rgb;
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, albedoSample.a));
-    return float4(ACESFilm(Lo), alphaOut);
+    return float4(Lo, alphaOut);
 }

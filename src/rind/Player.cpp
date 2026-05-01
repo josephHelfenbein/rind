@@ -603,7 +603,7 @@ void rind::Player::update(float deltaTime) {
                 glm::translate(glm::mat4(1.0f), gunEndWorldPos - gunDir * smokeChance * 2.0f),
                 glm::vec3(1.0f, 1.0f, 1.0f)
             ),
-            glm::vec4(0.2f, 0.2f, 0.2f, 3.0f),
+            glm::vec4(0.2f, 0.2f, 0.2f, 2.0f),
             0.3f
         );
         particleManager->burstParticles(
@@ -632,7 +632,7 @@ void rind::Player::update(float deltaTime) {
                     ),
                     glm::vec3(1.3f, 1.3f, 1.3f)
                 ),
-                glm::vec4(1.0f, 0.2f, 0.2f, 15.0f),
+                glm::vec4(1.0f, 0.2f, 0.2f, 10.0f),
                 0.1f
             );
             volumetricManager->createVolumetric(
@@ -648,8 +648,8 @@ void rind::Player::update(float deltaTime) {
                     ),
                     glm::vec3(5.0f, 5.0f, 5.0f)
                 ),
-                glm::vec4(0.1f, 0.1f, 0.1f, 0.6f),
-                4.0f
+                glm::vec4(0.1f, 0.1f, 0.1f, 0.1f),
+                3.0f
             );
         }
         particleManager->spawnTrail(
@@ -1167,7 +1167,7 @@ void rind::Player::shoot() {
             hit.worldHitPoint,
             trailColor,
             reflectedDir * 40.0f,
-            50,
+            12,
             4.0f,
             0.5f,
             0.9f
@@ -1176,7 +1176,7 @@ void rind::Player::shoot() {
             hit.worldHitPoint,
             trailColor,
             reflectedDir * 25.0f,
-            100,
+            25,
             4.0f,
             0.4f,
             0.4f
@@ -1185,7 +1185,7 @@ void rind::Player::shoot() {
             hit.worldHitPoint,
             trailColor,
             reflectedDir * 10.0f,
-            50,
+            12,
             2.0f,
             0.3f,
             0.7f
@@ -1194,7 +1194,7 @@ void rind::Player::shoot() {
             hit.worldHitPoint,
             trailColor,
             reflectedDir * 30.0f,
-            40,
+            10,
             3.0f,
             0.35f,
             1.1f
@@ -1244,11 +1244,14 @@ void rind::Player::throwGrenade() {
     const float verticalAim = cameraForward.y;
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     glm::vec3 playerVel = getVelocity();
+    float forwardSpeed = glm::dot(playerVel, playerForward);
+    glm::vec3 lateralVel = playerVel - playerForward * forwardSpeed;
+    glm::vec3 inheritedVel = playerForward * std::max(forwardSpeed, 0.0f) + lateralVel;
     Grenade* grenade = new Grenade(
         getEntityManager(),
         this,
-        glm::translate(glm::mat4(1.0f), gunPos + playerForward * 0.7f + glm::vec3(0.0f, verticalAim * 0.2f, 0.0f)),
-        playerForward * 20.0f + glm::vec3(0.0f, 3.0f + verticalAim * 20.0f, 0.0f) + playerVel * 0.25f,
+        glm::translate(glm::mat4(1.0f), gunPos + playerForward * 0.7f + glm::vec3(0.0f, verticalAim * 0.2f, 0.0f) + inheritedVel * 0.1f),
+        playerForward * 20.0f + glm::vec3(0.0f, 4.0f + verticalAim * 20.0f, 0.0f) + inheritedVel * 0.5f,
         trailColor,
         6.0f
     );

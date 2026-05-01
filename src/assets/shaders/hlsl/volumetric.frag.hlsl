@@ -32,6 +32,7 @@ struct PushConstants {
 
 static const float MAX_STEP_SCALE = 4.0;
 static const float THRESHOLD = 0.01;
+static const float HDR_SCALE = 3.0;
 
 float hash3(float3 p) {
     p = frac(p * float3(443.897, 441.423, 437.195));
@@ -79,7 +80,12 @@ float sampleDensity(float3 localPos, float age, float ageFade, int fbmOctaves) {
     return radial * n * ageFade;
 }
 
-float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
+struct PSOutput {
+    float4 color : SV_Target;
+    float depth : SV_Depth;
+};
+
+PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     VolumetricData vol = volumes[input.instanceID];
 
     float3 rayOrigin = pc.camPos;
@@ -91,28 +97,43 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 tMax = (0.5 - localOrigin) / localDir;
     float3 t1 = min(tMin, tMax);
     float3 t2 = max(tMin, tMax);
-    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tNearRaw = max(max(t1.x, t1.y), t1.z);
     float tFar = min(min(t2.x, t2.y), t2.z);
 
-    tNear = max(tNear, 0.0);
+    bool insideVolume = (tNearRaw < 0.0);
+    float tNear = max(tNearRaw, 0.0);
     if (tFar <= tNear) discard;
 
-    float3 entryWorld = mul(float4(localOrigin + tNear * localDir, 1.0), vol.model).xyz;
-    float4 entryClip = mul(float4(entryWorld, 1.0), pc.viewProj);
-    float entryClipD = entryClip.z / entryClip.w;
-    float2 entryUV = saturate(entryClip.xy / entryClip.w * 0.5 + 0.5);
-    float preSceneD = depthTexture.SampleLevel(depthSampler, entryUV, 0);
+    float entryClipD = 0.0;
+    if (!insideVolume) {
+        float3 entryWorld = mul(float4(localOrigin + tNear * localDir, 1.0), vol.model).xyz;
+        float4 entryClip = mul(float4(entryWorld, 1.0), pc.viewProj);
+        entryClipD = entryClip.z / entryClip.w;
+        float2 entryUV = saturate(entryClip.xy / entryClip.w * 0.5 + 0.5);
+        float preSceneD = depthTexture.SampleLevel(depthSampler, entryUV, 0);
 
-    if (preSceneD < 1.0) {
-        if (entryClipD >= preSceneD) discard; // fully occluded
+        if (preSceneD < 1.0) {
+            if (entryClipD >= preSceneD) discard; // fully occluded
 
-        float3 exitWorld = mul(float4(localOrigin + tFar * localDir, 1.0), vol.model).xyz;
-        float4 exitClip  = mul(float4(exitWorld, 1.0), pc.viewProj);
-        float  exitClipD = exitClip.z / exitClip.w;
+            float3 exitWorld = mul(float4(localOrigin + tFar * localDir, 1.0), vol.model).xyz;
+            float4 exitClip  = mul(float4(exitWorld, 1.0), pc.viewProj);
+            float  exitClipD = exitClip.z / exitClip.w;
 
-        if (exitClipD > preSceneD) { // partially occluded
-            float depthFrac = saturate((preSceneD - entryClipD) / (exitClipD - entryClipD));
-            tFar = lerp(tNear, tFar, depthFrac);
+            if (exitClipD > preSceneD) { // partially occluded
+                float depthFrac = saturate((preSceneD - entryClipD) / (exitClipD - entryClipD));
+                tFar = lerp(tNear, tFar, depthFrac);
+            }
+        }
+    } else {
+        float preSceneD = depthTexture.Load(int3(int2(fragCoord.xy), 0));
+        if (preSceneD < 1.0) {
+            float3 exitWorld = mul(float4(localOrigin + tFar * localDir, 1.0), vol.model).xyz;
+            float4 exitClip  = mul(float4(exitWorld, 1.0), pc.viewProj);
+            float  exitClipD = exitClip.z / exitClip.w;
+            if (exitClipD > preSceneD) {
+                float depthFrac = saturate(preSceneD / max(exitClipD, 1e-6));
+                tFar = lerp(tNear, tFar, depthFrac);
+            }
         }
     }
 
@@ -126,10 +147,7 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float maxStep = baseStep * MAX_STEP_SCALE;
     float extinction = vol.color.w;
     float3 tint = vol.color.rgb;
-    half extinction16 = half(extinction);
-    half3 tint16 = half3(tint);
-
-    half4 accum = half4(0.0, 0.0, 0.0, 0.0);
+    float4 accum = float4(0.0, 0.0, 0.0, 0.0);
     float jitter = hash3(float3(fragCoord.xy, vol.age)) * baseStep;
     float t = tNear + jitter;
     float stepSize = baseStep;
@@ -139,10 +157,10 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     [loop]
     while (t < tFar && steps < maxSteps) {
         steps++;
-        if (accum.a >= half(0.99)) break;
+        if (accum.a >= 0.99) break;
         float3 localMid = localOrigin + (t + stepSize * 0.5) * localDir;
-        half density = half(sampleDensity(localMid, vol.age, ageFade, fbmOctaves));
-        if (density <= half(THRESHOLD)) {
+        float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves);
+        if (density <= THRESHOLD) {
             stepSize = min(stepSize * 1.5, maxStep);
             t += stepSize;
             continue;
@@ -154,14 +172,19 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
             continue;
         }
 
-        half transmittance = half(1.0) - accum.a;
-        half opticalDepth = density * extinction16 * half(stepSize);
-        half contrib = (half(1.0) - exp(-opticalDepth)) * transmittance;
-        accum.rgb += contrib * tint16;
-        accum.a += contrib;
+        float transmittance = 1.0 - accum.a;
+        float opticalDepth = density * extinction * stepSize;
+        float alphaContrib = (1.0 - exp(-opticalDepth)) * transmittance;
+        float emission = density * extinction * stepSize * HDR_SCALE;
+        accum.rgb += transmittance * emission * tint;
+        accum.a += alphaContrib;
         t += stepSize;
     }
 
-    if (accum.a < half(0.001)) discard;
-    return float4(accum);
+    if (accum.a < 0.00001) discard;
+
+    PSOutput output;
+    output.color = accum;
+    output.depth = saturate(entryClipD);
+    return output;
 }

@@ -368,7 +368,7 @@ void engine::ShaderManager::createDefaultShaders() {
         });
         images.push_back({
             .name = "VolumetricDepth",
-            .resolutionDivider = 2,
+            .resolutionDivider = 2, // half
             .clearValue = { .depthStencil = { 1.0f, 0 } },
             .format = VK_FORMAT_D32_SFLOAT,
             .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -434,7 +434,7 @@ void engine::ShaderManager::createDefaultShaders() {
         std::vector<PassImage> images;
         images.push_back({
             .name = "BloomColor",
-            .resolutionDivider = 4, // quarter
+            .resolutionDivider = 2, // half
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -442,39 +442,29 @@ void engine::ShaderManager::createDefaultShaders() {
         bloomPass->images = images;
     }
 
-    // Bloom Blur Pass Horizontal
-    auto bloomBlurPassH = std::make_shared<PassInfo>();
-    bloomBlurPassH->name = "BloomBlurPassH";
-    bloomBlurPassH->usesSwapchain = false;
-    renderPasses.push_back(bloomBlurPassH);
-    {
+    // Dual-filter bloom downsample/upsample chain.
+    // Source bright pass "BloomColor" is at /2. Chain: /4, /8, /16, /32, then upsample back to /4.
+    auto makeBloomChainPass = [&](const char* passName, const char* imageName, uint32_t divider) {
+        auto pass = std::make_shared<PassInfo>();
+        pass->name = passName;
+        pass->usesSwapchain = false;
+        renderPasses.push_back(pass);
         std::vector<PassImage> images;
         images.push_back({
-            .name = "BloomBlurHColor",
-            .resolutionDivider = 4, // quarter
+            .name = imageName,
+            .resolutionDivider = divider,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
-        bloomBlurPassH->images = images;
-    }
-
-    // Bloom Blur Pass Vertical
-    auto bloomBlurPassV = std::make_shared<PassInfo>();
-    bloomBlurPassV->name = "BloomBlurPassV";
-    bloomBlurPassV->usesSwapchain = false;
-    renderPasses.push_back(bloomBlurPassV);
-    {
-        std::vector<PassImage> images;
-        images.push_back({
-            .name = "BloomBlurVColor",
-            .resolutionDivider = 4, // quarter
-            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-        });
-        bloomBlurPassV->images = images;
-    }
+        pass->images = images;
+        return pass;
+    };
+    auto bloomDown1Pass = makeBloomChainPass("BloomDown1Pass", "BloomDown1Color", 4);
+    auto bloomDown2Pass = makeBloomChainPass("BloomDown2Pass", "BloomDown2Color", 8);
+    auto bloomDown3Pass = makeBloomChainPass("BloomDown3Pass", "BloomDown3Color", 16);
+    auto bloomUp2Pass   = makeBloomChainPass("BloomUp2Pass",   "BloomUp2Color",   8);
+    auto bloomUp1Pass   = makeBloomChainPass("BloomUp1Pass",   "BloomUp1Color",   4);
 
     // Combine Pass
     auto combinePass = std::make_shared<PassInfo>();
@@ -1490,7 +1480,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
-                .cullMode = VK_CULL_MODE_BACK_BIT,
+                .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = true,
                 .depthCompare = VK_COMPARE_OP_ALWAYS,
                 .enableDepth = true,
@@ -1625,6 +1615,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<LightingPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -1684,6 +1675,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<SSRPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -1713,21 +1705,20 @@ void engine::ShaderManager::createDefaultShaders() {
                 }
             }
         };
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
-    // Bloom Blur Horizontal
-    {
+    // Bloom downsample chain
+    auto addBloomDownShader = [&](const char* name, std::shared_ptr<PassInfo> pass, const char* srcShader, const char* srcAttachment) {
         GraphicsShader shader = {
-            .name = "bloomblurh",
+            .name = name,
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("blur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .fragment = { shaderPath("bloomdown.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
                 .fragmentBitBindings = 2,
-                .fragmentDescriptorCounts = {
-                    1, 1
-                },
+                .fragmentDescriptorCounts = { 1, 1 },
                 .fragmentDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
@@ -1735,60 +1726,53 @@ void engine::ShaderManager::createDefaultShaders() {
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
                 .enableDepth = false,
-                .passInfo = bloomBlurPassH,
+                .passInfo = pass,
                 .colorAttachmentCount = 1,
-                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    engine::BlurPC pc = {
-                        .blurDirection = 0,
-                        .taps = 2
-                    };
-                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurPC), &pc);
-                },
                 .inputBindings = {
-                    { 0, "bloom", "BloomColor" }
+                    { 0, srcShader, srcAttachment }
                 }
             }
         };
-        shader.config.setPushConstant<engine::BlurPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
-    }
+    };
+    addBloomDownShader("bloomdown1", bloomDown1Pass, "bloom", "BloomColor");
+    addBloomDownShader("bloomdown2", bloomDown2Pass, "bloomdown1", "BloomDown1Color");
+    addBloomDownShader("bloomdown3", bloomDown3Pass, "bloomdown2", "BloomDown2Color");
 
-    // Bloom Blur Vertical
-    {
+    // Bloom upsample chain
+    auto addBloomUpShader = [&](const char* name, std::shared_ptr<PassInfo> pass,
+                                const char* smallerShader, const char* smallerAttachment,
+                                const char* sameSizeShader, const char* sameSizeAttachment) {
         GraphicsShader shader = {
-            .name = "bloomblurv",
+            .name = name,
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
-            .fragment = { shaderPath("blur.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .fragment = { shaderPath("bloomup.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 2,
-                .fragmentDescriptorCounts = {
-                    1, 1
-                },
+                .fragmentBitBindings = 3,
+                .fragmentDescriptorCounts = { 1, 1, 1 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLER
                 },
                 .cullMode = VK_CULL_MODE_NONE,
                 .depthWrite = false,
                 .enableDepth = false,
-                .passInfo = bloomBlurPassV,
+                .passInfo = pass,
                 .colorAttachmentCount = 1,
-                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    engine::BlurPC pc = {
-                        .blurDirection = 1,
-                        .taps = 1
-                    };
-                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(engine::BlurPC), &pc);
-                },
                 .inputBindings = {
-                    { 0, "bloomblurh", "BloomBlurHColor" }
+                    { 0, smallerShader,  smallerAttachment },
+                    { 1, sameSizeShader, sameSizeAttachment }
                 }
             }
         };
-        shader.config.setPushConstant<engine::BlurPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
-    }
+    };
+    addBloomUpShader("bloomup2", bloomUp2Pass, "bloomdown3", "BloomDown3Color", "bloomdown2", "BloomDown2Color");
+    addBloomUpShader("bloomup1", bloomUp1Pass, "bloomup2", "BloomUp2Color", "bloomdown1", "BloomDown1Color");
 
     // UI
     {
@@ -1892,14 +1876,22 @@ void engine::ShaderManager::createDefaultShaders() {
                 .enableDepth = false,
                 .passInfo = combinePass,
                 .colorAttachmentCount = 1,
+                .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    CombinePC pc = {
+                        .exposure = 1.5f
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CombinePC), &pc);
+                },
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { 1, "ssr", "SceneColor" },
                     { 2, "ao", "AOColor" },
-                    { 3, "bloomblurv", "BloomBlurVColor" }
+                    { 3, "bloomup1", "BloomUp1Color" }
                 }
             }
         };
+        shader.config.setPushConstant<CombinePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -1946,6 +1938,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -1997,6 +1990,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -2038,6 +2032,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -2080,6 +2075,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<CompositePC>(VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 
@@ -2333,19 +2329,43 @@ void engine::ShaderManager::createDefaultShaders() {
             .lane = generalGraphicsLane,
         },
         {
-            .name = "bloom_blur_h",
+            .name = "bloom_down1",
             .is2D = true,
-            .passInfo = bloomBlurPassH.get(),
-            .shaderNames = { "bloomblurh" },
+            .passInfo = bloomDown1Pass.get(),
+            .shaderNames = { "bloomdown1" },
             .dependsOnNodeNames = { "bloom" },
             .lane = generalGraphicsLane,
         },
         {
-            .name = "bloom_blur_v",
+            .name = "bloom_down2",
             .is2D = true,
-            .passInfo = bloomBlurPassV.get(),
-            .shaderNames = { "bloomblurv" },
-            .dependsOnNodeNames = { "bloom_blur_h" },
+            .passInfo = bloomDown2Pass.get(),
+            .shaderNames = { "bloomdown2" },
+            .dependsOnNodeNames = { "bloom_down1" },
+            .lane = generalGraphicsLane,
+        },
+        {
+            .name = "bloom_down3",
+            .is2D = true,
+            .passInfo = bloomDown3Pass.get(),
+            .shaderNames = { "bloomdown3" },
+            .dependsOnNodeNames = { "bloom_down2" },
+            .lane = generalGraphicsLane,
+        },
+        {
+            .name = "bloom_up2",
+            .is2D = true,
+            .passInfo = bloomUp2Pass.get(),
+            .shaderNames = { "bloomup2" },
+            .dependsOnNodeNames = { "bloom_down3" },
+            .lane = generalGraphicsLane,
+        },
+        {
+            .name = "bloom_up1",
+            .is2D = true,
+            .passInfo = bloomUp1Pass.get(),
+            .shaderNames = { "bloomup1" },
+            .dependsOnNodeNames = { "bloom_up2" },
             .lane = generalGraphicsLane,
         },
         {
@@ -2353,7 +2373,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .is2D = true,
             .passInfo = combinePass.get(),
             .shaderNames = { "combine" },
-            .dependsOnNodeNames = { "lighting", "ssr", "ao", "bloom_blur_v" },
+            .dependsOnNodeNames = { "lighting", "ssr", "ao", "bloom_up1" },
             .lane = generalGraphicsLane,
         },
         {

@@ -175,6 +175,7 @@ namespace engine {
         void setFPSFrameCount(uint32_t count) { fpsFrameCount = count; }
         VkSampler getMainTextureSampler() const { return mainTextureSampler; }
         VkSampler getNearestSampler() const { return nearestSampler; }
+        VkSampler getLinearClampSampler() const { return linearClampSampler; }
         uint32_t getCurrentFrameIndex() const { return currentFrame; }
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
@@ -254,6 +255,7 @@ namespace engine {
         VkCommandPool computeCommandPool = VK_NULL_HANDLE;
         VkSampler mainTextureSampler;
         VkSampler nearestSampler;
+        VkSampler linearClampSampler;
         class TextObject* fpsCounter = nullptr;
         std::chrono::steady_clock::time_point lastFPSUpdateTime = std::chrono::steady_clock::now();
         uint32_t fpsFrameCount = 0;
@@ -329,6 +331,7 @@ namespace engine {
         void createCommandPool();
         void createMainTextureSampler();
         void createNearestSampler();
+        void createLinearClampSampler();
         void createCommandBuffers();
         void createSyncObjects();
         void createQuadResources();

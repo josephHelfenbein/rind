@@ -117,6 +117,10 @@ void engine::Renderer::cleanup() {
             vkDestroySampler(device, nearestSampler, nullptr);
             nearestSampler = VK_NULL_HANDLE;
         }
+        if (linearClampSampler != VK_NULL_HANDLE) {
+            vkDestroySampler(device, linearClampSampler, nullptr);
+            linearClampSampler = VK_NULL_HANDLE;
+        }
         if (commandPool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(device, commandPool, nullptr);
             commandPool = VK_NULL_HANDLE;
@@ -228,6 +232,7 @@ void engine::Renderer::initVulkan() {
     createImageViews();
     createMainTextureSampler();
     createNearestSampler();
+    createLinearClampSampler();
     createCommandPool();
     shaderManager->loadSMAATextures();
     shaderManager->createDefaultShaders();
@@ -2813,6 +2818,30 @@ void engine::Renderer::createNearestSampler() {
         .unnormalizedCoordinates = VK_FALSE
     };
     if (vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture sampler!");
+    }
+}
+
+void engine::Renderer::createLinearClampSampler() {
+    VkSamplerCreateInfo samplerInfo = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_LINEAR,
+        .minFilter = VK_FILTER_LINEAR,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = VK_FALSE,
+        .maxAnisotropy = 0.0f,
+        .compareEnable = VK_FALSE,
+        .compareOp = VK_COMPARE_OP_ALWAYS,
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = VK_FALSE
+    };
+    if (vkCreateSampler(device, &samplerInfo, nullptr, &linearClampSampler) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture sampler!");
     }
 }

@@ -59,7 +59,7 @@ void rind::Enemy::shoot() {
             collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 40.0f,
-            50,
+            12,
             4.0f,
             0.5f,
             0.9f
@@ -68,7 +68,7 @@ void rind::Enemy::shoot() {
             collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 25.0f,
-            100,
+            25,
             4.0f,
             0.4f,
             0.3f
@@ -77,7 +77,7 @@ void rind::Enemy::shoot() {
             collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 10.0f,
-            50,
+            12,
             2.0f,
             0.3f,
             0.7f
@@ -86,7 +86,7 @@ void rind::Enemy::shoot() {
             collision.worldHitPoint,
             getTrailColor(),
             reflectedDir * 30.0f,
-            40,
+            10,
             3.0f,
             0.35f,
             1.1f
@@ -170,7 +170,7 @@ void rind::Enemy::update(float deltaTime) {
                 glm::translate(glm::mat4(1.0f), getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f)),
                 glm::vec3(20.0f, 20.0f, 20.0f)
             ),
-            glm::vec4(0.1f, 0.1f, 0.1f, 0.6f),
+            glm::vec4(0.1f, 0.1f, 0.1f, 0.4f),
             2.0f
         );
         audioManager->playSound3D("enemy_smoke", getWorldPosition(), 0.8f, 0.5f);
@@ -227,38 +227,27 @@ void rind::Enemy::damage(float amount) {
         volumetricManager->createVolumetric(
             glm::scale(
                 getWorldTransform(),
-                glm::vec3(2.0f, 2.0f, 2.0f)
+                glm::vec3(5.0f)
             ),
             glm::scale(
                 getWorldTransform(),
-                glm::vec3(10.0f, 10.0f, 10.0f)
-            ),
-            glm::vec4(glm::min(getTrailColor() + glm::vec3(0.2f), glm::vec3(1.0f)), 20.0f),
-            0.5f
-        );
-        volumetricManager->createVolumetric(
-            glm::scale(
-                getWorldTransform(),
-                glm::vec3(5.0f, 5.0f, 5.0f)
-            ),
-            glm::scale(
-                getWorldTransform(),
-                glm::vec3(20.0f, 20.0f, 20.0f)
+                glm::vec3(20.0f)
             ),
             glm::vec4(glm::min(getTrailColor() + glm::vec3(0.2f), glm::vec3(1.0f)), 1.0f),
-            2.0f
+            3.5f,
+            6.0f
         );
         volumetricManager->createVolumetric(
             glm::scale(
                 getWorldTransform(),
-                glm::vec3(6.0f, 6.0f, 6.0f)
+                glm::vec3(6.0f)
             ),
             glm::scale(
                 getWorldTransform(),
-                glm::vec3(25.0f, 25.0f, 25.0f)
+                glm::vec3(25.0f)
             ),
             glm::vec4(0.1f, 0.1f, 0.1f, 0.4f),
-            4.0f
+            5.0f
         );
         particleManager->burstParticles(
             getWorldPosition() + glm::vec3(0.0f, 0.5f, 0.0f),

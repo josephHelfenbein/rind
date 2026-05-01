@@ -128,6 +128,13 @@ namespace engine {
         uint32_t pad;
     };
 
+    struct CombinePC {
+        float exposure;
+        uint32_t pad0;
+        uint32_t pad1;
+        uint32_t pad2;
+    };
+
     struct BlurPC {
         uint32_t blurDirection; // 0 = horizontal, 1 = vertical
         uint32_t taps; // number of taps to use, up to 8

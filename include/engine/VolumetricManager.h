@@ -1,6 +1,7 @@
 #pragma once
 
 #define GLM_ENABLE_EXPERIMENTAL
+#include <cmath>
 #include <engine/Renderer.h>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -21,7 +22,8 @@ namespace engine {
             const glm::mat4& initialTransform,
             const glm::mat4& finalTransform,
             const glm::vec4& color,
-            float lifetime
+            float lifetime,
+            float acceleration = 2.0f
         );
         const glm::vec4& getColor() const { return color; }
         void setColor(const glm::vec4& color) { this->color = color; }
@@ -31,7 +33,7 @@ namespace engine {
         void setAge(float age) { this->age = age; }
         VolumetricGPU getGPUData() const {
             float t = age / std::max(lifetime, 0.0001f);
-            float eased = 1.0f - (1.0f - t) * (1.0f - t);
+            float eased = 1.0f - std::pow(1.0f - t, std::max(acceleration, 0.0001f));
 
             glm::vec3 scaleA, scaleB, transA, transB, skew;
             glm::vec4 persp;
@@ -62,6 +64,7 @@ namespace engine {
         glm::mat4 finalTransform;
         glm::vec4 color;
         float lifetime;
+        float acceleration = 2.0f;
         float age = 0.0f;
         bool markedForDeletion = false;
     };
@@ -72,9 +75,9 @@ namespace engine {
         void init();
         void clear();
 
-        void createVolumetric(const glm::mat4& initialTransform, const glm::mat4& finalTransform, const glm::vec4& color, float lifetime) {
+        void createVolumetric(const glm::mat4& initialTransform, const glm::mat4& finalTransform, const glm::vec4& color, float lifetime, float acceleration = 2.0f) {
             if (volumetrics.size() >= hardCap) return;
-            volumetrics.emplace_back(initialTransform, finalTransform, color, lifetime);
+            volumetrics.emplace_back(initialTransform, finalTransform, color, lifetime, acceleration);
         }
 
         void updateVolumetricBuffer(uint32_t currentFrame);
