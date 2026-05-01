@@ -5,6 +5,7 @@ project(Rind)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUNDLE_WINDOWS_RUNTIMES "Bundle required runtime DLLs next to Windows executable and in install package" ON)
 option(BUNDLE_MACOS_RUNTIMES "Bundle required runtime dylibs and Vulkan ICD next to macOS executable" ON)
+option(BUNDLE_LINUX_RUNTIMES "Bundle runtime .so files next to Linux executable for standalone distribution" ON)
 
 set(_is_single_config_release FALSE)
 if(NOT CMAKE_CONFIGURATION_TYPES AND CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -408,31 +409,63 @@ elseif(IS_WINDOWS)
 else() # Linux
   find_package(PkgConfig QUIET)
   find_package(Vulkan REQUIRED)
-  find_package(Freetype REQUIRED)
-  find_package(glfw3 3.3 QUIET)
-  if(NOT glfw3_FOUND)
-    if(PkgConfig_FOUND)
-      pkg_check_modules(GLFW3 REQUIRED glfw3)
-      add_library(glfw INTERFACE)
-      target_include_directories(glfw INTERFACE ${GLFW3_INCLUDE_DIRS})
-      target_link_libraries(glfw INTERFACE ${GLFW3_LIBRARIES})
-    else()
-      message(FATAL_ERROR "glfw3 not found. Please install it, e.g., sudo apt install libglfw3-dev")
+
+  if(BUNDLE_LINUX_RUNTIMES)
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/freetype)
+
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/include/external/glfw)
+
+    target_link_libraries(${PROJECT_NAME}
+          Vulkan::Vulkan
+          glfw
+          freetype
+          fastgltf::fastgltf
+      )
+  else()
+    find_package(Freetype REQUIRED)
+    find_package(glfw3 3.3 QUIET)
+    if(NOT glfw3_FOUND)
+      if(PkgConfig_FOUND)
+        pkg_check_modules(GLFW3 REQUIRED glfw3)
+        add_library(glfw INTERFACE)
+        target_include_directories(glfw INTERFACE ${GLFW3_INCLUDE_DIRS})
+        target_link_libraries(glfw INTERFACE ${GLFW3_LIBRARIES})
+      else()
+        message(FATAL_ERROR "glfw3 not found. Please install it, e.g., sudo apt install libglfw3-dev")
+      endif()
     endif()
+
+    target_link_libraries(${PROJECT_NAME}
+          Vulkan::Vulkan
+          glfw
+          ${FREETYPE_LIBRARIES}
+          fastgltf::fastgltf
+      )
+    target_include_directories(${PROJECT_NAME} PRIVATE
+      ${FREETYPE_INCLUDE_DIRS}
+      $<IF:$<BOOL:${glfw3_FOUND}>,${glfw3_INCLUDE_DIRS},${GLFW3_INCLUDE_DIRS}>
+      )
   endif()
 
-  target_link_libraries(${PROJECT_NAME}
-        Vulkan::Vulkan
-        glfw
-        ${FREETYPE_LIBRARIES}
-        fastgltf::fastgltf
-    )
-  target_include_directories(${PROJECT_NAME} PRIVATE
-    ${FREETYPE_INCLUDE_DIRS}
-    $<IF:$<BOOL:${glfw3_FOUND}>,${glfw3_INCLUDE_DIRS},${GLFW3_INCLUDE_DIRS}>
-    )
   target_compile_definitions(${PROJECT_NAME} PRIVATE
         VULKAN_HPP_NO_EXCEPTIONS
+    )
+
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+        BUILD_RPATH "$ORIGIN;$ORIGIN/lib"
+        INSTALL_RPATH "$ORIGIN;$ORIGIN/lib"
     )
 endif()
 
@@ -749,6 +782,24 @@ if(IS_MACOS)
                 -DMOLTENVK_ICD_TEMPLATE="${_moltenvk_icd_generated}"
                 -P "${_macos_bundle_script}"
             COMMENT "Bundling macOS runtime dylibs and Vulkan ICD"
+        )
+  endif()
+endif()
+
+# Bundle Linux runtime shared libraries
+if(IS_LINUX)
+  if(BUNDLE_LINUX_RUNTIMES AND (CMAKE_CONFIGURATION_TYPES OR _is_single_config_release))
+    set(_linux_bundle_script "${CMAKE_BINARY_DIR}/cmake/linux_bundle_runtime.cmake")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cmake")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/linux_bundle_runtime.cmake.in" "${_linux_bundle_script}" @ONLY)
+
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DBUILD_CONFIG="$<CONFIG>"
+                -DAPP_PATH="$<TARGET_FILE:${PROJECT_NAME}>"
+                -DAPP_DIR="$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+                -P "${_linux_bundle_script}"
+            COMMENT "Bundling Linux runtime shared libraries"
         )
   endif()
 endif()

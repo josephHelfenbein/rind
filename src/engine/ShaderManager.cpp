@@ -1031,7 +1031,6 @@ void engine::ShaderManager::createDefaultShaders() {
                 .passInfo = particlePass,
                 .blendEnable = true,
                 .blendAdditive = true,
-                .colorAttachmentCount = 2,
                 .colorBlendOverrides = {
                     VkPipelineColorBlendAttachmentState{
                         .blendEnable = VK_TRUE,
@@ -1054,6 +1053,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         .colorWriteMask = VK_COLOR_COMPONENT_R_BIT
                     }
                 },
+                .colorAttachmentCount = 2,
                 .getVertexInputDescriptions = nullptr
             }
         };

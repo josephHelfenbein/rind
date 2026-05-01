@@ -1,0 +1,104 @@
+if(NOT DEFINED APP_PATH OR APP_PATH STREQUAL "" OR NOT EXISTS "${APP_PATH}")
+  message(FATAL_ERROR "APP_PATH is missing or does not exist: '${APP_PATH}'")
+endif()
+if(NOT DEFINED APP_DIR OR APP_DIR STREQUAL "")
+  message(FATAL_ERROR "APP_DIR was not provided")
+endif()
+
+if(DEFINED BUILD_CONFIG AND NOT BUILD_CONFIG STREQUAL "Release")
+  return()
+endif()
+
+set(APP_LIB_DIR "${APP_DIR}/lib")
+file(MAKE_DIRECTORY "${APP_LIB_DIR}")
+
+file(GET_RUNTIME_DEPENDENCIES
+  EXECUTABLES "${APP_PATH}"
+  RESOLVED_DEPENDENCIES_VAR RESOLVED_DEPS
+  UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED_DEPS
+  PRE_EXCLUDE_REGEXES
+    "^ld-linux.*"
+    "^libc\\.so.*"
+    "^libm\\.so.*"
+    "^libdl\\.so.*"
+    "^librt\\.so.*"
+    "^libpthread\\.so.*"
+    "^libresolv\\.so.*"
+    "^libGL\\.so.*"
+    "^libGLX\\.so.*"
+    "^libGLdispatch\\.so.*"
+    "^libEGL\\.so.*"
+    "^libvulkan\\.so.*"
+    "^libX11\\.so.*"
+    "^libX11-xcb\\.so.*"
+    "^libxcb\\.so.*"
+    "^libxcb-.*\\.so.*"
+    "^libXau\\.so.*"
+    "^libXdmcp\\.so.*"
+    "^libXext\\.so.*"
+    "^libXrandr\\.so.*"
+    "^libXinerama\\.so.*"
+    "^libXcursor\\.so.*"
+    "^libXi\\.so.*"
+    "^libXfixes\\.so.*"
+    "^libXrender\\.so.*"
+    "^libXxf86vm\\.so.*"
+    "^libxkbcommon\\.so.*"
+    "^libwayland-.*\\.so.*"
+    "^libdrm\\.so.*"
+    "^libasound\\.so.*"
+    "^libpulse\\.so.*"
+    "^libdbus-.*\\.so.*"
+  POST_EXCLUDE_REGEXES
+    "^/lib/"
+    "^/lib64/"
+    "^/usr/lib/"
+    "^/usr/lib64/"
+)
+
+if(UNRESOLVED_DEPS)
+  message(WARNING "Unresolved runtime dependencies for ${APP_PATH}: ${UNRESOLVED_DEPS}")
+endif()
+
+if(NOT RESOLVED_DEPS)
+  message(STATUS "No non-system runtime dependencies to bundle")
+  return()
+endif()
+
+find_program(PATCHELF_EXECUTABLE patchelf)
+
+foreach(_dep IN LISTS RESOLVED_DEPS)
+  get_filename_component(_dep_name "${_dep}" NAME)
+  if(NOT _dep_name STREQUAL "")
+    set(_dep_dst "${APP_LIB_DIR}/${_dep_name}")
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_dep}" "${_dep_dst}"
+      RESULT_VARIABLE _copy_result
+    )
+    if(_copy_result EQUAL 0)
+      message(STATUS "Bundled: ${_dep_name}")
+      if(PATCHELF_EXECUTABLE)
+        execute_process(
+          COMMAND "${PATCHELF_EXECUTABLE}" --set-rpath "$ORIGIN" "${_dep_dst}"
+          RESULT_VARIABLE _rpath_result
+          OUTPUT_QUIET
+          ERROR_QUIET
+        )
+      endif()
+    endif()
+  endif()
+endforeach()
+
+if(PATCHELF_EXECUTABLE)
+  execute_process(
+    COMMAND "${PATCHELF_EXECUTABLE}" --set-rpath "$ORIGIN:$ORIGIN/lib" "${APP_PATH}"
+    RESULT_VARIABLE _rpath_result
+    OUTPUT_QUIET
+    ERROR_QUIET
+  )
+  if(NOT _rpath_result EQUAL 0)
+    message(WARNING "Failed to set RPATH on ${APP_PATH} via patchelf")
+  endif()
+else()
+  message(WARNING "patchelf not found; RPATH was set at link time via CMake but bundled libraries may not have correct RPATH. Install patchelf for best results.")
+endif()
