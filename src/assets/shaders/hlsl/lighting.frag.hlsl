@@ -84,6 +84,43 @@ float3 reconstructPosition(float2 uv, float depth) {
     return worldPos.xyz;
 }
 
+float linearViewZ(float ndcZ) {
+    float4 v = mul(float4(0.0, 0.0, ndcZ, 1.0), pc.invProj);
+    return v.z / v.w;
+}
+
+float4 sampleVolumetricUpsampled(float2 uv, float refNdcDepth) {
+    uint2 vDim;
+    volumetricTexture.GetDimensions(vDim.x, vDim.y);
+    float2 halfSize = float2(vDim);
+    float2 invHalf = 1.0 / halfSize;
+    int2 center = int2(floor(uv * halfSize));
+    int2 maxIdx = int2(vDim) - 1;
+
+    float refViewZ = linearViewZ(refNdcDepth);
+    float invRef = 1.0 / max(abs(refViewZ), 0.01);
+
+    float4 accum = float4(0.0, 0.0, 0.0, 0.0);
+    float totalW = 0.0;
+    [unroll]
+    for (int dy = -1; dy <= 1; ++dy) {
+        [unroll]
+        for (int dx = -1; dx <= 1; ++dx) {
+            int2 p = clamp(center + int2(dx, dy), int2(0, 0), maxIdx);
+            float2 tapUV = (float2(p) + 0.5) * invHalf;
+            float tapNdc = gBufferDepth.SampleLevel(sampleSampler, tapUV, 0);
+            float relDiff = abs(linearViewZ(tapNdc) - refViewZ) * invRef;
+            float wd = exp(-relDiff * 50.0);
+            accum += volumetricTexture.Load(int3(p, 0)) * wd;
+            totalW += wd;
+        }
+    }
+    if (totalW < 1e-5) {
+        return volumetricTexture.SampleLevel(sampleSampler, uv, 0);
+    }
+    return accum / totalW;
+}
+
 float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness) {
     cosTheta = clamp(cosTheta, 0.0, 1.0);
     float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
@@ -195,7 +232,7 @@ float4 main(VSOutput input) : SV_Target {
     float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
     if (depth >= 0.9999) {
         float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
-        float4 volumetricColor = volumetricTexture.Sample(sampleSampler, input.fragTexCoord);
+        float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
         float3 result = albedoSample.rgb + particleColor.rgb * particleColor.a + volumetricColor.rgb;
         return float4(result, particleColor.a + volumetricColor.a);
     }
@@ -295,7 +332,7 @@ float4 main(VSOutput input) : SV_Target {
         Lo = albedoSample.rgb * 0.1;
     }
     float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
-    float4 volumetricColor = volumetricTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
     Lo += particleColor.rgb * particleColor.a + volumetricColor.rgb;
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, albedoSample.a));
     return float4(Lo, alphaOut);

@@ -198,12 +198,14 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
     VkExtent2D extent = renderer->getSwapChainExtent();
     VolumetricPC pushConstants = {
         .viewProj = camera->getViewProjectionMatrix(),
-        .camPos = camera->getWorldPosition()
+        .camPos = camera->getWorldPosition(),
+        .frameIndex = frameCounter
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VolumetricPC), &pushConstants);
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &cubeVertexBuffer, &offset);
     vkCmdDraw(commandBuffer, 36, static_cast<uint32_t>(visibleVolumetrics), 0, 0);
+    frameCounter++;
 }
 
 void engine::VolumetricManager::updateAll(float deltaTime) {

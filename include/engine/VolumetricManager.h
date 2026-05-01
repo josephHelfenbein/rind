@@ -100,6 +100,7 @@ namespace engine {
         uint32_t visibleVolumetrics = 0;
         uint32_t maxVolumetrics = 100;
         uint32_t hardCap = 5000;
+        uint32_t frameCounter = 0;
 
         VkBuffer cubeVertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory cubeVertexBufferMemory = VK_NULL_HANDLE;

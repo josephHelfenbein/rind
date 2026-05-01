@@ -26,7 +26,7 @@ struct VolumetricData {
 struct PushConstants {
     float4x4 viewProj;
     float3 camPos;
-    float pad;
+    uint frameIndex;
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -76,7 +76,7 @@ float sampleDensity(float3 localPos, float age, float ageFade, int fbmOctaves) {
     if (r2 >= 0.46) return 0.0;
     float radial = exp(-r2 * 12.0);
     float3 noiseCoord = localPos * 6.0 + float3(0.0, age * 0.4, age * 0.15);
-    float n = fbm(noiseCoord, fbmOctaves);
+    float n = max(fbm(noiseCoord, fbmOctaves) - 0.15, 0.0);
     return radial * n * ageFade;
 }
 
@@ -148,7 +148,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     float extinction = vol.color.w;
     float3 tint = vol.color.rgb;
     float4 accum = float4(0.0, 0.0, 0.0, 0.0);
-    float jitter = hash3(float3(fragCoord.xy, vol.age)) * baseStep;
+    float jitter = hash3(float3(fragCoord.xy, float(pc.frameIndex))) * baseStep * 0.5;
     float t = tNear + jitter;
     float stepSize = baseStep;
     float ageFade = input.ageFade;
