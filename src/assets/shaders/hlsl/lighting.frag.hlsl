@@ -40,9 +40,6 @@ ConstantBuffer<LightsUBO> lightsUBO;
 [[vk::binding(1)]]
 ConstantBuffer<IrradianceProbesUBO> irradianceProbesUBO;
 
-[[vk::binding(10)]]
-StructuredBuffer<ProbeSHData> irradianceProbeSH;
-
 [[vk::binding(2)]]
 Texture2D<float4> gBufferAlbedo;
 
@@ -65,7 +62,13 @@ Texture2D<float4> volumetricTexture;
 Texture2DArray<float> shadowTexture;
 
 [[vk::binding(9)]]
+Texture2D<float> aoTexture;
+
+[[vk::binding(10)]]
 SamplerState sampleSampler;
+
+[[vk::binding(11)]]
+StructuredBuffer<ProbeSHData> irradianceProbeSH;
 
 struct PushConstants {
     float4x4 invView;
@@ -230,10 +233,11 @@ float4 main(VSOutput input) : SV_Target {
     float metallic = materialSample.r;
     float baseRoughness = materialSample.g;
     float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
+    float ao = aoTexture.Sample(sampleSampler, input.fragTexCoord);
     if (depth >= 0.9999) {
         float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
         float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
-        float3 result = albedoSample.rgb + particleColor.rgb * particleColor.a + volumetricColor.rgb;
+        float3 result = albedoSample.rgb * ao + particleColor.rgb * particleColor.a + volumetricColor.rgb;
         return float4(result, particleColor.a + volumetricColor.a);
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
@@ -331,6 +335,7 @@ float4 main(VSOutput input) : SV_Target {
     if (any(isnan(Lo)) || any(isinf(Lo))) {
         Lo = albedoSample.rgb * 0.1;
     }
+    Lo *= ao;
     float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
     float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
     Lo += particleColor.rgb * particleColor.a + volumetricColor.rgb;

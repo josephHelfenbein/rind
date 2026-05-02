@@ -148,7 +148,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     float extinction = vol.color.w;
     float3 tint = vol.color.rgb;
     float4 accum = float4(0.0, 0.0, 0.0, 0.0);
-    float jitter = hash3(float3(fragCoord.xy, float(pc.frameIndex))) * baseStep * 0.5;
+    float jitter = hash3(fragCoord.xyz) * baseStep;
     float t = tNear + jitter;
     float stepSize = baseStep;
     float ageFade = input.ageFade;
@@ -178,7 +178,8 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
         float emission = density * extinction * stepSize * HDR_SCALE;
         accum.rgb += transmittance * emission * tint;
         accum.a += alphaContrib;
-        t += stepSize;
+        jitter = hash3(float3(fragCoord.xy, fragCoord.z + steps)) * baseStep;
+        t += stepSize + jitter;
     }
 
     if (accum.a < 0.00001) discard;

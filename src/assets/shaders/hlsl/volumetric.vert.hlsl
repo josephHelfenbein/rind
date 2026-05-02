@@ -50,7 +50,7 @@ VSOutput main(float3 localPos : POSITION, uint instanceID : SV_InstanceID) {
     output.instanceID = instanceID;
     output.maxSteps = (uint) lerp(32.0, 8.0, lodT);
     output.baseDivs = lerp(24.0, 6.0, lodT);
-    output.fbmOctaves = (uint) lerp(3.0, 2.0, lodT);
+    output.fbmOctaves = (uint) lerp(4.0, 2.0, lodT);
     output.doRefinement = lodT < 0.5 ? 1u : 0u;
     output.ageFade = x * x * (1.0 + 0.2 * x);
     return output;

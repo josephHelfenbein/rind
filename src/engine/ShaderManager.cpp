@@ -1512,16 +1512,17 @@ void engine::ShaderManager::createDefaultShaders() {
             .fragment = { shaderPath("lighting.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 2,
-                .fragmentBitBindings = 9,
+                .fragmentBitBindings = 10,
                 .vertexDescriptorCounts = { 1, 1 },
                 .vertexDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                 },
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1, 1, 1, 1, 1
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1557,7 +1558,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 },
                 .inputBindings = {
                     {
-                        .binding = 10,
+                        .binding = 11,
                         .bufferProvider = [](Renderer* renderer, size_t i) -> VkDescriptorBufferInfo {
                             IrradianceManager* irradianceManager = renderer->getIrradianceManager();
                             if (!irradianceManager) {
@@ -1610,7 +1611,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     { 5, "gbuffer", "Depth" },
                     { 6, "particle", "ParticleColor" },
                     { 7, "volumetric", "VolumetricColor" },
-                    { 8, "shadowimageblurv", "ShadowImageBlurVColor" }
+                    { 8, "shadowimageblurv", "ShadowImageBlurVColor" },
+                    { 9, "ao", "AOColor" }
                 }
             }
         };
@@ -1860,12 +1862,11 @@ void engine::ShaderManager::createDefaultShaders() {
             .fragment = { shaderPath("combine.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 5,
+                .fragmentBitBindings = 4,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1, 1
+                    1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
-                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1885,8 +1886,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { 1, "ssr", "SceneColor" },
-                    { 2, "ao", "AOColor" },
-                    { 3, "bloomup1", "BloomUp1Color" }
+                    { 2, "bloomup1", "BloomUp1Color" }
                 }
             }
         };
@@ -2280,11 +2280,21 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         },
         {
+            .name = "ao",
+            .is2D = true,
+            .passInfo = aoPass.get(),
+            .shaderNames = { "ao" },
+            .dependsOnNodeNames = { "gbuffer" },
+            .lane = generalGraphicsLane,
+            .usesRendering = false,
+            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        },
+        {
             .name = "lighting",
             .is2D = true,
             .passInfo = lightingPass.get(),
             .shaderNames = { "lighting" },
-            .dependsOnNodeNames = { "irradiance_dynamic_sh_reduce", "shadow_blur_v", "volumetric", "particle" },
+            .dependsOnNodeNames = { "irradiance_dynamic_sh_reduce", "shadow_blur_v", "volumetric", "particle", "ao" },
             .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
                 auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
@@ -2309,16 +2319,6 @@ void engine::ShaderManager::createDefaultShaders() {
             .skipCondition = [](Renderer* renderer) {
                 return !renderer->getSettingsManager()->getSettings()->ssrEnabled;
             }
-        },
-        {
-            .name = "ao",
-            .is2D = true,
-            .passInfo = aoPass.get(),
-            .shaderNames = { "ao" },
-            .dependsOnNodeNames = { "gbuffer" },
-            .lane = generalGraphicsLane,
-            .usesRendering = false,
-            .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         },
         {
             .name = "bloom",
@@ -2373,7 +2373,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .is2D = true,
             .passInfo = combinePass.get(),
             .shaderNames = { "combine" },
-            .dependsOnNodeNames = { "lighting", "ssr", "ao", "bloom_up1" },
+            .dependsOnNodeNames = { "lighting", "ssr", "bloom_up1" },
             .lane = generalGraphicsLane,
         },
         {
