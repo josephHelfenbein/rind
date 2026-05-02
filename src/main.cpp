@@ -1,8 +1,12 @@
 #include <rind/GameInstance.h>
 
+#include <exception>
+#include <iostream>
+
 #if defined(__APPLE__)
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <string>
@@ -47,7 +51,18 @@ int main() {
   configureBundledVulkanIcd();
 #endif
 
-  rind::GameInstance game;
-  game.run();
+  try {
+    rind::GameInstance game;
+    game.run();
+  } catch (const std::exception& e) {
+    std::cerr << "Fatal error: " << e.what() << "\n";
+#if defined(__APPLE__)
+    if (const char* home = std::getenv("HOME")) {
+      std::ofstream log(std::string(home) + "/Library/Logs/Rind.log", std::ios::app);
+      if (log) log << "Fatal error: " << e.what() << "\n";
+    }
+#endif
+    return 1;
+  }
   return 0;
 }

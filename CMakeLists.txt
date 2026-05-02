@@ -787,11 +787,23 @@ if(IS_LINUX)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cmake")
     configure_file("${CMAKE_SOURCE_DIR}/cmake/linux_bundle_runtime.cmake.in" "${_linux_bundle_script}" @ONLY)
 
+    set(_linux_extra_libs "")
+    if(OpenMP_CXX_FOUND)
+      foreach(_dir IN LISTS CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES)
+        if(EXISTS "${_dir}/libgomp.so.1")
+          list(APPEND _linux_extra_libs "${_dir}/libgomp.so.1")
+          break()
+        endif()
+      endforeach()
+    endif()
+    string(REPLACE ";" "|" _linux_extra_libs_pipe "${_linux_extra_libs}")
+
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND}
                 -DBUILD_CONFIG="$<CONFIG>"
                 -DAPP_PATH="$<TARGET_FILE:${PROJECT_NAME}>"
                 -DAPP_DIR="$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+                -DEXTRA_LIBS_PIPE="${_linux_extra_libs_pipe}"
                 -P "${_linux_bundle_script}"
             COMMENT "Bundling Linux runtime shared libraries"
         )

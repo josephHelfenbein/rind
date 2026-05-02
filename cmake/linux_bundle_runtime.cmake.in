@@ -60,14 +60,26 @@ if(UNRESOLVED_DEPS)
   message(WARNING "Unresolved runtime dependencies for ${APP_PATH}: ${UNRESOLVED_DEPS}")
 endif()
 
-if(NOT RESOLVED_DEPS)
+set(EXTRA_LIBS "")
+if(DEFINED EXTRA_LIBS_PIPE AND NOT EXTRA_LIBS_PIPE STREQUAL "")
+  string(REPLACE "|" ";" EXTRA_LIBS "${EXTRA_LIBS_PIPE}")
+endif()
+
+set(ALL_DEPS ${RESOLVED_DEPS})
+foreach(_lib IN LISTS EXTRA_LIBS)
+  if(EXISTS "${_lib}")
+    list(APPEND ALL_DEPS "${_lib}")
+  endif()
+endforeach()
+
+if(NOT ALL_DEPS)
   message(STATUS "No non-system runtime dependencies to bundle")
   return()
 endif()
 
 find_program(PATCHELF_EXECUTABLE patchelf)
 
-foreach(_dep IN LISTS RESOLVED_DEPS)
+foreach(_dep IN LISTS ALL_DEPS)
   get_filename_component(_dep_name "${_dep}" NAME)
   if(NOT _dep_name STREQUAL "")
     set(_dep_dst "${APP_LIB_DIR}/${_dep_name}")

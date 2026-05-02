@@ -3778,7 +3778,9 @@ int engine::Renderer::rateDeviceSuitability(VkPhysicalDevice device) {
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
     vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-    if (deviceProperties.apiVersion < VK_API_VERSION_1_3) {
+    const bool hasDynamicRenderingCore = deviceProperties.apiVersion >= VK_API_VERSION_1_3;
+    const bool hasDynamicRenderingExt  = hasDeviceExtension(device, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+    if (!hasDynamicRenderingCore && !hasDynamicRenderingExt) {
         return 0;
     }
     if (!deviceFeatures.samplerAnisotropy || !deviceFeatures.fragmentStoresAndAtomics ||

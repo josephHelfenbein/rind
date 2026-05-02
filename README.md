@@ -201,6 +201,50 @@ The executable will be located in the `bin` directory (or `bin/Release` on Windo
 ./bin/Rind
 ```
 
+## Packaging
+
+After a successful Release build, run the packaging script to produce a platform-native distributable:
+
+```bash
+cmake -P cmake/package.cmake
+```
+
+Output is written to a `dist/` folder in the project root. An optional version string can be passed:
+
+```bash
+cmake -DVERSION=1.2.0 -P cmake/package.cmake
+```
+
+The script auto-detects the OS it is running on and packages accordingly.
+
+| Platform | Output |
+|----------|--------|
+| macOS    | `dist/Rind.app` |
+| Linux    | `dist/Rind-<version>.AppImage` |
+| Windows  | `dist/Rind-<version>-windows/` folder + `.zip` |
+
+### macOS
+
+No extra tools required. The `.app` bundle includes the bundled dylibs and Vulkan ICD and can be double-clicked or distributed as-is. Optionally place a `cmake/Rind.icns` file to embed an icon.
+
+### Linux
+
+Requires `appimagetool` on PATH. Download the latest release from [AppImageKit](https://github.com/AppImage/appimagetool/releases/tag/continuous):
+
+```bash
+chmod +x appimagetool-x86_64.AppImage
+sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
+```
+
+Optionally place a 256×256 PNG at `cmake/rind.png` to embed an icon.
+
+### Windows
+
+No extra tools required. A `.zip` of the distributable folder is created automatically using CMake's built-in archive support.
+
+---
+
 ## Notes
 - Shaders are automatically compiled from HLSL to SPIR-V using `dxc` during the build process.
 - Assets are expected to be in `src/assets`.
+- Vulkan 1.3 with Dynamic Rendering support is required. GPUs that only support Vulkan 1.1 or 1.2 will not run the application.
