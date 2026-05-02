@@ -21,7 +21,8 @@ namespace engine {
             uint32_t aaMode = 1; // 0 = none, 1 = FXAA, 2 = SMAA
             uint32_t screenMode = 0; // 0 = windowed, 1 = borderless, 2 = fullscreen
             float fpsLimit = 14.0f;
-            float shadowQuality = 2.0f; // 0=256 1 sample, 1=512 2 samples, 2=1024 4 samples, 3=1024 8 samples
+            float shadowQuality = 2.0f; // 0=256 1 sample, 1=512 2 samples, 2=1024 4 samples, 3=2048 8 samples
+            float volumetricQuality = 2.0f; // 0 = very low, 1 = low, 2 = medium, 3 = high
             float sensitivity = 0.003f;
             float masterVolume = 1.0f;
             bool ssrEnabled = true;
@@ -442,7 +443,8 @@ namespace engine {
                         renderer->requestShadowMapRecreation();
                     }
                 }
-            }
+            },
+            { SettingsDefinition::Slider, "Volumetric Quality", "volumetricQuality", nullptr, nullptr, {}, &Settings::volumetricQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "" },
         };
 
         static std::filesystem::path getConfigFilePath(const std::string& location) {

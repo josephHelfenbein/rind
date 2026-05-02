@@ -8,6 +8,8 @@ struct VSOutput {
     [[vk::location(4)]] nointerpolation uint fbmOctaves : TEXCOORD4;
     [[vk::location(5)]] nointerpolation uint doRefinement : TEXCOORD5;
     [[vk::location(6)]] nointerpolation float ageFade : TEXCOORD6;
+    [[vk::location(7)]] nointerpolation float earlyExitAlpha : TEXCOORD7;
+    [[vk::location(8)]] nointerpolation uint doRejitter : TEXCOORD8;
 };
 
 struct VolumetricData {
@@ -26,7 +28,7 @@ struct VolumetricData {
 struct PushConstants {
     float4x4 viewProj;
     float3 camPos;
-    uint frameIndex;
+    float quality; // 0 = very low, 1 = low, 2 = medium, 3 = high
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -137,10 +139,23 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
         }
     }
 
+    float sphA = dot(localDir, localDir);
+    float sphB = dot(localOrigin, localDir);
+    float sphC = dot(localOrigin, localOrigin) - 0.46;
+    float sphDisc = sphB * sphB - sphA * sphC;
+    if (sphDisc < 0.0) discard;
+    float sqrtDisc = sqrt(sphDisc);
+    tNear = max(tNear, (-sphB - sqrtDisc) / sphA);
+    tFar  = min(tFar,  (-sphB + sqrtDisc) / sphA);
+    if (tFar <= tNear) discard;
+
     int maxSteps = max(1, (int) input.maxSteps);
     float baseDivs = max(input.baseDivs, 1.0);
     int fbmOctaves = max(1, (int) input.fbmOctaves);
     bool doRefinement = (input.doRefinement != 0u);
+    bool doRejitter = (input.doRejitter != 0u);
+    float earlyExitAlpha = input.earlyExitAlpha;
+    float threshold = lerp(0.03, THRESHOLD, pc.quality / 3.0);
 
     float totalLen = tFar - tNear;
     float baseStep = totalLen / baseDivs;
@@ -148,8 +163,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     float extinction = vol.color.w;
     float3 tint = vol.color.rgb;
     float4 accum = float4(0.0, 0.0, 0.0, 0.0);
-    float jitter = hash3(fragCoord.xyz) * baseStep;
-    float t = tNear + jitter;
+    float t = tNear + hash3(fragCoord.xyz) * baseStep;
     float stepSize = baseStep;
     float ageFade = input.ageFade;
     int steps = 0;
@@ -157,10 +171,10 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     [loop]
     while (t < tFar && steps < maxSteps) {
         steps++;
-        if (accum.a >= 0.99) break;
+        if (accum.a >= earlyExitAlpha) break;
         float3 localMid = localOrigin + (t + stepSize * 0.5) * localDir;
         float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves);
-        if (density <= THRESHOLD) {
+        if (density <= threshold) {
             stepSize = min(stepSize * 1.5, maxStep);
             t += stepSize;
             continue;
@@ -175,11 +189,14 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
         float transmittance = 1.0 - accum.a;
         float opticalDepth = density * extinction * stepSize;
         float alphaContrib = (1.0 - exp(-opticalDepth)) * transmittance;
-        float emission = density * extinction * stepSize * HDR_SCALE;
+        float emission = opticalDepth * HDR_SCALE;
         accum.rgb += transmittance * emission * tint;
         accum.a += alphaContrib;
-        jitter = hash3(float3(fragCoord.xy, fragCoord.z + steps)) * baseStep;
-        t += stepSize + jitter;
+        if (doRejitter) {
+            t += stepSize + hash3(float3(fragCoord.xy, fragCoord.z + steps)) * baseStep;
+        } else {
+            t += stepSize;
+        }
     }
 
     if (accum.a < 0.00001) discard;

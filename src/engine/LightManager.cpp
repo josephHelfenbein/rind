@@ -71,8 +71,8 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
         destroyShadowResources(renderer->getDevice());
     }
     float settingsValue = renderer->getSettingsManager()->getSettings()->shadowQuality;
-     // 512, 1024, 2048, 2048
-    shadowMapSize = static_cast<uint32_t>(pow(2, 9 + std::min(static_cast<int>(settingsValue), 2)));
+     // 256, 512, 1024, 2048
+    shadowMapSize = static_cast<uint32_t>(pow(2, 8 + std::min(static_cast<int>(settingsValue), 3)));
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
 
     const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());

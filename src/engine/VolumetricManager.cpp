@@ -1,5 +1,6 @@
 #include <engine/VolumetricManager.h>
 #include <engine/ShaderManager.h>
+#include <engine/SettingsManager.h>
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
 
@@ -199,7 +200,7 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
     VolumetricPC pushConstants = {
         .viewProj = camera->getViewProjectionMatrix(),
         .camPos = camera->getWorldPosition(),
-        .frameIndex = frameCounter
+        .quality = renderer->getSettingsManager()->getSettings()->volumetricQuality
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VolumetricPC), &pushConstants);
     VkDeviceSize offset = 0;

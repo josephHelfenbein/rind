@@ -119,7 +119,7 @@ namespace engine {
     struct VolumetricPC {
         glm::mat4 viewProj;
         glm::vec3 camPos;
-        uint32_t frameIndex;
+        float quality; // 0 = very low, 1 = low, 2 = medium, 3 = high
     };
 
     struct CompositePC {
