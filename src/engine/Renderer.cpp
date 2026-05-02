@@ -1641,6 +1641,15 @@ void engine::Renderer::pickPhysicalDevice() {
     if (candidates.rbegin()->first > 0) {
         physicalDevice = candidates.rbegin()->second;
     } else {
+        std::cerr << "No suitable GPU found. Detected devices:\n";
+        for (const auto& device : devices) {
+            VkPhysicalDeviceProperties props;
+            vkGetPhysicalDeviceProperties(device, &props);
+            uint32_t v = props.apiVersion;
+            std::cerr << "  " << props.deviceName
+                      << " (Vulkan " << VK_VERSION_MAJOR(v) << "." << VK_VERSION_MINOR(v) << "." << VK_VERSION_PATCH(v)
+                      << ") -- score: " << rateDeviceSuitability(device) << "\n";
+        }
         throw std::runtime_error("Failed to find a suitable GPU!");
     }
 }
@@ -1679,8 +1688,7 @@ void engine::Renderer::createLogicalDevice() {
     };
     VkPhysicalDeviceVulkan12Features vulkan12Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &vulkan13Features,
-        .shaderFloat16 = VK_TRUE
+        .pNext = &vulkan13Features
     };
     VkPhysicalDeviceVulkan11Features vulkan11Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
@@ -1691,9 +1699,6 @@ void engine::Renderer::createLogicalDevice() {
         .pNext = &vulkan11Features
     };
     vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
-    if (vulkan12Features.shaderFloat16 != VK_TRUE) {
-        std::cout << "Warning: shaderFloat16 is not supported; f16 compute shaders may fail to create.\n";
-    }
     if (vulkan11Features.multiview != VK_TRUE) {
         throw std::runtime_error("Device does not support multiview, which is required for shadow rendering.");
     }
@@ -1706,8 +1711,7 @@ void engine::Renderer::createLogicalDevice() {
     VkPhysicalDeviceVulkan13Features enabledVulkan13Features = vulkan13Features;
     VkPhysicalDeviceVulkan12Features enabledVulkan12Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &enabledVulkan13Features,
-        .shaderFloat16 = vulkan12Features.shaderFloat16
+        .pNext = &enabledVulkan13Features
     };
     VkPhysicalDeviceVulkan11Features enabledVulkan11Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
@@ -3774,6 +3778,13 @@ int engine::Renderer::rateDeviceSuitability(VkPhysicalDevice device) {
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
     vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+    if (deviceProperties.apiVersion < VK_API_VERSION_1_3) {
+        return 0;
+    }
+    if (!deviceFeatures.samplerAnisotropy || !deviceFeatures.fragmentStoresAndAtomics ||
+        !deviceFeatures.shaderStorageImageReadWithoutFormat || !deviceFeatures.shaderStorageImageWriteWithoutFormat) {
+        return 0;
+    }
     int score = 0;
     if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
         score += 1000;
