@@ -35,6 +35,10 @@ namespace engine {
 
         void setAspectRatio(float aspectRatio) {
             this->aspectRatio = aspectRatio;
+            cachedProj = glm::perspective(glm::radians(fovY), aspectRatio, nearPlane, farPlane);
+            cachedProj[1][1] *= -1.0f;
+            cachedInvProj = glm::inverse(cachedProj);
+            cachedViewProj = cachedProj * cachedView;
         }
         float getFovY() const { return fovY; }
         float getAspectRatio() const { return aspectRatio; }

@@ -1860,7 +1860,6 @@ void engine::Renderer::recreateSwapChain() {
         glfwWaitEvents();
     }
     vkDeviceWaitIdle(device);
-    VkSwapchainKHR oldSwapchain = swapChain;
     for (VkImageView view : swapChainImageViews) {
         if (view != VK_NULL_HANDLE) {
             vkDestroyImageView(device, view, nullptr);
@@ -1868,15 +1867,17 @@ void engine::Renderer::recreateSwapChain() {
     }
     swapChainImageViews.clear();
 
-    createSwapChain(oldSwapchain);
-    if (oldSwapchain != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+    destroyAttachmentResources();
+
+    if (swapChain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+        swapChain = VK_NULL_HANDLE;
     }
+
+    createSwapChain(VK_NULL_HANDLE);
 
     createImageViews();
     createAttachmentResources();
-    ensureFallback2DTexture();
-    ensureFallbackShadowCubeTexture();
     createPostProcessDescriptorSets();
     if (entityManager && entityManager->getCamera()) {
         float newAspect = static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
@@ -2011,7 +2012,7 @@ void engine::Renderer::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
-std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
+VkResult engine::Renderer::tryCreateImage(
     uint32_t width,
     uint32_t height,
     uint32_t mipLevels,
@@ -2021,8 +2022,12 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
     VkImageUsageFlags usage,
     VkMemoryPropertyFlags properties,
     uint32_t arrayLayers,
-    VkImageCreateFlags flags
+    VkImageCreateFlags flags,
+    VkImage& outImage,
+    VkDeviceMemory& outMemory
 ) {
+    outImage = VK_NULL_HANDLE;
+    outMemory = VK_NULL_HANDLE;
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {
         indices.graphicsFamily.value(),
@@ -2049,9 +2054,10 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
         .pQueueFamilyIndices = shareAcrossQueues ? queueFamilyIndices : nullptr,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
     };
-    VkImage image;
-    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create image!");
+    VkImage image = VK_NULL_HANDLE;
+    VkResult result = vkCreateImage(device, &imageInfo, nullptr, &image);
+    if (result != VK_SUCCESS) {
+        return result;
     }
     VkMemoryRequirements memRequirements;
     vkGetImageMemoryRequirements(device, image, &memRequirements);
@@ -2060,12 +2066,44 @@ std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
         .allocationSize = memRequirements.size,
         .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)
     };
-    VkDeviceMemory imageMemory;
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to allocate image memory!");
+    VkDeviceMemory imageMemory = VK_NULL_HANDLE;
+    result = vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory);
+    if (result != VK_SUCCESS) {
+        vkDestroyImage(device, image, nullptr);
+        return result;
     }
     vkBindImageMemory(device, image, imageMemory, 0);
-    return std::make_pair(image, imageMemory);
+    outImage = image;
+    outMemory = imageMemory;
+    return VK_SUCCESS;
+}
+
+std::pair<VkImage, VkDeviceMemory> engine::Renderer::createImage(
+    uint32_t width,
+    uint32_t height,
+    uint32_t mipLevels,
+    VkSampleCountFlagBits samples,
+    VkFormat format,
+    VkImageTiling tiling,
+    VkImageUsageFlags usage,
+    VkMemoryPropertyFlags properties,
+    uint32_t arrayLayers,
+    VkImageCreateFlags flags
+) {
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkResult result = tryCreateImage(
+        width, height, mipLevels, samples, format, tiling,
+        usage, properties, arrayLayers, flags, image, memory
+    );
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error(
+            result == VK_ERROR_OUT_OF_DEVICE_MEMORY || result == VK_ERROR_OUT_OF_HOST_MEMORY
+                ? "Out of memory while creating image!"
+                : "Failed to create image!"
+        );
+    }
+    return std::make_pair(image, memory);
 }
 
 std::pair<VkBuffer, VkDeviceMemory> engine::Renderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
@@ -2621,27 +2659,47 @@ VkSampler engine::Renderer::createTextureSampler(
     return textureSampler;
 }
 
-void engine::Renderer::createAttachmentResources() {
+void engine::Renderer::destroyAttachmentResources() {
+    std::unordered_set<PassInfo*> processedPasses;
     auto destroyPassResources = [this](PassInfo& pass) {
-        if (pass.images.has_value()) {
-            for (auto& image : pass.images.value()) {
-                if (image.imageView != VK_NULL_HANDLE) {
-                    vkDestroyImageView(device, image.imageView, nullptr);
-                    image.imageView = VK_NULL_HANDLE;
-                }
-                if (image.image != VK_NULL_HANDLE) {
-                    vkDestroyImage(device, image.image, nullptr);
-                    image.image = VK_NULL_HANDLE;
-                }
-                if (image.memory != VK_NULL_HANDLE) {
-                    vkFreeMemory(device, image.memory, nullptr);
-                    image.memory = VK_NULL_HANDLE;
-                }
-                image.allocatedWidth = 0;
-                image.allocatedHeight = 0;
+        if (!pass.images.has_value()) return;
+        for (auto& image : pass.images.value()) {
+            if (image.imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, image.imageView, nullptr);
+                image.imageView = VK_NULL_HANDLE;
             }
+            if (image.image != VK_NULL_HANDLE) {
+                vkDestroyImage(device, image.image, nullptr);
+                image.image = VK_NULL_HANDLE;
+            }
+            if (image.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(device, image.memory, nullptr);
+                image.memory = VK_NULL_HANDLE;
+            }
+            image.allocatedWidth = 0;
+            image.allocatedHeight = 0;
         }
+        pass.colorAttachments.clear();
+        pass.depthAttachment.reset();
     };
+    for (const auto& renderPassPtr : managedRenderPasses) {
+        if (!renderPassPtr) continue;
+        PassInfo* rawPtr = renderPassPtr.get();
+        if (!processedPasses.insert(rawPtr).second) continue;
+        destroyPassResources(*rawPtr);
+    }
+    if (shaderManager) {
+        const auto& passes = shaderManager->getRenderPasses();
+        for (const auto& renderPassPtr : passes) {
+            if (!renderPassPtr) continue;
+            PassInfo* rawPtr = renderPassPtr.get();
+            if (!processedPasses.insert(rawPtr).second) continue;
+            destroyPassResources(*rawPtr);
+        }
+    }
+}
+
+void engine::Renderer::createAttachmentResources() {
     const auto& passes = shaderManager->getRenderPasses();
     managedRenderPasses.clear();
     managedRenderPasses.reserve(passes.size());
@@ -2656,8 +2714,7 @@ void engine::Renderer::createAttachmentResources() {
         }
         managedRenderPasses.push_back(renderPassPtr);
         auto& renderPass = *renderPassPtr;
-        destroyPassResources(renderPass);
-        
+
         renderPass.colorAttachments.clear();
         renderPass.depthAttachment.reset();
         
@@ -2678,23 +2735,37 @@ void engine::Renderer::createAttachmentResources() {
         auto& images = renderPass.images.value();
         renderPass.colorAttachments.reserve(images.size());
         for (auto& image : images) {
-            const uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
-            const uint32_t width = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
-            const uint32_t height = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
-            VkImage createdImage;
-            VkDeviceMemory createdMemory;
-            std::tie(createdImage, createdMemory) = createImage(
-                width,
-                height,
-                image.mipLevels,
-                image.samples,
-                image.format,
-                image.tiling,
-                image.usage,
-                image.properties,
-                image.arrayLayers,
-                image.flags
+            const bool sizeFromSwapchain = image.width == 0 || image.height == 0;
+            uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
+            uint32_t width = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
+            uint32_t height = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
+            VkImage createdImage = VK_NULL_HANDLE;
+            VkDeviceMemory createdMemory = VK_NULL_HANDLE;
+            VkResult allocResult = tryCreateImage(
+                width, height, image.mipLevels, image.samples, image.format,
+                image.tiling, image.usage, image.properties, image.arrayLayers,
+                image.flags, createdImage, createdMemory
             );
+            while (allocResult == VK_ERROR_OUT_OF_DEVICE_MEMORY && sizeFromSwapchain
+                   && (width > 1 || height > 1) && divider < 16) {
+                divider *= 2;
+                uint32_t newWidth = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
+                uint32_t newHeight = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
+                if (newWidth == width && newHeight == height) break;
+                width = newWidth;
+                height = newHeight;
+                std::cerr << "Out of VRAM allocating attachment; retrying at "
+                          << width << "x" << height << " (divider " << divider << ")" << std::endl;
+                allocResult = tryCreateImage(
+                    width, height, image.mipLevels, image.samples, image.format,
+                    image.tiling, image.usage, image.properties, image.arrayLayers,
+                    image.flags, createdImage, createdMemory
+                );
+            }
+            if (allocResult != VK_SUCCESS) {
+                throw std::runtime_error("Failed to allocate render attachment after VRAM-fallback retries");
+            }
+            image.resolutionDivider = divider;
             image.image = createdImage;
             image.memory = createdMemory;
             image.currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;

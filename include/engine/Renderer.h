@@ -72,6 +72,20 @@ namespace engine {
             uint32_t arrayLayers,
             VkImageCreateFlags flags = 0
         );
+        VkResult tryCreateImage(
+            uint32_t width,
+            uint32_t height,
+            uint32_t mipLevels,
+            VkSampleCountFlagBits samples,
+            VkFormat format,
+            VkImageTiling tiling,
+            VkImageUsageFlags usage,
+            VkMemoryPropertyFlags properties,
+            uint32_t arrayLayers,
+            VkImageCreateFlags flags,
+            VkImage& outImage,
+            VkDeviceMemory& outMemory
+        );
         VkImageView createImageView(
             VkImage image,
             VkFormat format,
@@ -328,6 +342,7 @@ namespace engine {
         void createSwapChain(VkSwapchainKHR oldSwapchain);
         void createImageViews();
         void createAttachmentResources();
+        void destroyAttachmentResources();
         void createCommandPool();
         void createMainTextureSampler();
         void createNearestSampler();
