@@ -24,6 +24,7 @@ rind::SlowBullet::SlowBullet(
         collider->setIsDynamic(true);
         addChild(collider);
         particleManager = entityManager->getRenderer()->getParticleManager();
+        volumetricManager = entityManager->getRenderer()->getVolumetricManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
     }
 
@@ -70,6 +71,31 @@ void rind::SlowBullet::update(float deltaTime) {
         } else {
             audioManager->playSound3D("laser_ground_impact", hitPoint, 0.5f, 0.2F);
         }
+        volumetricManager->createVolumetric(
+            glm::scale(
+                getWorldTransform(),
+                glm::vec3(0.5f)
+            ),
+            glm::scale(
+                getWorldTransform(),
+                glm::vec3(5.0f)
+            ),
+            glm::vec4(glm::min(color + glm::vec3(0.2f), glm::vec3(1.0f)), 2.0f),
+            0.75f,
+            6.0f
+        );
+        volumetricManager->createVolumetric(
+            glm::scale(
+                getWorldTransform(),
+                glm::vec3(0.5f)
+            ),
+            glm::scale(
+                getWorldTransform(),
+                glm::vec3(6.0f)
+            ),
+            glm::vec4(0.1f, 0.1f, 0.1f, 0.6f),
+            3.0f
+        );
         particleManager->burstParticles(
             hitPoint,
             color,

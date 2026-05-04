@@ -74,6 +74,7 @@ struct PushConstants {
     float4x4 invView;
     float4x4 invProj;
     float3 camPos;
+    uint volumetricUpsample;
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -93,6 +94,9 @@ float linearViewZ(float ndcZ) {
 }
 
 float4 sampleVolumetricUpsampled(float2 uv, float refNdcDepth) {
+    if (pc.volumetricUpsample == 0u) {
+        return volumetricTexture.SampleLevel(sampleSampler, uv, 0);
+    }
     uint2 vDim;
     volumetricTexture.GetDimensions(vDim.x, vDim.y);
     float2 halfSize = float2(vDim);

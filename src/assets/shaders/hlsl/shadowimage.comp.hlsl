@@ -59,25 +59,6 @@ static const float2 diskOffsets[16] = {
     float2( 0.1438316, -0.1410079)
 };
 
-static const float4 randomTurns[16] = {
-    float4( 0.9916, -0.1296,  0.1296,  0.9916),
-    float4( 0.7518, -0.6594,  0.6594,  0.7518),
-    float4( 0.1601, -0.9871,  0.9871,  0.1601),
-    float4(-0.4611, -0.8873,  0.8873, -0.4611),
-    float4(-0.9165, -0.4000,  0.4000, -0.9165),
-    float4(-0.9737,  0.2279, -0.2279, -0.9737),
-    float4(-0.5830,  0.8125, -0.8125, -0.5830),
-    float4( 0.1680,  0.9858, -0.9858,  0.1680),
-    float4( 0.6663,  0.7457, -0.7457,  0.6663),
-    float4( 0.8727, -0.4882,  0.4882,  0.8727),
-    float4(-0.3979, -0.9174,  0.9174, -0.3979),
-    float4(-0.7823, -0.6229,  0.6229, -0.7823),
-    float4(-0.7118,  0.7024, -0.7024, -0.7118),
-    float4(-0.2490,  0.9685, -0.9685, -0.2490),
-    float4( 0.9314,  0.3639, -0.3639,  0.9314),
-    float4( 0.4357, -0.9001,  0.9001,  0.4357)
-};
-
 static const uint sampleOrder[16] = {
     15, 3, 10, 6,
     9, 11, 14, 2,
@@ -86,7 +67,8 @@ static const uint sampleOrder[16] = {
 };
 
 static const int WORLD_HASH_WRAP = 4096;
-static const float WORLD_HASH_DENSITY = 64.0;
+static const float WORLD_HASH_DENSITY = 1024.0;
+static const float TWO_PI = 6.28318530718;
 
 uint hash32(uint x) {
     x ^= x >> 16;
@@ -155,22 +137,19 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     uint actualSamples = min(requestedSamples, 8u);
     float shadow = 0.0;
     float totalWeight = 0.0;
-    float diskRadius = 0.02 + 0.04 * (currentDistance / farPlane) * sqrt(float(requestedSamples) / 16.0);
-    float penumbraSize = 0.015 * (currentDistance / farPlane);
+    float distFactor = currentDistance / farPlane;
+    float diskRadius = 0.12 * distFactor;
+    float penumbraSize = 0.005 + 0.01 * distFactor;
     float3 up = abs(sampleDir.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
     float3 right = normalize(cross(up, sampleDir));
     float3 forward = cross(sampleDir, right);
-    float angle = worldAngle(fragPos);
-    uint angleIndex = min((uint)(frac(angle) * 16.0), 15u);
+    float angle = worldAngle(fragPos) * TWO_PI;
+    float ca = cos(angle);
+    float sa = sin(angle);
     for (uint i = 0; i < actualSamples; ++i) {
         uint sampleIndex = sampleOrder[min(i, 15u)];
         float2 o = diskOffsets[sampleIndex];
-        uint turnIndex = (sampleIndex + angleIndex) & 15u;
-        float4 turn = randomTurns[turnIndex];
-        float2 rotated = float2(
-            o.x * turn.x + o.y * turn.y,
-            o.x * turn.z + o.y * turn.w
-        ) * 0.5 + 0.5;
+        float2 rotated = float2(o.x * ca - o.y * sa, o.x * sa + o.y * ca);
         float3 offsetDir = right * rotated.x + forward * rotated.y;
         float3 sampleOffset = sampleDir + offsetDir * diskRadius;
         float sampleDepth = shadowMaps[shadowIndex].SampleLevel(sampleSampler, sampleOffset, 0.0);

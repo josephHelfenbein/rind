@@ -30,13 +30,15 @@ struct PushConstants {
     float4x4 proj;
     float4x4 invView;
     float4x4 invProj;
+    uint maxSteps;
+    uint binarySearchSteps;
+    uint pad0;
+    uint pad1;
 };
 
 [[vk::push_constant]] PushConstants pc;
 
-static const int MAX_STEPS = 150;
 static const float MAX_DISTANCE = 150.0;
-static const int NUM_BINARY_SEARCH_STEPS = 5;
 
 float hash(float2 p) {
     return frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);
@@ -92,7 +94,7 @@ bool rayMarch(float3 startScreen, float3 screenStep, int stepCount, float jitter
 
         if (crossed) {
             float3 lo = prev, hi = curr;
-            for (int j = 0; j < NUM_BINARY_SEARCH_STEPS; j++) {
+            for (uint j = 0; j < pc.binarySearchSteps; j++) {
                 float3 mid = (lo + hi) * 0.5;
                 float midSampled = effectiveDepth(mid.xy);
                 float midDiff = ndcToViewZ(midSampled) - ndcToViewZ(mid.z);
@@ -178,7 +180,7 @@ float4 main(VSOutput input) : SV_Target {
 
     float3 screenDelta = endScreen - startScreen;
     float2 pixelDelta = screenDelta.xy * screenSize;
-    int stepCount = clamp(int(max(abs(pixelDelta.x), abs(pixelDelta.y))), 16, MAX_STEPS);
+    int stepCount = clamp(int(max(abs(pixelDelta.x), abs(pixelDelta.y))), 16, int(pc.maxSteps));
     float3 screenStep = screenDelta / float(stepCount);
 
     float jitter = hash(uv + frac(width * 0.001));

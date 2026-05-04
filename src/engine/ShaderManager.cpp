@@ -1541,10 +1541,12 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
+                        float volumetricQuality = renderer->getSettingsManager()->getSettings()->volumetricQuality;
                         LightingPC pc = {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
-                            .camPos = camera->getWorldPosition()
+                            .camPos = camera->getWorldPosition(),
+                            .volumetricUpsample = (volumetricQuality >= 2.0f) ? 1u : 0u
                         };
                         vkCmdPushConstants(
                             cmd,
@@ -1650,11 +1652,19 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
+                        auto* settings = renderer->getSettingsManager()->getSettings();
+                        int ssrTier = std::clamp(static_cast<int>(settings->ssrQuality + 0.5f), 1, 3);
+                        static const uint32_t kMaxStepsByTier[3]   = { 48u, 96u, 150u };
+                        static const uint32_t kBinaryStepsByTier[3] = {  3u,  4u,   5u };
                         SSRPC pc = {
                             .view = camera->getViewMatrix(),
                             .proj = camera->getProjectionMatrix(),
                             .invView = camera->getInvViewMatrix(),
-                            .invProj = camera->getInvProjectionMatrix()
+                            .invProj = camera->getInvProjectionMatrix(),
+                            .maxSteps = kMaxStepsByTier[ssrTier - 1],
+                            .binarySearchSteps = kBinaryStepsByTier[ssrTier - 1],
+                            .pad0 = 0,
+                            .pad1 = 0
                         };
                         vkCmdPushConstants(
                             cmd,
@@ -2317,7 +2327,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .dependsOnNodeNames = { "lighting" },
             .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
-                return !renderer->getSettingsManager()->getSettings()->ssrEnabled;
+                return renderer->getSettingsManager()->getSettings()->ssrQuality < 0.5f;
             }
         },
         {

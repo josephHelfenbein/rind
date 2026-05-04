@@ -51,6 +51,7 @@ struct PushConstants {
 
 static const float kEpsilon = 1e-5f;
 static const float kProbeNear = 0.1f;
+static const uint kCullChunk = 64u;
 
 float3 cubemapTexelToDirection(uint face, float u, float v) {
     float3 dir;
@@ -107,13 +108,17 @@ bool projectToMappedFace(float3 rel, uint mappedFace, out float2 centerNdc, out 
     return false;
 }
 
+groupshared uint gAliveCount;
+groupshared float4 gCenterExtent[kCullChunk]; // xy=centerNdc, z=halfExtent, w=ageFade
+groupshared float3 gColor[kCullChunk];
+
 [numthreads(8, 8, 1)]
-void main(uint3 dispatchId : SV_DispatchThreadID) {
+void main(uint3 dispatchId : SV_DispatchThreadID,
+          uint3 localID : SV_GroupThreadID) {
     const uint cubemapSize = max(pc.cubemapSize, 1u);
     const uint activeLayerCount = pc.activeProbeCount * 6u;
-    if (dispatchId.x >= cubemapSize || dispatchId.y >= cubemapSize || dispatchId.z >= activeLayerCount) {
-        return;
-    }
+
+    if (dispatchId.z >= activeLayerCount) return;
 
     const uint dispatchLayer = pc.mappingOffset + pc.layerBase + dispatchId.z;
     const uint mappedProbeLocalIndex = dispatchLayer / 6u;
@@ -126,52 +131,65 @@ void main(uint3 dispatchId : SV_DispatchThreadID) {
         return;
     }
     const float3 probePosition = irradianceProbes.probes[mappedProbeIndex].position.xyz;
+    const float  probeRadius   = max(irradianceProbes.probes[mappedProbeIndex].position.w, kProbeNear);
 
-    const int3 pixelCoord = int3(dispatchId.xy, mappedFace);
-
+    const bool inBounds = (dispatchId.x < cubemapSize && dispatchId.y < cubemapSize);
     const float2 pixelNdc = ((float2(dispatchId.xy) + 0.5f) / float(cubemapSize)) * 2.0f - 1.0f;
-    const float3 sampleDir = cubemapTexelToDirection(mappedFace, pixelNdc.x, pixelNdc.y);
-    float4 outColor = bakedCubemaps[mappedProbeIndex].SampleLevel(cubemapSampler, sampleDir, 0.0f);
 
-    const uint particleCount = pc.particleCount;
-    [loop]
-    for (uint i = 0u; i < particleCount; ++i) {
-        ParticleData p = particles[i];
-        float lifetime = max(p.prevPosition.w, 1e-4f);
-        float ageFade = 1.0f - saturate(p.position.w / lifetime);
-        if (ageFade <= 0.0f) {
-            continue;
-        }
-
-        float2 centerNdc = float2(0.0f, 0.0f);
-        float depth = 0.0f;
-        if (!projectToMappedFace(p.position.xyz - probePosition, mappedFace, centerNdc, depth)) {
-            continue;
-        }
-
-        float probeRadius = max(irradianceProbes.probes[mappedProbeIndex].position.w, kProbeNear);
-        if (depth > probeRadius) {
-            continue;
-        }
-
-        float size = p.color.w;
-        float particleHalfExtent = size * pc.particleSize * sqrt(20.0f / max(depth, kProbeNear));
-        if (particleHalfExtent <= 0.0f) {
-            continue;
-        }
-
-        float2 localCoord = (pixelNdc - centerNdc) / particleHalfExtent;
-        if (abs(localCoord.x) > 1.0f || abs(localCoord.y) > 1.0f) {
-            continue;
-        }
-
-        float topBrighten = saturate(localCoord.y * 0.5f + 0.5f);
-        float3 colorTop = saturate(p.color.rgb + float3(0.5f, 0.5f, 0.5f));
-        float3 particleColor = lerp(p.color.rgb, colorTop, topBrighten);
-
-        outColor.rgb += particleColor;
-        outColor.a += ageFade;
+    float4 outColor = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (inBounds) {
+        const float3 sampleDir = cubemapTexelToDirection(mappedFace, pixelNdc.x, pixelNdc.y);
+        outColor = bakedCubemaps[mappedProbeIndex].SampleLevel(cubemapSampler, sampleDir, 0.0f);
     }
 
-    outputCubemaps[mappedProbeIndex][pixelCoord] = outColor;
+    const uint threadIndex = localID.y * 8u + localID.x;
+    const uint particleCount = pc.particleCount;
+
+    [loop]
+    for (uint base = 0u; base < particleCount; base += kCullChunk) {
+        if (threadIndex == 0u) {
+            gAliveCount = 0u;
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        const uint pi = base + threadIndex;
+        if (pi < particleCount) {
+            ParticleData p = particles[pi];
+            float invLifetime = 1.0f / max(p.prevPosition.w, 1e-4f);
+            float ageFade = 1.0f - saturate(p.position.w * invLifetime);
+            if (ageFade > 0.0f) {
+                float2 centerNdc;
+                float depth;
+                if (projectToMappedFace(p.position.xyz - probePosition, mappedFace, centerNdc, depth)
+                    && depth <= probeRadius) {
+                    float halfExtent = p.color.w * pc.particleSize * sqrt(20.0f / max(depth, kProbeNear));
+                    if (halfExtent > 0.0f) {
+                        uint slot;
+                        InterlockedAdd(gAliveCount, 1u, slot);
+                        gCenterExtent[slot] = float4(centerNdc, halfExtent, ageFade);
+                        gColor[slot] = p.color.rgb;
+                    }
+                }
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        const uint n = gAliveCount;
+        for (uint k = 0u; k < n; ++k) {
+            const float4 ce = gCenterExtent[k];
+            float2 localCoord = (pixelNdc - ce.xy) / ce.z;
+            if (any(abs(localCoord) > 1.0f)) continue;
+
+            float topBrighten = saturate(localCoord.y * 0.5f + 0.5f);
+            float3 baseColor = gColor[k];
+            float3 colorTop = saturate(baseColor + float3(0.5f, 0.5f, 0.5f));
+            outColor.rgb += lerp(baseColor, colorTop, topBrighten);
+            outColor.a += ce.w;
+        }
+    }
+
+    if (inBounds) {
+        const int3 pixelCoord = int3(dispatchId.xy, mappedFace);
+        outputCubemaps[mappedProbeIndex][pixelCoord] = outColor;
+    }
 }

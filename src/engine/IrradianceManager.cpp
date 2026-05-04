@@ -630,7 +630,7 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
 
     SimpleParticlePC particlePC = {
         .probePosition = glm::vec4(0.0f),
-        .particleSize = 0.1f,
+        .particleSize = 0.15f,
         .particleCount = renderer->getParticleManager() ? renderer->getParticleManager()->getParticleCount() : 0u,
         .cubemapSize = cubemapSize,
         .activeProbeCount = std::max(1u, activeProbeCount),

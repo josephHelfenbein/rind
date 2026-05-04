@@ -23,6 +23,7 @@ namespace rind {
         float timeAlive = 0.0f;
         engine::OBBCollider* collider = nullptr;
         engine::ParticleManager* particleManager = nullptr;
+        engine::VolumetricManager* volumetricManager = nullptr;
         engine::AudioManager* audioManager = nullptr;
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};

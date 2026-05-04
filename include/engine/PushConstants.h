@@ -16,7 +16,7 @@ namespace engine {
         glm::mat4 invView;
         glm::mat4 invProj;
         glm::vec3 camPos;
-        uint32_t pad;
+        uint32_t volumetricUpsample; // 1 = 3x3 bilateral, 0 = single bilinear
     };
 
     struct ShadowImagePC {
@@ -55,6 +55,10 @@ namespace engine {
         glm::mat4 proj;
         glm::mat4 invView;
         glm::mat4 invProj;
+        uint32_t maxSteps;
+        uint32_t binarySearchSteps;
+        uint32_t pad0;
+        uint32_t pad1;
     };
 
     struct AOPC {
