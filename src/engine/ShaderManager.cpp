@@ -687,8 +687,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         ShadowImagePC pc = {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
-                            .camPos = camera->getWorldPosition(),
-                            .shadowSamples = shadowSamples
+                            .samples = shadowSamples
                         };
                         vkCmdPushConstants(
                             cmd,
@@ -1233,9 +1232,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     }
                     SHPC pc = {
                         .cubemapSize = 16u,
-                        .activeProbeCount = activeProbeCount,
-                        .pad0 = 0u,
-                        .pad1 = 0u
+                        .activeProbeCount = activeProbeCount
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(SHPC), &pc);
                 },
@@ -1335,9 +1332,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     }
                     SHPC pc = {
                         .cubemapSize = 16u,
-                        .activeProbeCount = activeProbeCount,
-                        .pad0 = 0u,
-                        .pad1 = 0u
+                        .activeProbeCount = activeProbeCount
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(SHPC), &pc);
                 },
@@ -1545,8 +1540,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         LightingPC pc = {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
-                            .camPos = camera->getWorldPosition(),
-                            .volumetricUpsample = (volumetricQuality >= 2.0f) ? 1u : 0u
+                            .camPos = glm::vec4(camera->getWorldPosition(), (volumetricQuality >= 2.0f) ? 1u : 0u)
                         };
                         vkCmdPushConstants(
                             cmd,
@@ -1662,9 +1656,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
                             .maxSteps = kMaxStepsByTier[ssrTier - 1],
-                            .binarySearchSteps = kBinaryStepsByTier[ssrTier - 1],
-                            .pad0 = 0,
-                            .pad1 = 0
+                            .binarySearchSteps = kBinaryStepsByTier[ssrTier - 1]
                         };
                         vkCmdPushConstants(
                             cmd,

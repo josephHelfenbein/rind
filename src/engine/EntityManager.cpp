@@ -690,8 +690,7 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32
                     .model = entity->getWorldTransform(),
                     .view = camera->getViewMatrix(),
                     .projection = camera->getProjectionMatrix(),
-                    .camPos = camera->getWorldPosition(),
-                    .flags = model->hasSkinning() ? 1u : 0u
+                    .camPos = glm::vec4(camera->getWorldPosition(), model->hasSkinning() ? 1u : 0u)
                 };
                 vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
             }

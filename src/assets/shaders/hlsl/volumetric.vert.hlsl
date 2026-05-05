@@ -19,37 +19,36 @@ struct VolumetricData {
     float4 color; // rgb = color, a = density
     float age;
     float lifetime;
-    float2 pad;
+    uint pad[2];
 };
 
 [[vk::binding(0)]] StructuredBuffer<VolumetricData> volumes;
 
 struct PushConstants {
     float4x4 viewProj;
-    float3 camPos;
-    float quality; // 0 = very low, 1 = low, 2 = medium, 3 = high
+    float4 camPos; // w = quality, 0 = very low, 1 = low, 2 = medium, 3 = high
 };
 
 [[vk::push_constant]] PushConstants pc;
 
-static const float LOD_NEAR = 4.0;
-static const float LOD_FAR = 20.0;
+static const float LOD_NEAR = 10.0;
+static const float LOD_FAR = 50.0;
 
 VSOutput main(float3 localPos : POSITION, uint instanceID : SV_InstanceID) {
     VolumetricData vol = volumes[instanceID];
     float3 worldPos = mul(float4(localPos, 1.0), vol.model).xyz;
 
     float3 volCenter = vol.model[3].xyz;
-    float camDist = length(volCenter - pc.camPos);
+    float camDist = length(volCenter - pc.camPos.xyz);
     float lodT = saturate((camDist - LOD_NEAR) / (LOD_FAR - LOD_NEAR));
 
     float time = vol.age / max(vol.lifetime, 0.0001);
     float x = saturate(1.0 - time);
 
-    float quality = pc.quality / 3.0f;
-    float maxMaxSteps = lerp(12.0, 64.0, quality);
-    float minMaxSteps = lerp(6.0, 32.0, quality);
-    float maxBaseDivs = lerp(12.0, 32.0, quality);
+    float quality = pc.camPos.w / 3.0f;
+    float maxMaxSteps = lerp(8.0, 72.0, quality);
+    float minMaxSteps = lerp(6.0, 52.0, quality);
+    float maxBaseDivs = lerp(8.0, 32.0, quality);
     float minBaseDivs = lerp(6.0, 24.0, quality);
     float maxFbmOctaves = lerp(2.0, 5.0, quality);
 

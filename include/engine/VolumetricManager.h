@@ -9,12 +9,12 @@
 namespace engine {
     class VolumetricManager;
     struct VolumetricGPU {
-        glm::mat4 model;
-        glm::mat4 invModel;
-        glm::vec4 color; // w = density
-        float age;
-        float lifetime;
-        float pad[2];
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 invModel;
+        alignas(16) glm::vec4 color; // w = density
+        alignas(4) float age;
+        alignas(4) float lifetime;
+        alignas(4) uint32_t pad[2]{0, 0};
     };
     class Volumetric {
     public:

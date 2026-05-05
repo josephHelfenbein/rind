@@ -18,8 +18,7 @@ StructuredBuffer<uint> activeProbeIndices;
 struct PushConstants {
     uint cubemapSize;
     uint activeProbeCount;
-    uint pad0;
-    uint pad1;
+    uint pad[2];
 };
 [[vk::push_constant]] PushConstants pc;
 

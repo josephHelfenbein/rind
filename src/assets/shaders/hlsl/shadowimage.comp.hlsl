@@ -33,8 +33,8 @@ SamplerState sampleSampler;
 struct PushConstants {
     float4x4 invView;
     float4x4 invProj;
-    float3 camPos;
-    uint shadowSamples;
+    uint samples;
+    uint pad[3];
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -133,7 +133,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float slopeBias = baseBias * (1.0 - NdotL) * 2.0;
     float distanceBias = baseBias * (nearPlane / max(currentDistance, nearPlane));
     float bias = baseBias + slopeBias + distanceBias;
-    uint requestedSamples = min(max(pc.shadowSamples, 1u), 16u);
+    uint requestedSamples = min(max(pc.samples, 1u), 16u);
     uint actualSamples = min(requestedSamples, 8u);
     float shadow = 0.0;
     float totalWeight = 0.0;

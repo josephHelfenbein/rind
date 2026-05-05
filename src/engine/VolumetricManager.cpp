@@ -199,8 +199,7 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
     VkExtent2D extent = renderer->getSwapChainExtent();
     VolumetricPC pushConstants = {
         .viewProj = camera->getViewProjectionMatrix(),
-        .camPos = camera->getWorldPosition(),
-        .quality = renderer->getSettingsManager()->getSettings()->volumetricQuality
+        .camPos = glm::vec4(camera->getWorldPosition(), renderer->getSettingsManager()->getSettings()->volumetricQuality)
     };
     vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VolumetricPC), &pushConstants);
     VkDeviceSize offset = 0;

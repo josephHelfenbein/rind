@@ -73,8 +73,7 @@ StructuredBuffer<ProbeSHData> irradianceProbeSH;
 struct PushConstants {
     float4x4 invView;
     float4x4 invProj;
-    float3 camPos;
-    uint volumetricUpsample;
+    float4 camPos; // w = bit 0, 1 = 3x3 bilateral, 0 = single bilinear
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -94,7 +93,7 @@ float linearViewZ(float ndcZ) {
 }
 
 float4 sampleVolumetricUpsampled(float2 uv, float refNdcDepth) {
-    if (pc.volumetricUpsample == 0u) {
+    if ((uint(pc.camPos.w) & 1u) == 0u) {
         return volumetricTexture.SampleLevel(sampleSampler, uv, 0);
     }
     uint2 vDim;
@@ -245,7 +244,7 @@ float4 main(VSOutput input) : SV_Target {
         return float4(result, particleColor.a + volumetricColor.a);
     }
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
-    float3 toCamera = pc.camPos - fragPos;
+    float3 toCamera = pc.camPos.xyz - fragPos;
     float camDist = length(toCamera);
     float3 V = (camDist > 0.001) ? (toCamera / camDist) : float3(0.0, 1.0, 0.0);
     float3 geomNormal = cross(ddx(fragPos), ddy(fragPos));

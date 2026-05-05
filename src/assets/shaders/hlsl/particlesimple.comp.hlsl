@@ -45,7 +45,7 @@ struct PushConstants {
     uint activeProbeCount;
     uint layerBase;
     uint mappingOffset;
-    uint pad;
+    uint pad[2];
 };
 [[vk::push_constant]] PushConstants pc;
 

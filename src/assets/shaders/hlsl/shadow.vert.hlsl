@@ -14,8 +14,7 @@ struct PushConstants {
     float4x4 model;
     uint lightIndex;
     uint flags;
-    uint pad0;
-    uint pad1;
+    uint pad[2];
 };
 
 [[vk::push_constant]] PushConstants pc;

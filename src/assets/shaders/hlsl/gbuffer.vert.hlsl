@@ -44,8 +44,7 @@ struct PushConstants {
     float4x4 model;
     float4x4 view;
     float4x4 projection;
-    float3 camPos;
-    uint flags; // bit 0 = has skinning
+    float4 camPos; // w = bit 0, has skinning
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -63,7 +62,7 @@ static const float4x4 IDENTITY = float4x4(
 
 VSOutput main(VSInput input) {
     float4x4 skinMatrix = IDENTITY;
-    if ((pc.flags & 1) != 0) {
+    if ((uint(pc.camPos.w) & 1u) != 0u) {
         uint4 jointIndices = uint4(input.inJoints);
         skinMatrix = jointUBO.joints[jointIndices.x] * input.inWeights.x +
                      jointUBO.joints[jointIndices.y] * input.inWeights.y +

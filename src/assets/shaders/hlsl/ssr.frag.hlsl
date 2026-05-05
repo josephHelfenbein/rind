@@ -32,8 +32,7 @@ struct PushConstants {
     float4x4 invProj;
     uint maxSteps;
     uint binarySearchSteps;
-    uint pad0;
-    uint pad1;
+    uint pad[2];
 };
 
 [[vk::push_constant]] PushConstants pc;

@@ -635,8 +635,7 @@ void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommand
         .cubemapSize = cubemapSize,
         .activeProbeCount = std::max(1u, activeProbeCount),
         .layerBase = activeProbeLocalIndex * 6u,
-        .mappingOffset = 0u,
-        .pad = 0u
+        .mappingOffset = 0u
     };
     vkCmdPushConstants(
         commandBuffer,
@@ -1335,9 +1334,7 @@ void engine::IrradianceManager::dispatchDynamicIrradianceSH(VkCommandBuffer comm
 
     SHPC pc = {
         .cubemapSize = 16u,
-        .activeProbeCount = activeProbeCount,
-        .pad0 = 0u,
-        .pad1 = 0u
+        .activeProbeCount = activeProbeCount
     };
     vkCmdPushConstants(
         commandBuffer,
@@ -1405,9 +1402,7 @@ void engine::IrradianceManager::dispatchDynamicIrradianceSHReduce(VkCommandBuffe
 
     SHPC pc = {
         .cubemapSize = 16u,
-        .activeProbeCount = activeProbeCount,
-        .pad0 = 0u,
-        .pad1 = 0u
+        .activeProbeCount = activeProbeCount
     };
     vkCmdPushConstants(
         commandBuffer,

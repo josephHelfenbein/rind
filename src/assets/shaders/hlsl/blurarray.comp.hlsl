@@ -34,6 +34,7 @@ struct PushConstants {
     uint blurDirection; // 0 for horizontal, 1 for vertical
     uint taps; // number of taps to use, up to 8
     uint layerCount;
+    uint pad;
 };
 [[vk::push_constant]] PushConstants pc;
 

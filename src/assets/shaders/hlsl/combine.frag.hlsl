@@ -4,9 +4,7 @@ struct VSOutput {
 
 struct PushConstants {
     float exposure;
-    uint pad0;
-    uint pad1;
-    uint pad2;
+    uint pad[3];
 };
 
 [[vk::push_constant]] PushConstants pc;

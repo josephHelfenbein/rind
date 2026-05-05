@@ -7,10 +7,10 @@
 
 namespace engine {
     struct ParticleGPU {
-        glm::vec4 position; // w = age
-        glm::vec4 prevPosition; // w = lifetime
-        glm::vec4 prevPrevPosition; // w = type
-        glm::vec4 color; // w = size
+        alignas(16) glm::vec4 position; // w = age
+        alignas(16) glm::vec4 prevPosition; // w = lifetime
+        alignas(16) glm::vec4 prevPrevPosition; // w = type
+        alignas(16) glm::vec4 color; // w = size
     };
     class Particle {
     public:

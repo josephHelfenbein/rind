@@ -1246,11 +1246,11 @@ void rind::Player::throwGrenade() {
     glm::vec3 playerVel = getVelocity();
     float forwardSpeed = glm::dot(playerVel, playerForward);
     glm::vec3 lateralVel = playerVel - playerForward * forwardSpeed;
-    glm::vec3 inheritedVel = playerForward * std::max(forwardSpeed, 0.0f) + lateralVel;
+    glm::vec3 inheritedVel = playerForward * std::max(forwardSpeed, 0.0f) + lateralVel * 0.2f;
     Grenade* grenade = new Grenade(
         getEntityManager(),
         this,
-        glm::translate(glm::mat4(1.0f), gunPos + playerForward + glm::vec3(0.0f, verticalAim * 0.8f, 0.0f) + inheritedVel * 0.3f),
+        glm::translate(glm::mat4(1.0f), gunPos + playerForward + glm::vec3(0.0f, verticalAim * 0.8f, 0.0f) + inheritedVel * 0.1f),
         playerForward * 20.0f + glm::vec3(0.0f, 4.0f + verticalAim * 20.0f, 0.0f) + playerVel * 0.2f,
         trailColor,
         6.0f

@@ -22,7 +22,7 @@ struct PushConstants {
     float particleSize;
     float trailWidth;
     float streakScale;
-    float pad;
+    float pad[3];
 };
 
 [[vk::push_constant]] PushConstants pc;

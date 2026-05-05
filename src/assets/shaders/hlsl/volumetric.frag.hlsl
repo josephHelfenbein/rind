@@ -18,7 +18,7 @@ struct VolumetricData {
     float4 color; // rgb = tint, w = density
     float age;
     float lifetime;
-    float2 pad;
+    uint pad[2];
 };
 
 [[vk::binding(0)]] StructuredBuffer<VolumetricData> volumes;
@@ -27,8 +27,7 @@ struct VolumetricData {
 
 struct PushConstants {
     float4x4 viewProj;
-    float3 camPos;
-    float quality; // 0 = very low, 1 = low, 2 = medium, 3 = high
+    float4 camPos; // w = quality, 0 = very low, 1 = low, 2 = medium, 3 = high
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -90,7 +89,7 @@ struct PSOutput {
 PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     VolumetricData vol = volumes[input.instanceID];
 
-    float3 rayOrigin = pc.camPos;
+    float3 rayOrigin = pc.camPos.xyz;
     float3 rayDir = normalize(input.worldPos - rayOrigin);
     float3 localOrigin = mul(float4(rayOrigin, 1.0), vol.invModel).xyz;
     float3 localDir = mul(float4(rayDir, 0.0), vol.invModel).xyz;
@@ -146,7 +145,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     if (sphDisc < 0.0) discard;
     float sqrtDisc = sqrt(sphDisc);
     tNear = max(tNear, (-sphB - sqrtDisc) / sphA);
-    tFar  = min(tFar,  (-sphB + sqrtDisc) / sphA);
+    tFar = min(tFar, (-sphB + sqrtDisc) / sphA);
     if (tFar <= tNear) discard;
 
     int maxSteps = max(1, (int) input.maxSteps);
@@ -155,7 +154,6 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     bool doRefinement = (input.doRefinement != 0u);
     bool doRejitter = (input.doRejitter != 0u);
     float earlyExitAlpha = input.earlyExitAlpha;
-    float threshold = lerp(0.03, THRESHOLD, pc.quality / 3.0);
 
     float totalLen = tFar - tNear;
     float baseStep = totalLen / baseDivs;
@@ -174,7 +172,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
         if (accum.a >= earlyExitAlpha) break;
         float3 localMid = localOrigin + (t + stepSize * 0.5) * localDir;
         float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves);
-        if (density <= threshold) {
+        if (density <= THRESHOLD) {
             stepSize = min(stepSize * 1.5, maxStep);
             t += stepSize;
             continue;
@@ -193,7 +191,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
         accum.rgb += transmittance * emission * tint;
         accum.a += alphaContrib;
         if (doRejitter) {
-            t += stepSize + hash3(float3(fragCoord.xy, fragCoord.z + steps)) * baseStep;
+            t += stepSize + hash3(float3(fragCoord.xy, fragCoord.z + steps * baseStep)) * baseStep;
         } else {
             t += stepSize;
         }
