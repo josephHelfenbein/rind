@@ -275,7 +275,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .clearValue = { .color = { {1.0f} } },
             .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .arrayLayers = 64 // max shadow-casting lights
+            .arrayLayers = kMaxPointLights // max shadow-casting lights
         });
         shadowImagePass->images = images;
     }
@@ -292,7 +292,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .clearValue = { .color = { {1.0f} } },
             .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .arrayLayers = 64
+            .arrayLayers = kMaxPointLights
         });
         shadowImageBlurPassH->images = images;
     }
@@ -309,7 +309,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .clearValue = { .color = { {1.0f} } },
             .format = VK_FORMAT_R8_UNORM,
             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .arrayLayers = 64
+            .arrayLayers = kMaxPointLights
         });
         shadowImageBlurPassV->images = images;
     }
@@ -645,13 +645,13 @@ void engine::ShaderManager::createDefaultShaders() {
         uint32_t activeShadowLayers = 0;
         if (engine::LightManager* lightManager = renderer->getLightManager()) {
             auto& lights = lightManager->getLights();
-            for (uint32_t i = 0; i < static_cast<uint32_t>(lights.size()) && i < 64u; ++i) {
+            for (uint32_t i = 0; i < static_cast<uint32_t>(lights.size()) && i < kMaxPointLights; ++i) {
                 engine::Light& light = lights[i];
                 if (light.getShadowImageView(0) == VK_NULL_HANDLE) {
                     continue;
                 }
                 ++activeShadowLayers;
-                if (activeShadowLayers >= 64u) {
+                if (activeShadowLayers >= kMaxPointLights) {
                     break;
                 }
             }
@@ -667,7 +667,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .config = {
                 .poolMultiplier = 1,
                 .computeBitBindings = 6,
-                .computeDescriptorCounts = { 1, 1, 1, 64, 1, 1 },
+                .computeDescriptorCounts = { 1, 1, 1, kMaxPointLights, 1, 1 },
                 .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -682,8 +682,8 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, ComputeShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
-                        // 1, 2, 4, 8
-                        uint32_t shadowSamples = pow(2, static_cast<int>(renderer->getSettingsManager()->getSettings()->shadowQuality));
+                        // 2, 4, 8, 16
+                        uint32_t shadowSamples = pow(2, static_cast<int>(renderer->getSettingsManager()->getSettings()->shadowQuality) + 1);
                         ShadowImagePC pc = {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),

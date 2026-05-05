@@ -766,7 +766,7 @@ void engine::LightManager::updateShadowLightsBuffer(uint32_t frameIndex) {
         return;
     }
     ShadowLightsSSBO* gpuData = static_cast<ShadowLightsSSBO*>(shadowLightsMapped[frameIndex]);
-    const size_t count = std::min(lights.size(), static_cast<size_t>(kMaxShadowLights));
+    const size_t count = std::min(lights.size(), static_cast<size_t>(kMaxPointLights));
     for (size_t i = 0; i < count; ++i) {
         lights[i].fillShadowLightEntry(gpuData->lights[i]);
     }
@@ -788,7 +788,7 @@ void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
     }
     LightsUBO* gpuData = static_cast<LightsUBO*>(lightBuffersMapped[frameIndex]);
     std::vector<Light>& lights = getLights();
-    size_t count = std::min(lights.size(), static_cast<size_t>(64));
+    size_t count = std::min(lights.size(), static_cast<size_t>(kMaxPointLights));
 
     for (size_t i = 0; i < count; ++i) {
         gpuData->pointLights[i] = lights[i].getPointLightData();

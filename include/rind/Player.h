@@ -121,7 +121,7 @@ namespace rind {
 
         float punchTimer = 0.0f;
         const engine::AABB punchHitbox{
-            .min = glm::vec3(-0.5f, -0.5f, -6.5f),
+            .min = glm::vec3(-0.5f, -0.5f, -7.0f),
             .max = glm::vec3(0.5f, 0.5f, 0.0f)
         };
 

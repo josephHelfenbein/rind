@@ -13,7 +13,7 @@ namespace rind {
                 "scoreCounter",
                 glm::vec4(1.0f),
                 "SCORE: 0",
-                "Lato",
+                "RubikGlitch",
                 engine::Corner::Top
             );
         };

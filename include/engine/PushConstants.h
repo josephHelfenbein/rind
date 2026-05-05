@@ -3,6 +3,7 @@
 
 namespace engine {
     inline constexpr uint32_t kMaxIrradianceProbes = 64u;
+    inline constexpr uint32_t kMaxPointLights = 16u;
 
     struct GBufferPC {
         glm::mat4 model;
@@ -45,9 +46,8 @@ namespace engine {
         glm::vec4 lightPosRadius; // xyz = pos, w = radius
     };
 
-    static constexpr uint32_t kMaxShadowLights = 64;
     struct ShadowLightsSSBO {
-        ShadowLightEntry lights[kMaxShadowLights];
+        ShadowLightEntry lights[kMaxPointLights];
     };
 
     struct SSRPC {

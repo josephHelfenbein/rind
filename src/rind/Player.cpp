@@ -201,7 +201,7 @@ rind::Player::Player(
             entityManager->getRenderer()->getUIManager(),
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
             "crosshair",
-            glm::vec4(1.0f, 1.0f, 1.0f, 0.8f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 0.9f),
             "ui_cursor_crosshair",
             engine::Corner::Center
         );
@@ -264,7 +264,7 @@ rind::Player::Player(
             "statusText",
             glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
             "",
-            "Lato",
+            "RubikGlitch",
             engine::Corner::Top
         );
         scoreCounter = new ScoreCounter(entityManager, entityManager->getRenderer()->getUIManager());
@@ -1250,8 +1250,8 @@ void rind::Player::throwGrenade() {
     Grenade* grenade = new Grenade(
         getEntityManager(),
         this,
-        glm::translate(glm::mat4(1.0f), gunPos + playerForward * 0.7f + glm::vec3(0.0f, verticalAim * 0.2f, 0.0f) + inheritedVel * 0.1f),
-        playerForward * 20.0f + glm::vec3(0.0f, 4.0f + verticalAim * 20.0f, 0.0f) + inheritedVel * 0.5f,
+        glm::translate(glm::mat4(1.0f), gunPos + playerForward + glm::vec3(0.0f, verticalAim * 0.8f, 0.0f) + inheritedVel * 0.3f),
+        playerForward * 20.0f + glm::vec3(0.0f, 4.0f + verticalAim * 20.0f, 0.0f) + playerVel * 0.2f,
         trailColor,
         6.0f
     );
