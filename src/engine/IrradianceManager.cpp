@@ -78,6 +78,7 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
     bakedImageReady = false;
     dynamicImageReady.clear();
     dynamicCubemapDirty.clear();
+    lastParticleCount.clear();
     
     std::tie(bakedCubemapImage, bakedCubemapMemory) = renderer->createImage(
         cubemapSize, cubemapSize,
@@ -123,6 +124,7 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
     dynamicCubemapFaceViews.assign(framesInFlight, {});
     dynamicImageReady.assign(framesInFlight, 0u);
     dynamicCubemapDirty.assign(framesInFlight, 0u);
+    lastParticleCount.assign(framesInFlight, 0u);
 
     for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
         std::tie(dynamicCubemapImages[frame], dynamicCubemapMemories[frame]) = renderer->createImage(
@@ -494,10 +496,12 @@ bool engine::IrradianceProbe::prepareDynamicCubemapForParticleCompute(Renderer* 
 
     const uint32_t particleCount = particleManager->getParticleCount();
     size_t currentParticleCount = static_cast<size_t>(particleCount);
-    
-    // update if there are particles in the scene, or all particles disappeared
-    bool particlesChanged = (currentParticleCount > 0) || (currentParticleCount != lastParticleCount);
-    lastParticleCount = currentParticleCount;
+
+    const size_t slotLastCount = (frameIdx < lastParticleCount.size()) ? lastParticleCount[frameIdx] : 0u;
+    bool particlesChanged = (currentParticleCount > 0) || (currentParticleCount != slotLastCount);
+    if (frameIdx < lastParticleCount.size()) {
+        lastParticleCount[frameIdx] = currentParticleCount;
+    }
     
     if (!particlesChanged) {
         if (frameIdx < dynamicCubemapDirty.size()) {

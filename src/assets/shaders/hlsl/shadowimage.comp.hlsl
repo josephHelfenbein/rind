@@ -138,7 +138,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float shadow = 0.0;
     float totalWeight = 0.0;
     float distFactor = currentDistance / farPlane;
-    float diskRadius = 0.12 * distFactor;
+    float diskRadius = 0.08 * distFactor;
     float penumbraSize = 0.005 + 0.01 * distFactor;
     float3 up = abs(sampleDir.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
     float3 right = normalize(cross(up, sampleDir));

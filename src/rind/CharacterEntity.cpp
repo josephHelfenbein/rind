@@ -32,6 +32,7 @@ static bool isAboveSurface(const engine::AABB& playerAABB, const engine::AABB& o
 void rind::CharacterEntity::updateMovement(float deltaTime) {
     const float MAX_DELTA_TIME = 0.05f; // clamp deltaTime to avoid large jumps
     deltaTime = glm::min(deltaTime, MAX_DELTA_TIME);
+    const bool wasGrounded = grounded;
     glm::vec3 desiredVel(0.0f);
     if (glm::dot(pressed, pressed) > 1e-6f || glm::dot(dashing, dashing) > 1e-6f) {
         const glm::mat4& t = getTransform();
@@ -205,15 +206,14 @@ void rind::CharacterEntity::updateMovement(float deltaTime) {
             velocity -= n * glm::dot(velocity, n);
         }
     }
-    if (engine::Collider::raycastAny(
-        getEntityManager(),
-        getCollider()->getWorldPosition() + accumulatedOffset + glm::vec3(0.0f, -collider->getHalfSize().y + 0.1f, 0.0f),
-        glm::vec3(0.0f, -1.0f, 0.0f),
-        0.1f,
-        getCollider(),
-        0.0f
-    )) {
-        touchedGround = true;
+    if (!touchedGround) {
+        const glm::vec3 rayOrigin = getCollider()->getWorldPosition() + accumulatedOffset + glm::vec3(0.0f, -collider->getHalfSize().y + 0.1f, 0.0f);
+        const float rayLen = (wasGrounded && velocity.y <= 1e-6f) ? 0.35f : 0.1f;
+        if (engine::Collider::raycastAny(
+            getEntityManager(), rayOrigin, glm::vec3(0.0f, -1.0f, 0.0f), rayLen, getCollider(), 0.0f
+        )) {
+            touchedGround = true;
+        }
     }
     if (touchedGround) {
         grounded = true;

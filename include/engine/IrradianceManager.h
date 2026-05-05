@@ -59,7 +59,7 @@ namespace engine {
         bool bakedImageReady = false;
         std::vector<uint8_t> dynamicImageReady;
         std::vector<uint8_t> dynamicCubemapDirty;
-        size_t lastParticleCount = 0;
+        std::vector<size_t> lastParticleCount;
     };
 
     class IrradianceManager {

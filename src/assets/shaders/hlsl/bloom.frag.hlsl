@@ -16,7 +16,7 @@ float4 main(VSOutput input) : SV_Target {
     float brightness = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
 
     const float threshold = 2.0;
-    const float knee = 0.5;
+    const float knee = 1.0;
     float soft = brightness - threshold + knee;
     soft = clamp(soft, 0.0, 2.0 * knee);
     soft = soft * soft * (1.0 / (4.0 * knee + 1e-4));

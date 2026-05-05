@@ -273,7 +273,7 @@ float4 main(VSOutput input) : SV_Target {
         float lightRadius = light.positionRadius.w;
         float3 lightColor = light.colorIntensity.rgb;
         uint shadowIndex = light.shadowData.x;
-        float intensity = light.colorIntensity.w;
+        float intensity = light.colorIntensity.w * 2.0;
         float3 toLight = lightPos - fragPos;
         float distance = length(toLight);
         if (distance < 0.001) {
@@ -286,8 +286,11 @@ float4 main(VSOutput input) : SV_Target {
             continue;
         }
         H = H / hLen;        
-        float t = saturate(1.0 - distance / lightRadius);
-        float attenuation = t * t;
+        float d2 = distance * distance;
+        float r0 = lightRadius * 0.1;
+        float r02 = r0 * r0;
+        float windowFalloff = saturate(1.0 - pow(distance / lightRadius, 4.0));
+        float attenuation = (r02 / (d2 + r02)) * windowFalloff * windowFalloff;
         
         float3 radiance = lightColor * intensity * attenuation;
         float NdotL = max(dot(N, L), 0.0);
