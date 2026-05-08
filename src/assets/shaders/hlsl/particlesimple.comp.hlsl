@@ -114,13 +114,14 @@ groupshared float3 gColor[kCullChunk];
 
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchId : SV_DispatchThreadID,
-          uint3 localID : SV_GroupThreadID) {
+          uint3 localID : SV_GroupThreadID,
+          uint3 groupID : SV_GroupID) {
     const uint cubemapSize = max(pc.cubemapSize, 1u);
     const uint activeLayerCount = pc.activeProbeCount * 6u;
 
-    if (dispatchId.z >= activeLayerCount) return;
+    if (groupID.z >= activeLayerCount) return;
 
-    const uint dispatchLayer = pc.mappingOffset + pc.layerBase + dispatchId.z;
+    const uint dispatchLayer = pc.mappingOffset + pc.layerBase + groupID.z;
     const uint mappedProbeLocalIndex = dispatchLayer / 6u;
     const uint mappedFace = dispatchLayer % 6u;
     if (mappedProbeLocalIndex >= pc.activeProbeCount || mappedProbeLocalIndex >= kMaxIrradianceProbes) {

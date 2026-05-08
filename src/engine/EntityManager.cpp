@@ -50,7 +50,30 @@ engine::Entity::Entity(
     }
 
 engine::Entity::~Entity() {
-    destroyUniformBuffers(entityManager ? entityManager->getRenderer() : nullptr);
+    Renderer* renderer = entityManager ? entityManager->getRenderer() : nullptr;
+    if (renderer) {
+        VkDevice device = renderer->getDevice();
+        ShaderManager* shaderManager = renderer->getShaderManager();
+        if (device != VK_NULL_HANDLE && shaderManager) {
+            if (!descriptorSets.empty() && !shader.empty()) {
+                GraphicsShader* entityShader = shaderManager->getGraphicsShader(shader);
+                if (entityShader && entityShader->descriptorPool != VK_NULL_HANDLE) {
+                    vkFreeDescriptorSets(device, entityShader->descriptorPool,
+                        static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data());
+                }
+            }
+            if (!shadowDescriptorSets.empty()) {
+                GraphicsShader* shadowShader = shaderManager->getGraphicsShader("shadow");
+                if (shadowShader && shadowShader->descriptorPool != VK_NULL_HANDLE) {
+                    vkFreeDescriptorSets(device, shadowShader->descriptorPool,
+                        static_cast<uint32_t>(shadowDescriptorSets.size()), shadowDescriptorSets.data());
+                }
+            }
+        }
+    }
+    descriptorSets.clear();
+    shadowDescriptorSets.clear();
+    destroyUniformBuffers(renderer);
     for (auto& child : children) {
         delete child;
     }
