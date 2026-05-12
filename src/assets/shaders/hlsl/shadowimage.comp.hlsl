@@ -22,7 +22,7 @@ Texture2D<float> gBufferDepth;
 Texture2D<float4> gBufferNormal;
 
 [[vk::binding(3)]]
-TextureCube<float> shadowMaps[64];
+TextureCube<float> shadowMaps[16];
 
 [[vk::binding(4)]]
 RWTexture2DArray<float> shadowTexture;

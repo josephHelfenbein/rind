@@ -281,6 +281,7 @@ namespace engine {
         VkDeviceMemory uiIndexBufferMemory;
 
         std::vector<VkFence> inFlightFences;
+        std::vector<VkFence> inFlightComputeFences;
         std::vector<VkSemaphore> imageAvailableSemaphores;
         std::vector<VkSemaphore> renderFinishedSemaphores;
         std::vector<VkCommandBuffer> commandBuffers;
@@ -361,7 +362,8 @@ namespace engine {
             VkCommandBuffer commandBuffer,
             uint32_t imageIndex,
             const std::vector<size_t>* nodeOrder = nullptr,
-            bool doFramePrep = true
+            bool doFramePrep = true,
+            NodeQueueClass queueClass = NodeQueueClass::Graphics
         );
 
         void draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node);

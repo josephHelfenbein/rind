@@ -28,7 +28,6 @@ SamplerState sampleSampler;
 struct PushConstants {
     float4x4 view;
     float4x4 proj;
-    float4x4 invView;
     float4x4 invProj;
     uint maxSteps;
     uint binarySearchSteps;

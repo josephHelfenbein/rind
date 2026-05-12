@@ -50,7 +50,6 @@ namespace engine {
     struct SSRPC {
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
-        alignas(16) glm::mat4 invView;
         alignas(16) glm::mat4 invProj;
         alignas(4) uint32_t maxSteps;
         alignas(4) uint32_t binarySearchSteps;

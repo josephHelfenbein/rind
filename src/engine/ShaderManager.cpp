@@ -1653,7 +1653,6 @@ void engine::ShaderManager::createDefaultShaders() {
                         SSRPC pc = {
                             .view = camera->getViewMatrix(),
                             .proj = camera->getProjectionMatrix(),
-                            .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
                             .maxSteps = kMaxStepsByTier[ssrTier - 1],
                             .binarySearchSteps = kBinaryStepsByTier[ssrTier - 1]

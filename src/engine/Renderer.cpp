@@ -56,6 +56,10 @@ void engine::Renderer::cleanup() {
             if (fence != VK_NULL_HANDLE) vkDestroyFence(device, fence, nullptr);
         }
         inFlightFences.clear();
+        for (VkFence fence : inFlightComputeFences) {
+            if (fence != VK_NULL_HANDLE) vkDestroyFence(device, fence, nullptr);
+        }
+        inFlightComputeFences.clear();
         for (VkSemaphore sem : imageAvailableSemaphores) {
             if (sem != VK_NULL_HANDLE) vkDestroySemaphore(device, sem, nullptr);
         }
@@ -771,7 +775,8 @@ void engine::Renderer::drawFrame() {
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[drawFrame] frame " << currentFrame << " start" << std::endl;
     }
-    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    VkFence frameFences[] = { inFlightFences[currentFrame], inFlightComputeFences[currentFrame] };
+    vkWaitForFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences, VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
     deltaTime = static_cast<float>(glfwGetTime()) - lastFrameTime;
@@ -785,7 +790,7 @@ void engine::Renderer::drawFrame() {
     } else if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to acquire swap chain image!");
     }
-    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+    vkResetFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
     const auto& renderGraph = shaderManager->getRenderGraph();
@@ -857,7 +862,7 @@ void engine::Renderer::drawFrame() {
     bool framePrepDone = false;
     for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
         std::vector<size_t> nodeOrder = { submissions[submissionIdx].nodeIdx };
-        recordCommandBuffer(submissionCommandBuffers[submissionIdx], imageIndex, &nodeOrder, !framePrepDone);
+        recordCommandBuffer(submissionCommandBuffers[submissionIdx], imageIndex, &nodeOrder, !framePrepDone, submissions[submissionIdx].queueClass);
         framePrepDone = true;
     }
 
@@ -905,10 +910,24 @@ void engine::Renderer::drawFrame() {
         imageAvailableWaitOrderPos = 0;
     }
 
+    // Find the last submission for each queue so we can fence them independently
+    size_t lastGraphicsOrderPos = SIZE_MAX;
+    size_t lastComputeOrderPos = SIZE_MAX;
+    for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+        const size_t submissionIdx = submissionOrder[orderPos];
+        if (submissions[submissionIdx].queueClass == NodeQueueClass::Compute) {
+            lastComputeOrderPos = orderPos;
+        } else {
+            lastGraphicsOrderPos = orderPos;
+        }
+    }
+
     for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
         const size_t submissionIdx = submissionOrder[orderPos];
         const RenderSubmitNode& submission = submissions[submissionIdx];
         const bool isLastSubmission = orderPos + 1 == submissionOrder.size();
+        const bool isLastGraphics = orderPos == lastGraphicsOrderPos;
+        const bool isLastCompute = orderPos == lastComputeOrderPos;
 
         std::vector<VkSemaphore> waitSemaphores;
         std::vector<VkPipelineStageFlags> waitStages;
@@ -933,15 +952,26 @@ void engine::Renderer::drawFrame() {
             signalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
         }
 
-        const VkFence submitFence = isLastSubmission ? inFlightFences[currentFrame] : VK_NULL_HANDLE;
+        VkFence submitFence = VK_NULL_HANDLE;
+        if (isLastGraphics) {
+            submitFence = inFlightFences[currentFrame];
+        } else if (hasAsyncComputeQueue && isLastCompute) {
+            submitFence = inFlightComputeFences[currentFrame];
+        }
         VkQueue submitQueue = submission.queueClass == NodeQueueClass::Compute ? computeQueue : graphicsQueue;
-        if (submitNode(
+        VkResult submitResult = submitNode(
                 submitQueue,
                 submissionCommandBuffers[submissionIdx],
                 waitSemaphores,
                 waitStages,
                 signalSemaphores,
-                submitFence) != VK_SUCCESS) {
+                submitFence);
+        if (submitResult != VK_SUCCESS) {
+            std::cerr << "vkQueueSubmit failed with VkResult=" << submitResult
+                      << " submissionIdx=" << submissionIdx
+                      << " queueClass=" << (submission.queueClass == NodeQueueClass::Compute ? "Compute" : "Graphics")
+                      << " nodeIdx=" << submission.nodeIdx
+                      << std::endl;
             throw std::runtime_error("Failed to submit node command buffer!");
         }
     }
@@ -974,7 +1004,8 @@ void engine::Renderer::recordCommandBuffer(
     VkCommandBuffer commandBuffer,
     uint32_t imageIndex,
     const std::vector<size_t>* nodeOrder,
-    bool doFramePrep
+    bool doFramePrep,
+    NodeQueueClass queueClass
 ) {
     VkCommandBufferBeginInfo beginInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
@@ -1092,15 +1123,28 @@ void engine::Renderer::recordCommandBuffer(
             });
             swapChainImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         }
+        const bool isComputeQueue = (queueClass == NodeQueueClass::Compute);
         if (node.usePassManagedTransitions && node.passInfo->images.has_value()) {
-            const VkPipelineStageFlags2 shaderReadStages =
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            const VkPipelineStageFlags2 shaderReadStages = isComputeQueue
+                ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                : (VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
             for (auto& image : node.passInfo->images.value()) {
                 VkPipelineStageFlags2 linkedReadStages = shaderReadStages;
                 if (nodeIdx < renderNodeAttachmentReadStages.size()) {
                     auto stageIt = renderNodeAttachmentReadStages[nodeIdx].find(image.name);
                     if (stageIt != renderNodeAttachmentReadStages[nodeIdx].end()) {
                         linkedReadStages = stageIt->second;
+                    }
+                }
+                if (isComputeQueue) {
+                    linkedReadStages &= ~(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT |
+                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+                    if (linkedReadStages == 0) {
+                        linkedReadStages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
                     }
                 }
                 const bool isDepth = (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
@@ -1119,12 +1163,17 @@ void engine::Renderer::recordCommandBuffer(
                         srcStage = shaderReadStages;
                         srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
                     } else if (image.currentLayout == attachmentLayout) {
-                        srcStage = isDepth
-                            ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
-                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-                        srcAccess = isDepth
-                            ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
-                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                        if (isComputeQueue) {
+                            srcStage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                            srcAccess = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+                        } else {
+                            srcStage = isDepth
+                                ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
+                                : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                            srcAccess = isDepth
+                                ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+                                : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                        }
                     }
                     preBarriers.push_back({
                         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -1175,12 +1224,17 @@ void engine::Renderer::recordCommandBuffer(
                         srcStage = shaderReadStages;
                         srcAccess = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
                     } else if (image.currentLayout == attachmentLayout) {
-                        srcStage = isDepth
-                            ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
-                            : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-                        srcAccess = isDepth
-                            ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
-                            : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                        if (isComputeQueue) {
+                            srcStage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                            srcAccess = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+                        } else {
+                            srcStage = isDepth
+                                ? (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
+                                : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                            srcAccess = isDepth
+                                ? (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+                                : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                        }
                     }
 
                     preBarriers.push_back({
@@ -1238,6 +1292,26 @@ void engine::Renderer::recordCommandBuffer(
                 }
             }
         }
+        auto sanitizeBarrierStages = [isComputeQueue](VkPipelineStageFlags& srcStages, VkPipelineStageFlags& dstStages) {
+            if (isComputeQueue) {
+                const VkPipelineStageFlags graphicsOnlyStages =
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                    VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                    VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+                    VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT |
+                    VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT |
+                    VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT |
+                    VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
+                    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+                srcStages &= ~graphicsOnlyStages;
+                dstStages &= ~graphicsOnlyStages;
+                if (srcStages == 0) srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                if (dstStages == 0) dstStages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            }
+        };
         if (!preBarriers.empty()) {
             std::vector<VkImageMemoryBarrier> legacyBarriers;
             legacyBarriers.reserve(preBarriers.size());
@@ -1258,6 +1332,7 @@ void engine::Renderer::recordCommandBuffer(
                 srcStages |= static_cast<VkPipelineStageFlags>(b2.srcStageMask);
                 dstStages |= static_cast<VkPipelineStageFlags>(b2.dstStageMask);
             }
+            sanitizeBarrierStages(srcStages, dstStages);
             vkCmdPipelineBarrier(
                 commandBuffer,
                 srcStages,
@@ -1406,7 +1481,7 @@ void engine::Renderer::recordCommandBuffer(
             node.customRenderFunc(this, commandBuffer, currentFrame);
         } else if (!node.computeShaders.empty() && !node.usesRendering) {
             if (DEBUG_RENDER_LOGS) {
-                std::cout << "[record] dispatching compute pass" << std::endl;
+                std::cout << "[record] dispatching compute pass '" << node.name << "'" << std::endl;
             }
             dispatchComputePass(commandBuffer, node);
         } else if (node.is2D) {
@@ -1443,6 +1518,7 @@ void engine::Renderer::recordCommandBuffer(
                 srcStages |= static_cast<VkPipelineStageFlags>(b2.srcStageMask);
                 dstStages |= static_cast<VkPipelineStageFlags>(b2.dstStageMask);
             }
+            sanitizeBarrierStages(srcStages, dstStages);
             vkCmdPipelineBarrier(
                 commandBuffer,
                 srcStages,
@@ -1711,7 +1787,8 @@ void engine::Renderer::createLogicalDevice() {
     VkPhysicalDeviceVulkan13Features enabledVulkan13Features = vulkan13Features;
     VkPhysicalDeviceVulkan12Features enabledVulkan12Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &enabledVulkan13Features
+        .pNext = &enabledVulkan13Features,
+        .scalarBlockLayout = VK_TRUE
     };
     VkPhysicalDeviceVulkan11Features enabledVulkan11Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
@@ -3611,6 +3688,7 @@ void engine::Renderer::createSyncObjects() {
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     crossQueueSegmentSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightComputeFences.resize(MAX_FRAMES_IN_FLIGHT);
     VkSemaphoreCreateInfo semaphoreInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
     };
@@ -3621,7 +3699,8 @@ void engine::Renderer::createSyncObjects() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
             vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
+            vkCreateFence(device, &fenceInfo, nullptr, &inFlightComputeFences[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create synchronization objects for a frame!");
         }
     }
