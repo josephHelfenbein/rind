@@ -242,21 +242,31 @@ void engine::Entity::updateAnimation(float deltaTime) {
     localTranslations.resize(skeleton.size());
     localRotations.resize(skeleton.size());
     localScales.resize(skeleton.size());
-    
+
+    const Model::AnimationClip* prevClip = nullptr;
+    if (animState.blendFactor < 1.0f && !animState.prevAnimation.empty()) {
+        prevClip = model->getAnimation(animState.prevAnimation);
+    }
+    const bool willBlend = (prevClip != nullptr);
+    if (willBlend) {
+        prevTranslations.resize(skeleton.size());
+        prevRotations.resize(skeleton.size());
+        prevScales.resize(skeleton.size());
+    }
+
     for (size_t i = 0; i < skeleton.size(); ++i) {
         const engine::Model::Joint& joint = skeleton[i];
         localTranslations[i] = joint.localTranslation;
         localRotations[i] = joint.localRotation;
         localScales[i] = joint.localScale;
+        if (willBlend) {
+            prevTranslations[i] = joint.localTranslation;
+            prevRotations[i] = joint.localRotation;
+            prevScales[i] = joint.localScale;
+        }
     }
-    const Model::AnimationClip* prevClip = nullptr;
-    
     if (animState.blendFactor < 1.0f && !animState.prevAnimation.empty()) {
-        prevClip = model->getAnimation(animState.prevAnimation);
         if (prevClip) {
-            prevTranslations = localTranslations;
-            prevRotations = localRotations;
-            prevScales = localScales;
             float prevTime = fmod(animState.currentTime, prevClip->duration);
             
             for (const engine::Model::AnimationChannel& channel : prevClip->channels) {
@@ -435,6 +445,7 @@ void engine::EntityManager::processPendingAdditions() {
     bool resetShadows = false;
     if (!pendingAdditions.empty()) {
         textureLoadDirty = true;
+        renderable3DCacheDirty = true;
     }
     for (const auto& [name, entity] : pendingAdditions) {
         entities[name] = entity;
@@ -498,6 +509,7 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
 }
 
 void engine::EntityManager::clear() {
+    renderable3DCacheDirty = true;
     movableEntities.clear();
     colliders.clear();
     dynamicColliders.clear();
@@ -635,18 +647,40 @@ void engine::EntityManager::updateAll(float deltaTime) {
             self(self, child, entity->getWorldTransform());
         }
     };
-    std::vector<Entity*> rootsCopy = rootEntities;
-    for (Entity* rootEntity : rootsCopy) {
+    for (Entity* rootEntity : rootEntities) {
         traverse(traverse, rootEntity, glm::mat4(1.0f));
     }
     if (textureLoadDirty) {
         loadTextures();
         textureLoadDirty = false;
     }
+    renderable3DCacheDirty = true;
+}
+
+bool engine::EntityManager::computeHasRenderable3D() const {
+    auto walk = [](auto& self, const std::vector<Entity*>& nodes) -> bool {
+        for (const Entity* e : nodes) {
+            const std::string& shaderName = e->getShader();
+            const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
+            if (e->getModel() && isGBufferShader && e->isVisible()) return true;
+            if (self(self, e->getChildren())) return true;
+        }
+        return false;
+    };
+    return walk(walk, rootEntities);
+}
+
+bool engine::EntityManager::hasRenderable3D() {
+    if (renderable3DCacheDirty) {
+        renderable3DCache = computeHasRenderable3D();
+        renderable3DCacheDirty = false;
+    }
+    return renderable3DCache;
 }
 
 void engine::EntityManager::processPendingDeletions() {
     if (pendingDeletions.empty()) return;
+    renderable3DCacheDirty = true;
     vkDeviceWaitIdle(renderer->getDevice());
     static thread_local std::vector<Entity*> rootsTraversalBuffer;
     rootsTraversalBuffer.clear();

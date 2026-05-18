@@ -174,20 +174,12 @@ std::vector<char> engine::ShaderManager::getShaderBytes(const std::string& name)
     return {};
 }
 
-std::vector<engine::GraphicsShader> engine::ShaderManager::getGraphicsShaders() const {
-    std::vector<GraphicsShader> shaders;
-    for (const auto& shaderPtr : graphicsShaders) {
-        shaders.push_back(*shaderPtr);
-    }
-    return shaders;
+const std::vector<std::unique_ptr<engine::GraphicsShader>>& engine::ShaderManager::getGraphicsShaders() const {
+    return graphicsShaders;
 }
 
-std::vector<engine::ComputeShader> engine::ShaderManager::getComputeShaders() const {
-    std::vector<ComputeShader> shaders;
-    for (const auto& shaderPtr : computeShaders) {
-        shaders.push_back(*shaderPtr);
-    }
-    return shaders;
+const std::vector<std::unique_ptr<engine::ComputeShader>>& engine::ShaderManager::getComputeShaders() const {
+    return computeShaders;
 }
 
 namespace {
@@ -381,6 +373,9 @@ void engine::ShaderManager::createDefaultShaders() {
     aoPass->name = "AOPass";
     aoPass->usesSwapchain = false;
     renderPasses.push_back(aoPass);
+    aoPass->enabledCondition = [](Renderer* r) {
+        return r->getSettingsManager()->getSettings()->aoMode != 0;
+    };
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -414,6 +409,9 @@ void engine::ShaderManager::createDefaultShaders() {
     ssrPass->name = "SSRPass";
     ssrPass->usesSwapchain = false;
     renderPasses.push_back(ssrPass);
+    ssrPass->enabledCondition = [](Renderer* r) {
+        return r->getSettingsManager()->getSettings()->ssrQuality >= 0.5f;
+    };
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -487,6 +485,9 @@ void engine::ShaderManager::createDefaultShaders() {
     smaaEdgePass->name = "SMAAEdgePass";
     smaaEdgePass->usesSwapchain = false;
     renderPasses.push_back(smaaEdgePass);
+    smaaEdgePass->enabledCondition = [](Renderer* r) {
+        return r->getSettingsManager()->getSettings()->aaMode == 2;
+    };
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -503,6 +504,9 @@ void engine::ShaderManager::createDefaultShaders() {
     smaaWeightPass->name = "SMAAWeightPass";
     smaaWeightPass->usesSwapchain = false;
     renderPasses.push_back(smaaWeightPass);
+    smaaWeightPass->enabledCondition = [](Renderer* r) {
+        return r->getSettingsManager()->getSettings()->aaMode == 2;
+    };
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -519,6 +523,9 @@ void engine::ShaderManager::createDefaultShaders() {
     smaaBlendPass->name = "SMAABlendPass";
     smaaBlendPass->usesSwapchain = false;
     renderPasses.push_back(smaaBlendPass);
+    smaaBlendPass->enabledCondition = [](Renderer* r) {
+        return r->getSettingsManager()->getSettings()->aaMode == 2;
+    };
     {
         std::vector<PassImage> images;
         images.push_back({
@@ -646,7 +653,7 @@ void engine::ShaderManager::createDefaultShaders() {
         if (engine::LightManager* lightManager = renderer->getLightManager()) {
             auto& lights = lightManager->getLights();
             for (uint32_t i = 0; i < static_cast<uint32_t>(lights.size()) && i < kMaxPointLights; ++i) {
-                engine::Light& light = lights[i];
+                engine::Light& light = *lights[i];
                 if (light.getShadowImageView(0) == VK_NULL_HANDLE) {
                     continue;
                 }
@@ -739,7 +746,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             const uint32_t lightCount = static_cast<uint32_t>(std::min<size_t>(lights.size(), count));
                             uint32_t shadowLayer = 0;
                             for (uint32_t i = 0; i < lightCount && shadowLayer < count; ++i) {
-                                Light& light = lights[i];
+                                Light& light = *lights[i];
                                 VkImageView shadowView = light.getShadowImageView(frameIndex);
                                 if (shadowView != VK_NULL_HANDLE) {
                                     imageInfos[startIdx + shadowLayer].imageView = shadowView;
@@ -1886,7 +1893,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 },
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
-                    { 1, "ssr", "SceneColor" },
+                    { .binding = 1, .sourceShaderName = "ssr", .attachmentName = "SceneColor", .fallbackTextureName = "fallback_black_2d" },
                     { 2, "bloomup1", "BloomUp1Color" }
                 }
             }
@@ -2127,16 +2134,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 renderer->getEntityManager()->renderEntities(cmd, frame);
             },
             .skipCondition = [](Renderer* renderer) {
-                auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
-                    for (const Entity* e : nodes) {
-                        const std::string& shaderName = e->getShader();
-                        const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
-                        if (e->getModel() && isGBufferShader && e->isVisible()) return true;
-                        if (self(self, e->getChildren())) return true;
-                    }
-                    return false;
-                };
-                return !hasRenderable3D(hasRenderable3D, renderer->getEntityManager()->getRootEntities());
+                return !renderer->getEntityManager()->hasRenderable3D();
             }
         },
         {
@@ -2184,16 +2182,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .usesRendering = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .skipCondition = [](Renderer* renderer) {
-                auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
-                    for (const Entity* e : nodes) {
-                        const std::string& shaderName = e->getShader();
-                        const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
-                        if (e->getModel() && isGBufferShader && e->isVisible()) return true;
-                        if (self(self, e->getChildren())) return true;
-                    }
-                    return false;
-                };
-                return !hasRenderable3D(hasRenderable3D, renderer->getEntityManager()->getRootEntities());
+                return !renderer->getEntityManager()->hasRenderable3D();
             }
         },
         {
@@ -2289,6 +2278,9 @@ void engine::ShaderManager::createDefaultShaders() {
             .lane = generalGraphicsLane,
             .usesRendering = false,
             .storageWriteStage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .skipCondition = [](Renderer* renderer) {
+                return renderer->getSettingsManager()->getSettings()->aoMode == 0;
+            }
         },
         {
             .name = "lighting",
@@ -2298,16 +2290,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .dependsOnNodeNames = { "irradiance_dynamic_sh_reduce", "shadow_blur_v", "volumetric", "particle", "ao" },
             .lane = generalGraphicsLane,
             .skipCondition = [](Renderer* renderer) {
-                auto hasRenderable3D = [&](auto& self, const std::vector<Entity*>& nodes) -> bool {
-                    for (const Entity* e : nodes) {
-                        const std::string& shaderName = e->getShader();
-                        const bool isGBufferShader = shaderName.empty() || shaderName == "gbuffer";
-                        if (e->getModel() && isGBufferShader && e->isVisible()) return true;
-                        if (self(self, e->getChildren())) return true;
-                    }
-                    return false;
-                };
-                return !hasRenderable3D(hasRenderable3D, renderer->getEntityManager()->getRootEntities());
+                return !renderer->getEntityManager()->hasRenderable3D();
             }
         },
         {

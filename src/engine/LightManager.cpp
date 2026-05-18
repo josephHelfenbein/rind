@@ -14,12 +14,13 @@ constexpr float kShadowCullFarScale = 1.01f;
 
 engine::Light::Light(
     LightManager* lightManager,
+    LightHandle handle,
     const std::string& name,
     const glm::mat4& transform,
     const glm::vec3& color,
     float intensity,
     float radius
-) : lightManager(lightManager), transform(transform), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)) {}
+) : color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)), transform(transform), handle(handle), lightManager(lightManager) {}
 
 void engine::Light::setColor(const glm::vec3& color) {
     this->color = color;
@@ -38,8 +39,46 @@ void engine::Light::setIntensity(float intensity) {
 void engine::Light::setRadius(float radius) {
     this->radius = radius;
     shadowProj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius);
+    if (hasShadowMap) {
+        updateShadowMatrices();
+    }
     if (lightManager) {
         lightManager->markLightsDirty();
+    }
+}
+
+void engine::Light::setTransform(const glm::mat4& transform) {
+    this->transform = transform;
+    if (hasShadowMap) {
+        updateShadowMatrices();
+    }
+    if (lightManager) {
+        lightManager->markLightsDirty();
+    }
+}
+
+void engine::Light::updateShadowMatrices() {
+    glm::vec3 lightPos = getWorldPosition();
+    for (int i = 0; i < 6; ++i) {
+        glm::mat4 faceView = glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
+        viewProjs[i] = shadowProj * faceView;
+        glm::mat4 cullProj = glm::perspective(
+            glm::radians(kShadowCullFovDegrees),
+            1.0f,
+            kShadowCullNear,
+            radius * kShadowCullFarScale
+        );
+        glm::mat4 viewProj = glm::transpose(cullProj * faceView);
+        frustumPlanes[i][0] = viewProj[3] + viewProj[0];
+        frustumPlanes[i][1] = viewProj[3] - viewProj[0];
+        frustumPlanes[i][2] = viewProj[3] + viewProj[1];
+        frustumPlanes[i][3] = viewProj[3] - viewProj[1];
+        frustumPlanes[i][4] = viewProj[3] + viewProj[2];
+        frustumPlanes[i][5] = viewProj[3] - viewProj[2];
+        for (auto& plane : frustumPlanes[i]) {
+            float length = glm::length(glm::vec3(plane));
+            plane /= length;
+        }
     }
 }
 
@@ -185,28 +224,7 @@ void engine::Light::createShadowMaps(engine::Renderer* renderer, bool forceRecre
     };
     vkCreateImageView(renderer->getDevice(), &bakedArrayViewInfo, nullptr, &bakedShadowArrayView);
 
-    glm::vec3 lightPos = getWorldPosition();
-    for (int i = 0; i < 6; ++i) {
-        glm::mat4 faceView = glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
-        viewProjs[i] = shadowProj * faceView;
-        glm::mat4 cullProj = glm::perspective(
-            glm::radians(kShadowCullFovDegrees),
-            1.0f,
-            kShadowCullNear,
-            radius * kShadowCullFarScale
-        );
-        glm::mat4 viewProj = glm::transpose(cullProj * faceView);
-        frustumPlanes[i][0] = viewProj[3] + viewProj[0];
-        frustumPlanes[i][1] = viewProj[3] - viewProj[0];
-        frustumPlanes[i][2] = viewProj[3] + viewProj[1];
-        frustumPlanes[i][3] = viewProj[3] - viewProj[1];
-        frustumPlanes[i][4] = viewProj[3] + viewProj[2];
-        frustumPlanes[i][5] = viewProj[3] - viewProj[2];
-        for (auto& plane : frustumPlanes[i]) {
-            float length = glm::length(glm::vec3(plane));
-            plane /= length;
-        }
-    }
+    updateShadowMatrices();
 
     hasShadowMap = true;
     if (lightManager) {
@@ -552,31 +570,27 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
     }
 }
 
-void engine::Light::destroyShadowResources(VkDevice device) {
+engine::Light::ShadowResources engine::Light::takeShadowResources() {
+    ShadowResources res;
     for (size_t frame = 0; frame < shadowDepthImageViews.size(); ++frame) {
         if (shadowDepthImageViews[frame]) {
-            vkDestroyImageView(device, shadowDepthImageViews[frame], nullptr);
-            shadowDepthImageViews[frame] = VK_NULL_HANDLE;
+            res.views.push_back(shadowDepthImageViews[frame]);
         }
         if (frame < shadowDepthFaceViews.size()) {
             for (int i = 0; i < 6; ++i) {
                 if (shadowDepthFaceViews[frame][i]) {
-                    vkDestroyImageView(device, shadowDepthFaceViews[frame][i], nullptr);
-                    shadowDepthFaceViews[frame][i] = VK_NULL_HANDLE;
+                    res.views.push_back(shadowDepthFaceViews[frame][i]);
                 }
             }
         }
         if (frame < shadowDepthArrayViews.size() && shadowDepthArrayViews[frame]) {
-            vkDestroyImageView(device, shadowDepthArrayViews[frame], nullptr);
-            shadowDepthArrayViews[frame] = VK_NULL_HANDLE;
+            res.views.push_back(shadowDepthArrayViews[frame]);
         }
         if (frame < shadowDepthImages.size() && shadowDepthImages[frame]) {
-            vkDestroyImage(device, shadowDepthImages[frame], nullptr);
-            shadowDepthImages[frame] = VK_NULL_HANDLE;
+            res.images.push_back(shadowDepthImages[frame]);
         }
         if (frame < shadowDepthMemories.size() && shadowDepthMemories[frame]) {
-            vkFreeMemory(device, shadowDepthMemories[frame], nullptr);
-            shadowDepthMemories[frame] = VK_NULL_HANDLE;
+            res.memories.push_back(shadowDepthMemories[frame]);
         }
     }
     shadowDepthImageViews.clear();
@@ -584,26 +598,27 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     shadowDepthArrayViews.clear();
     shadowDepthImages.clear();
     shadowDepthMemories.clear();
+
     if (bakedShadowImageView) {
-        vkDestroyImageView(device, bakedShadowImageView, nullptr);
+        res.views.push_back(bakedShadowImageView);
         bakedShadowImageView = VK_NULL_HANDLE;
     }
-    for(int i=0; i<6; i++) {
+    for (int i = 0; i < 6; ++i) {
         if (bakedShadowFaceViews[i]) {
-            vkDestroyImageView(device, bakedShadowFaceViews[i], nullptr);
+            res.views.push_back(bakedShadowFaceViews[i]);
             bakedShadowFaceViews[i] = VK_NULL_HANDLE;
         }
     }
     if (bakedShadowArrayView) {
-        vkDestroyImageView(device, bakedShadowArrayView, nullptr);
+        res.views.push_back(bakedShadowArrayView);
         bakedShadowArrayView = VK_NULL_HANDLE;
     }
     if (bakedShadowImage) {
-        vkDestroyImage(device, bakedShadowImage, nullptr);
+        res.images.push_back(bakedShadowImage);
         bakedShadowImage = VK_NULL_HANDLE;
     }
     if (bakedShadowMemory) {
-        vkFreeMemory(device, bakedShadowMemory, nullptr);
+        res.memories.push_back(bakedShadowMemory);
         bakedShadowMemory = VK_NULL_HANDLE;
     }
 
@@ -614,6 +629,33 @@ void engine::Light::destroyShadowResources(VkDevice device) {
     if (lightManager) {
         lightManager->markLightsDirty();
     }
+    return res;
+}
+
+void engine::Light::freeShadowResources(VkDevice device, ShadowResources& resources) {
+    for (VkImageView view : resources.views) {
+        if (view) {
+            vkDestroyImageView(device, view, nullptr);
+        }
+    }
+    for (VkImage image : resources.images) {
+        if (image) {
+            vkDestroyImage(device, image, nullptr);
+        }
+    }
+    for (VkDeviceMemory memory : resources.memories) {
+        if (memory) {
+            vkFreeMemory(device, memory, nullptr);
+        }
+    }
+    resources.views.clear();
+    resources.images.clear();
+    resources.memories.clear();
+}
+
+void engine::Light::destroyShadowResources(VkDevice device) {
+    ShadowResources res = takeShadowResources();
+    freeShadowResources(device, res);
 }
 
 void engine::Light::fillShadowLightEntry(ShadowLightEntry& entry) const {
@@ -666,36 +708,91 @@ engine::LightManager::~LightManager() {
     shadowLightsMapped.clear();
 }
 
-void engine::LightManager::addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius) {
-    lights.emplace_back(this, name, transform, color, intensity, radius);
-    lights.back().createShadowMaps(renderer);
+engine::LightHandle engine::LightManager::addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius) {
+    const LightHandle handle = nextHandle++;
+    lights.push_back(std::make_unique<Light>(this, handle, name, transform, color, intensity, radius));
+    Light* light = lights.back().get();
+    lightLookup[handle] = light;
+    light->createShadowMaps(renderer);
     reorderLights();
+    vkDeviceWaitIdle(renderer->getDevice());
+    renderer->createComputeDescriptorSets();
+    markLightsDirty();
+    return handle;
+}
+
+void engine::LightManager::unregisterLight(LightHandle handle) {
+    auto lookupIt = lightLookup.find(handle);
+    if (lookupIt == lightLookup.end()) {
+        return;
+    }
+    Light* light = lookupIt->second;
+    auto storageIt = std::find_if(lights.begin(), lights.end(),
+        [light](const std::unique_ptr<Light>& l) { return l.get() == light; });
+    if (storageIt == lights.end()) {
+        lightLookup.erase(lookupIt);
+        return;
+    }
+    if (light->shadowMapReady()) {
+        scheduleShadowResourceDestroy(light->takeShadowResources());
+    }
+    lightLookup.erase(lookupIt);
+    lights.erase(storageIt);
+    reorderLights();
+    vkDeviceWaitIdle(renderer->getDevice());
     renderer->createComputeDescriptorSets();
     markLightsDirty();
 }
 
-void engine::LightManager::unregisterLight(uint32_t lightIdx) {
-    if (lightIdx >= lights.size()) {
-        return;
-    }
-    Light& light = lights[lightIdx];
-    if (light.shadowMapReady()) {
-        light.destroyShadowResources(renderer->getDevice());
-    }
-    lights.erase(lights.begin() + lightIdx);
-    reorderLights();
-    renderer->createComputeDescriptorSets();
-    markLightsDirty();
+engine::Light* engine::LightManager::getLight(LightHandle handle) {
+    auto it = lightLookup.find(handle);
+    return it == lightLookup.end() ? nullptr : it->second;
 }
 
 void engine::LightManager::clear() {
-    for (Light& light : lights) {
-        if (light.shadowMapReady()) {
-            light.destroyShadowResources(renderer->getDevice());
+    flushDeferredDestroys();
+    for (auto& light : lights) {
+        if (light->shadowMapReady()) {
+            light->destroyShadowResources(renderer->getDevice());
         }
     }
     lights.clear();
+    lightLookup.clear();
     markLightsDirty();
+}
+
+void engine::LightManager::scheduleShadowResourceDestroy(Light::ShadowResources&& resources) {
+    if (resources.views.empty() && resources.images.empty() && resources.memories.empty()) {
+        return;
+    }
+    const uint32_t lifetime = renderer->getFramesInFlight() + 1u;
+    deferredDestroys.push_back({ std::move(resources), lifetime });
+}
+
+void engine::LightManager::processDeferredDestroys() {
+    if (deferredDestroys.empty()) {
+        return;
+    }
+    VkDevice device = renderer->getDevice();
+    for (auto it = deferredDestroys.begin(); it != deferredDestroys.end();) {
+        if (it->framesRemaining > 0u) {
+            --it->framesRemaining;
+        }
+        if (it->framesRemaining == 0u) {
+            Light::freeShadowResources(device, it->resources);
+            it = deferredDestroys.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void engine::LightManager::flushDeferredDestroys() {
+    VkDevice device = renderer->getDevice();
+    for (auto& pending : deferredDestroys) {
+        Light::freeShadowResources(device, pending.resources);
+    }
+    deferredDestroys.clear();
 }
 
 void engine::LightManager::markLightsDirty() {
@@ -768,7 +865,7 @@ void engine::LightManager::updateShadowLightsBuffer(uint32_t frameIndex) {
     ShadowLightsSSBO* gpuData = static_cast<ShadowLightsSSBO*>(shadowLightsMapped[frameIndex]);
     const size_t count = std::min(lights.size(), static_cast<size_t>(kMaxPointLights));
     for (size_t i = 0; i < count; ++i) {
-        lights[i].fillShadowLightEntry(gpuData->lights[i]);
+        lights[i]->fillShadowLightEntry(gpuData->lights[i]);
     }
 }
 
@@ -787,11 +884,11 @@ void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
         return;
     }
     LightsUBO* gpuData = static_cast<LightsUBO*>(lightBuffersMapped[frameIndex]);
-    std::vector<Light>& lights = getLights();
+    auto& lights = getLights();
     size_t count = std::min(lights.size(), static_cast<size_t>(kMaxPointLights));
 
     for (size_t i = 0; i < count; ++i) {
-        gpuData->pointLights[i] = lights[i].getPointLightData();
+        gpuData->pointLights[i] = lights[i]->getPointLightData();
     }
 
     gpuData->numPointLights = glm::uvec4(static_cast<uint32_t>(count), 0, 0, 0);
@@ -799,28 +896,27 @@ void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {
 }
 
 void engine::LightManager::reorderLights() {
-    std::stable_partition(lights.begin(), lights.end(), [](const Light& l) {
-        return l.shadowMapReady();
+    std::stable_partition(lights.begin(), lights.end(), [](const std::unique_ptr<Light>& l) {
+        return l->shadowMapReady();
     });
     for (size_t i = 0; i < lights.size(); ++i) {
-        lights[i].updateLightIdx(static_cast<uint32_t>(i));
+        lights[i]->updateLightIdx(static_cast<uint32_t>(i));
     }
 }
 
 void engine::LightManager::createAllShadowMaps() {
     vkDeviceWaitIdle(renderer->getDevice());
-    std::vector<Light>& lights = getLights();
     for (auto& light : lights) {
-        light.createShadowMaps(renderer, true);
+        light->createShadowMaps(renderer, true);
     }
 }
 
 void engine::LightManager::renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
+    processDeferredDestroys();
     createShadowLightsBuffers();
     updateShadowLightsBuffer(currentFrame);
-    std::vector<Light>& lights = getLights();
     for (auto& light : lights) {
-        light.renderShadowMap(renderer, commandBuffer, currentFrame);
+        light->renderShadowMap(renderer, commandBuffer, currentFrame);
     }
 }
 

@@ -218,6 +218,8 @@ namespace engine {
         void updateAll(float deltaTime);
         void renderEntities(VkCommandBuffer commandBuffer, uint32_t currentFrame, bool DEBUG_RENDER_LOGS = false);
 
+        bool hasRenderable3D();
+
         void markForDeletion(Entity* entity) {
             pendingDeletions.push_back(entity);
         }
@@ -237,6 +239,10 @@ namespace engine {
         SpatialGrid spatialGrid{10.0f};
         bool spatialGridDirty = true;
         bool textureLoadDirty = false;
+
+        bool renderable3DCacheDirty = true;
+        bool renderable3DCache = false;
+        bool computeHasRenderable3D() const;
 
         Camera* camera = nullptr;
 

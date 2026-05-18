@@ -135,10 +135,7 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float bias = baseBias + slopeBias + distanceBias;
     uint requestedSamples = min(max(pc.samples, 1u), 16u);
     uint actualSamples = min(requestedSamples, 8u);
-    float shadow = 0.0;
-    float totalWeight = 0.0;
     float distFactor = currentDistance / farPlane;
-    float diskRadius = 0.08 * distFactor;
     float penumbraSize = 0.005 + 0.01 * distFactor;
     float3 up = abs(sampleDir.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
     float3 right = normalize(cross(up, sampleDir));
@@ -146,6 +143,34 @@ float computePointShadow(PointLight light, float3 fragPos, float3 geomNormal, fl
     float angle = worldAngle(fragPos) * TWO_PI;
     float ca = cos(angle);
     float sa = sin(angle);
+
+    const float lightSize = 0.10;
+    float searchRadius = lightSize * distFactor;
+    float avgBlockerDepth = 0.0;
+    float blockerCount = 0.0;
+    for (uint s = 0; s < actualSamples; ++s) {
+        uint si = sampleOrder[min(s, 15u)];
+        float2 so = diskOffsets[si];
+        float2 srot = float2(so.x * ca - so.y * sa, so.x * sa + so.y * ca);
+        float3 searchDir = sampleDir + (right * srot.x + forward * srot.y) * searchRadius;
+        float searchDepth = shadowMaps[shadowIndex].SampleLevel(sampleSampler, searchDir, 0.0);
+        if (searchDepth < currentDepth - bias) {
+            avgBlockerDepth += searchDepth;
+            blockerCount += 1.0;
+        }
+    }
+
+    if (blockerCount < 0.5) {
+        return 1.0;
+    }
+    avgBlockerDepth /= blockerCount;
+
+    float penumbraRatio = (currentDepth - avgBlockerDepth) / max(avgBlockerDepth, 1e-4);
+    float diskRadius = clamp(penumbraRatio * lightSize * distFactor,
+                             0.004 * distFactor, 0.12 * distFactor);
+
+    float shadow = 0.0;
+    float totalWeight = 0.0;
     for (uint i = 0; i < actualSamples; ++i) {
         uint sampleIndex = sampleOrder[min(i, 15u)];
         float2 o = diskOffsets[sampleIndex];

@@ -5,20 +5,36 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <array>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace engine {
     class LightManager;
+
+    // stable handle for lights
+    using LightHandle = uint64_t;
+    inline constexpr LightHandle kInvalidLightHandle = 0;
+
     class Light {
     public:
         Light(
             LightManager* lightManager,
+            LightHandle handle,
             const std::string& name,
             const glm::mat4& transform,
             const glm::vec3& color,
             float intensity,
             float radius
         );
+
+        struct ShadowResources {
+            std::vector<VkImage> images;
+            std::vector<VkDeviceMemory> memories;
+            std::vector<VkImageView> views;
+        };
+
+        LightHandle getHandle() const { return handle; }
 
         glm::vec3 getColor() const { return color; }
         void setColor(const glm::vec3& color);
@@ -28,6 +44,9 @@ namespace engine {
 
         float getRadius() const { return radius; }
         void setRadius(float radius);
+
+        const glm::mat4& getTransform() const { return transform; }
+        void setTransform(const glm::mat4& transform);
 
         void updateLightIdx(uint32_t newIdx);
 
@@ -50,9 +69,14 @@ namespace engine {
         void bakeShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer);
         void renderShadowMap(engine::Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame);
         bool isBaked() const { return shadowBaked; }
+
+        ShadowResources takeShadowResources();
+        static void freeShadowResources(VkDevice device, ShadowResources& resources);
         void destroyShadowResources(VkDevice device);
 
     private:
+        void updateShadowMatrices();
+
         glm::vec3 color;
         float intensity;
         float radius;
@@ -120,7 +144,8 @@ namespace engine {
             return true;
         }
 
-        uint32_t lightIdx = 0xFFFFFFFF; // idx in EntityManager's light list
+        LightHandle handle = kInvalidLightHandle; // stable id
+        uint32_t lightIdx = 0xFFFFFFFF; // upload-slot index, reassigned by reorderLights
 
         // dynamic shadow map, sent to shader
         std::vector<VkImage> shadowDepthImages;
@@ -150,9 +175,11 @@ namespace engine {
         ~LightManager();
         void clear();
 
-        void addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius);
-        void unregisterLight(uint32_t lightIdx);
-        std::vector<Light>& getLights() { return lights; }
+        LightHandle addLight(const std::string& name, const glm::mat4& transform, const glm::vec3& color, float intensity, float radius);
+        void unregisterLight(LightHandle handle);
+        Light* getLight(LightHandle handle);
+        std::vector<std::unique_ptr<Light>>& getLights() { return lights; }
+        void processDeferredDestroys();
         void createLightsUBO();
         void updateLightsUBO(uint32_t frameIndex);
         void createShadowLightsBuffers();
@@ -168,9 +195,19 @@ namespace engine {
 
     private:
         void reorderLights();
+        void scheduleShadowResourceDestroy(Light::ShadowResources&& resources);
+        void flushDeferredDestroys();
+
+        struct DeferredShadowDestroy {
+            Light::ShadowResources resources;
+            uint32_t framesRemaining;
+        };
 
         Renderer* renderer;
-        std::vector<Light> lights;
+        std::vector<std::unique_ptr<Light>> lights;
+        std::unordered_map<LightHandle, Light*> lightLookup;
+        LightHandle nextHandle = kInvalidLightHandle + 1;
+        std::vector<DeferredShadowDestroy> deferredDestroys;
         std::vector<VkBuffer> lightsBuffers;
         std::vector<VkDeviceMemory> lightsBuffersMemory;
         std::vector<void*> lightBuffersMapped;

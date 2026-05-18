@@ -698,6 +698,9 @@ void engine::Renderer::drawFrame() {
             if (node.passInfo->usesSwapchain) {
                 continue;
             }
+            if (!isConditionalPassEnabled(*node.passInfo)) {
+                continue;
+            }
 
             bool hasValidColorAttachment = false;
             for (const auto& colorAttachment : node.passInfo->colorAttachments) {
@@ -840,29 +843,29 @@ void engine::Renderer::drawFrame() {
     ensureCommandBufferCapacity(frameGraphicsSegments, extraGraphicsNeeded, commandPool);
     ensureCommandBufferCapacity(frameComputeSegments, computeSubmissionCount, computeCommandPool);
 
-    std::vector<VkCommandBuffer> submissionCommandBuffers(submissions.size(), VK_NULL_HANDLE);
+    frameSubmissionCommandBuffers.assign(submissions.size(), VK_NULL_HANDLE);
     uint32_t usedGraphicsExtra = 0;
     uint32_t usedCompute = 0;
     bool usedPrimaryGraphicsBuffer = false;
     for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
         const RenderSubmitNode& submission = submissions[submissionIdx];
         if (submission.queueClass == NodeQueueClass::Compute) {
-            submissionCommandBuffers[submissionIdx] = frameComputeSegments[usedCompute++];
+            frameSubmissionCommandBuffers[submissionIdx] = frameComputeSegments[usedCompute++];
         } else {
             if (!usedPrimaryGraphicsBuffer) {
-                submissionCommandBuffers[submissionIdx] = commandBuffers[currentFrame];
+                frameSubmissionCommandBuffers[submissionIdx] = commandBuffers[currentFrame];
                 usedPrimaryGraphicsBuffer = true;
             } else {
-                submissionCommandBuffers[submissionIdx] = frameGraphicsSegments[usedGraphicsExtra++];
+                frameSubmissionCommandBuffers[submissionIdx] = frameGraphicsSegments[usedGraphicsExtra++];
             }
         }
-        vkResetCommandBuffer(submissionCommandBuffers[submissionIdx], 0);
+        vkResetCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], 0);
     }
 
     bool framePrepDone = false;
     for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        std::vector<size_t> nodeOrder = { submissions[submissionIdx].nodeIdx };
-        recordCommandBuffer(submissionCommandBuffers[submissionIdx], imageIndex, &nodeOrder, !framePrepDone, submissions[submissionIdx].queueClass);
+        const size_t submissionNodeIdx = submissions[submissionIdx].nodeIdx;
+        recordCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], imageIndex, std::span<const size_t>(&submissionNodeIdx, 1), !framePrepDone, submissions[submissionIdx].queueClass);
         framePrepDone = true;
     }
 
@@ -929,27 +932,27 @@ void engine::Renderer::drawFrame() {
         const bool isLastGraphics = orderPos == lastGraphicsOrderPos;
         const bool isLastCompute = orderPos == lastComputeOrderPos;
 
-        std::vector<VkSemaphore> waitSemaphores;
-        std::vector<VkPipelineStageFlags> waitStages;
-        std::vector<VkSemaphore> signalSemaphores;
+        frameWaitSemaphores.clear();
+        frameWaitStages.clear();
+        frameSignalSemaphores.clear();
 
         const bool shouldWaitOnImageAvailable = orderPos == imageAvailableWaitOrderPos;
         if (shouldWaitOnImageAvailable) {
-            waitSemaphores.push_back(imageAvailableSemaphores[currentFrame]);
-            waitStages.push_back(submission.queueClass == NodeQueueClass::Compute
+            frameWaitSemaphores.push_back(imageAvailableSemaphores[currentFrame]);
+            frameWaitStages.push_back(submission.queueClass == NodeQueueClass::Compute
                 ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
                 : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
         }
 
         for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
-            waitSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
-            waitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+            frameWaitSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
+            frameWaitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
         }
         for (size_t edgeIdx : submission.outgoingCrossQueueEdges) {
-            signalSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
+            frameSignalSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
         }
         if (isLastSubmission) {
-            signalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
+            frameSignalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
         }
 
         VkFence submitFence = VK_NULL_HANDLE;
@@ -961,10 +964,10 @@ void engine::Renderer::drawFrame() {
         VkQueue submitQueue = submission.queueClass == NodeQueueClass::Compute ? computeQueue : graphicsQueue;
         VkResult submitResult = submitNode(
                 submitQueue,
-                submissionCommandBuffers[submissionIdx],
-                waitSemaphores,
-                waitStages,
-                signalSemaphores,
+                frameSubmissionCommandBuffers[submissionIdx],
+                frameWaitSemaphores,
+                frameWaitStages,
+                frameSignalSemaphores,
                 submitFence);
         if (submitResult != VK_SUCCESS) {
             std::cerr << "vkQueueSubmit failed with VkResult=" << submitResult
@@ -1003,7 +1006,7 @@ void engine::Renderer::drawFrame() {
 void engine::Renderer::recordCommandBuffer(
     VkCommandBuffer commandBuffer,
     uint32_t imageIndex,
-    const std::vector<size_t>* nodeOrder,
+    std::span<const size_t> nodeOrder,
     bool doFramePrep,
     NodeQueueClass queueClass
 ) {
@@ -1020,16 +1023,16 @@ void engine::Renderer::recordCommandBuffer(
     const size_t nodeCount = renderGraph.size();
     const auto& scheduledOrder = shaderManager->getScheduledNodeOrder();
     std::vector<size_t> fallbackOrder;
-    const std::vector<size_t>* resolvedOrder = nodeOrder;
-    if (!resolvedOrder) {
+    std::span<const size_t> resolvedOrder = nodeOrder;
+    if (resolvedOrder.empty()) {
         if (scheduledOrder.size() == nodeCount) {
-            resolvedOrder = &scheduledOrder;
+            resolvedOrder = scheduledOrder;
         } else {
             fallbackOrder.resize(nodeCount);
             for (size_t idx = 0; idx < nodeCount; ++idx) {
                 fallbackOrder[idx] = idx;
             }
-            resolvedOrder = &fallbackOrder;
+            resolvedOrder = fallbackOrder;
         }
     }
 
@@ -1051,8 +1054,8 @@ void engine::Renderer::recordCommandBuffer(
         audioManager->updateListener(pos, fwd, up);
     }
 
-    for (size_t nodeOrderIdx = 0; nodeOrderIdx < resolvedOrder->size(); ++nodeOrderIdx) {
-        const size_t nodeIdx = (*resolvedOrder)[nodeOrderIdx];
+    for (size_t nodeOrderIdx = 0; nodeOrderIdx < resolvedOrder.size(); ++nodeOrderIdx) {
+        const size_t nodeIdx = resolvedOrder[nodeOrderIdx];
         if (nodeIdx >= nodeCount) {
             continue;
         }
@@ -1068,8 +1071,10 @@ void engine::Renderer::recordCommandBuffer(
             continue;
         }
         const bool skipDraw = node.skipCondition && node.skipCondition(this);
-        std::vector<VkImageMemoryBarrier2> preBarriers;
-        std::vector<VkImageMemoryBarrier2> postBarriers;
+        recordPreBarriers.clear();
+        recordPostBarriers.clear();
+        std::vector<VkImageMemoryBarrier2>& preBarriers = recordPreBarriers;
+        std::vector<VkImageMemoryBarrier2>& postBarriers = recordPostBarriers;
 
         if (node.passInfo->usesSwapchain) {
             VkImageLayout currentLayout = swapChainImageLayouts.at(imageIndex);
@@ -1129,6 +1134,9 @@ void engine::Renderer::recordCommandBuffer(
                 ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
                 : (VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
             for (auto& image : node.passInfo->images.value()) {
+                if (image.image == VK_NULL_HANDLE) {
+                    continue;
+                }
                 VkPipelineStageFlags2 linkedReadStages = shaderReadStages;
                 if (nodeIdx < renderNodeAttachmentReadStages.size()) {
                     auto stageIt = renderNodeAttachmentReadStages[nodeIdx].find(image.name);
@@ -1313,7 +1321,8 @@ void engine::Renderer::recordCommandBuffer(
             }
         };
         if (!preBarriers.empty()) {
-            std::vector<VkImageMemoryBarrier> legacyBarriers;
+            std::vector<VkImageMemoryBarrier>& legacyBarriers = recordLegacyBarriers;
+            legacyBarriers.clear();
             legacyBarriers.reserve(preBarriers.size());
             VkPipelineStageFlags srcStages = 0;
             VkPipelineStageFlags dstStages = 0;
@@ -1499,7 +1508,8 @@ void engine::Renderer::recordCommandBuffer(
         }
 
         if (!postBarriers.empty()) {
-            std::vector<VkImageMemoryBarrier> legacyBarriers;
+            std::vector<VkImageMemoryBarrier>& legacyBarriers = recordLegacyBarriers;
+            legacyBarriers.clear();
             legacyBarriers.reserve(postBarriers.size());
             VkPipelineStageFlags srcStages = 0;
             VkPipelineStageFlags dstStages = 0;
@@ -1982,22 +1992,18 @@ void engine::Renderer::refreshDescriptorSets() {
 
 void engine::Renderer::resetPostProcessDescriptorPools() {
     vkDeviceWaitIdle(device);
-    auto shaders = shaderManager->getGraphicsShaders();
-    for (const auto& shaderCopy : shaders) {
-        if (shaderCopy.config.inputBindings.empty()) continue;
-        auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
-        if (!shader) continue;
+    for (const auto& shaderPtr : shaderManager->getGraphicsShaders()) {
+        GraphicsShader* shader = shaderPtr.get();
+        if (!shader || shader->config.inputBindings.empty()) continue;
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             vkResetDescriptorPool(device, shader->descriptorPool, 0);
         }
         shader->descriptorSets.clear();
     }
 
-    auto computeShaders = shaderManager->getComputeShaders();
-    for (const auto& shaderCopy : computeShaders) {
-        if (shaderCopy.config.inputBindings.empty()) continue;
-        auto shader = shaderManager->getComputeShader(shaderCopy.name);
-        if (!shader) continue;
+    for (const auto& shaderPtr : shaderManager->getComputeShaders()) {
+        ComputeShader* shader = shaderPtr.get();
+        if (!shader || shader->config.inputBindings.empty()) continue;
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             vkResetDescriptorPool(device, shader->descriptorPool, 0);
         }
@@ -2007,12 +2013,10 @@ void engine::Renderer::resetPostProcessDescriptorPools() {
 
 void engine::Renderer::resetPerObjectDescriptorPools() {
     vkDeviceWaitIdle(device);
-    auto shaders = shaderManager->getGraphicsShaders();
-    for (const auto& shaderCopy : shaders) {
-        if (!shaderCopy.config.inputBindings.empty()) continue;
-        if (shaderCopy.config.poolMultiplier <= 1) continue;
-        auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
-        if (!shader) continue;
+    for (const auto& shaderPtr : shaderManager->getGraphicsShaders()) {
+        GraphicsShader* shader = shaderPtr.get();
+        if (!shader || !shader->config.inputBindings.empty()) continue;
+        if (shader->config.poolMultiplier <= 1) continue;
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             vkResetDescriptorPool(device, shader->descriptorPool, 0);
         }
@@ -2776,6 +2780,33 @@ void engine::Renderer::destroyAttachmentResources() {
     }
 }
 
+bool engine::Renderer::isConditionalPassEnabled(const PassInfo& pass) {
+    if (!pass.enabledCondition) {
+        return true;
+    }
+    if (!settingsManager || !settingsManager->getSettings()) {
+        return true;
+    }
+    return pass.enabledCondition(this);
+}
+
+bool engine::Renderer::isConditionalAttachmentDisabled(const std::string& shaderName) {
+    if (!shaderManager) {
+        return false;
+    }
+    for (const auto& node : shaderManager->getRenderGraph()) {
+        if (!node.passInfo) {
+            continue;
+        }
+        for (const auto& nodeName : node.shaderNames) {
+            if (nodeName == shaderName) {
+                return !isConditionalPassEnabled(*node.passInfo);
+            }
+        }
+    }
+    return false;
+}
+
 void engine::Renderer::createAttachmentResources() {
     const auto& passes = shaderManager->getRenderPasses();
     managedRenderPasses.clear();
@@ -2806,6 +2837,18 @@ void engine::Renderer::createAttachmentResources() {
         }
 
         if (!renderPass.images.has_value()) {
+            continue;
+        }
+
+        if (!isConditionalPassEnabled(renderPass)) {
+            for (const auto& image : renderPass.images.value()) {
+                if ((image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
+                    renderPass.hasDepthAttachment = true;
+                    renderPass.depthAttachmentFormat = image.format;
+                } else if ((image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0) {
+                    renderPass.attachmentFormats.push_back(image.format);
+                }
+            }
             continue;
         }
 
@@ -3093,89 +3136,89 @@ void engine::Renderer::ensureFallbackShadowCubeTexture() {
 
 void engine::Renderer::ensureFallback2DTexture() {
     if (!textureManager) return;
-    if (textureManager->getTexture("fallback_white_2d")) {
-        return;
-    }
 
-    // 1x1 white RGBA texture for sampled image fallbacks.
-    const std::array<uint8_t, 4> pixel = {255, 255, 255, 255};
-    VkImage texImage;
-    VkDeviceMemory texMemory;
-    std::tie(texImage, texMemory) = createImageFromPixels(
-        const_cast<uint8_t*>(pixel.data()),
-        pixel.size(),
-        1,
-        1,
-        1,
-        VK_SAMPLE_COUNT_1_BIT,
-        VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        1,
-        0
-    );
-    transitionImageLayout(
-        texImage,
-        VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        1,
-        1
-    );
+    auto createFallback = [this](const std::string& name, const std::array<uint8_t, 4>& pixel) {
+        if (textureManager->getTexture(name)) {
+            return;
+        }
+        VkImage texImage;
+        VkDeviceMemory texMemory;
+        std::tie(texImage, texMemory) = createImageFromPixels(
+            const_cast<uint8_t*>(pixel.data()),
+            pixel.size(),
+            1,
+            1,
+            1,
+            VK_SAMPLE_COUNT_1_BIT,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            1,
+            0
+        );
+        transitionImageLayout(
+            texImage,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            1,
+            1
+        );
 
-    VkImageView texView = createImageView(
-        texImage,
-        VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        1,
-        VK_IMAGE_VIEW_TYPE_2D,
-        1
-    );
-    VkSampler texSampler = createTextureSampler(
-        VK_FILTER_LINEAR,
-        VK_FILTER_LINEAR,
-        VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        0.0f,
-        VK_FALSE,
-        1.0f,
-        VK_FALSE,
-        VK_COMPARE_OP_ALWAYS,
-        0.0f,
-        0.0f,
-        VK_BORDER_COLOR_INT_OPAQUE_BLACK,
-        VK_FALSE
-    );
+        VkImageView texView = createImageView(
+            texImage,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            1,
+            VK_IMAGE_VIEW_TYPE_2D,
+            1
+        );
+        VkSampler texSampler = createTextureSampler(
+            VK_FILTER_LINEAR,
+            VK_FILTER_LINEAR,
+            VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            0.0f,
+            VK_FALSE,
+            1.0f,
+            VK_FALSE,
+            VK_COMPARE_OP_ALWAYS,
+            0.0f,
+            0.0f,
+            VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            VK_FALSE
+        );
 
-    Texture fallbackTex = {
-        .name = "fallback_white_2d",
-        .image = texImage,
-        .imageView = texView,
-        .imageMemory = texMemory,
-        .imageSampler = texSampler,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
-        .width = 1,
-        .height = 1
+        Texture fallbackTex = {
+            .name = name,
+            .image = texImage,
+            .imageView = texView,
+            .imageMemory = texMemory,
+            .imageSampler = texSampler,
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .width = 1,
+            .height = 1
+        };
+        textureManager->registerTexture(name, fallbackTex);
     };
-    textureManager->registerTexture("fallback_white_2d", fallbackTex);
+
+    createFallback("fallback_white_2d", {255, 255, 255, 255});
+    createFallback("fallback_black_2d", {0, 0, 0, 0});
 }
 
 void engine::Renderer::createPostProcessDescriptorSets() {
     if (DEBUG_RENDER_LOGS) {
         std::cout << "[Debug] createPostProcessDescriptorSets starting..." << std::endl;
     }
-    auto shaders = shaderManager->getGraphicsShaders();
-    for (const auto& shaderCopy : shaders) {
-        if (shaderCopy.config.inputBindings.empty()) continue;
+    for (const auto& shaderPtr : shaderManager->getGraphicsShaders()) {
+        GraphicsShader* shader = shaderPtr.get();
+        if (!shader || shader->config.inputBindings.empty()) continue;
         if (DEBUG_RENDER_LOGS) {
-            std::cout << "[Debug] Processing shader: " << shaderCopy.name << std::endl;
+            std::cout << "[Debug] Processing shader: " << shader->name << std::endl;
         }
-
-        auto shader = shaderManager->getGraphicsShader(shaderCopy.name);
-        if (!shader) continue;
 
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             VkResult poolReset = vkResetDescriptorPool(device, shader->descriptorPool, 0);
@@ -3200,6 +3243,14 @@ void engine::Renderer::createPostProcessDescriptorSets() {
             }
             return 1u;
         };
+
+        std::vector<std::string> fragFallbackName(static_cast<size_t>(fragmentBindings));
+        for (const auto& binding : shader->config.inputBindings) {
+            const int fragIndex = static_cast<int>(binding.binding) - vertexBindings;
+            if (fragIndex >= 0 && fragIndex < fragmentBindings) {
+                fragFallbackName[static_cast<size_t>(fragIndex)] = binding.fallbackTextureName;
+            }
+        }
 
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shader->descriptorSetLayout);
         VkDescriptorSetAllocateInfo allocInfo = {
@@ -3304,7 +3355,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                 }
                 VkImageView imageView = getPassImageView(binding.sourceShaderName, binding.attachmentName);
                 if (imageView == VK_NULL_HANDLE) {
-                    std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found for shader '" << binding.sourceShaderName << "'.\n";
+                    if (!isConditionalAttachmentDisabled(binding.sourceShaderName)) {
+                        std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found for shader '" << binding.sourceShaderName << "'.\n";
+                    }
                     continue;
                 }
 
@@ -3393,7 +3446,13 @@ void engine::Renderer::createPostProcessDescriptorSets() {
 
                 if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
                     {
-                        Texture* fallbackTex = textureManager ? textureManager->getTexture("fallback_white_2d") : nullptr;
+                        const std::string& fbName = fragFallbackName[static_cast<size_t>(frag)];
+                        Texture* fallbackTex = textureManager
+                            ? textureManager->getTexture(fbName.empty() ? std::string("fallback_white_2d") : fbName)
+                            : nullptr;
+                        if ((!fallbackTex || fallbackTex->imageView == VK_NULL_HANDLE) && !fbName.empty() && textureManager) {
+                            fallbackTex = textureManager->getTexture("fallback_white_2d");
+                        }
                         if (!fallbackTex || fallbackTex->imageView == VK_NULL_HANDLE || fallbackTex->image == VK_NULL_HANDLE) {
                             std::cout << "Warning: No fallback texture available for shader '" << shader->name << "' binding " << (vertexBindings + frag) << ". Skipping descriptor write.\n";
                             continue;
@@ -3440,11 +3499,9 @@ void engine::Renderer::createPostProcessDescriptorSets() {
 }
 
 void engine::Renderer::createComputeDescriptorSets() {
-    auto shaders = shaderManager->getComputeShaders();
-    for (const auto& shaderCopy : shaders) {
-        if (shaderCopy.config.inputBindings.empty()) continue;
-        auto shader = shaderManager->getComputeShader(shaderCopy.name);
-        if (!shader) continue;
+    for (const auto& shaderPtr : shaderManager->getComputeShaders()) {
+        ComputeShader* shader = shaderPtr.get();
+        if (!shader || shader->config.inputBindings.empty()) continue;
 
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             VkResult poolReset = vkResetDescriptorPool(device, shader->descriptorPool, 0);
@@ -3584,7 +3641,9 @@ void engine::Renderer::createComputeDescriptorSets() {
                 if (!binding.sourceShaderName.empty() && !binding.attachmentName.empty()) {
                     VkImageView imageView = getPassImageView(binding.sourceShaderName, binding.attachmentName);
                     if (imageView == VK_NULL_HANDLE) {
-                        std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found for shader '" << binding.sourceShaderName << "'.\n";
+                        if (!isConditionalAttachmentDisabled(binding.sourceShaderName)) {
+                            std::cout << "Warning: Attachment '" << binding.attachmentName << "' not found for shader '" << binding.sourceShaderName << "'.\n";
+                        }
                         continue;
                     }
 

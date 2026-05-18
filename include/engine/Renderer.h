@@ -12,6 +12,7 @@
 #include <optional>
 #include <utility>
 #include <chrono>
+#include <span>
 #include <unordered_map>
 
 namespace engine {
@@ -265,6 +266,13 @@ namespace engine {
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
         std::vector<std::shared_ptr<PassInfo>> managedRenderPasses;
+        std::vector<VkCommandBuffer> frameSubmissionCommandBuffers;
+        std::vector<VkSemaphore> frameWaitSemaphores;
+        std::vector<VkPipelineStageFlags> frameWaitStages;
+        std::vector<VkSemaphore> frameSignalSemaphores;
+        std::vector<VkImageMemoryBarrier2> recordPreBarriers;
+        std::vector<VkImageMemoryBarrier2> recordPostBarriers;
+        std::vector<VkImageMemoryBarrier> recordLegacyBarriers;
         VkCommandPool commandPool = VK_NULL_HANDLE;
         VkCommandPool computeCommandPool = VK_NULL_HANDLE;
         VkSampler mainTextureSampler;
@@ -344,6 +352,8 @@ namespace engine {
         void createImageViews();
         void createAttachmentResources();
         void destroyAttachmentResources();
+        bool isConditionalPassEnabled(const PassInfo& pass);
+        bool isConditionalAttachmentDisabled(const std::string& shaderName);
         void createCommandPool();
         void createMainTextureSampler();
         void createNearestSampler();
@@ -361,7 +371,7 @@ namespace engine {
         void recordCommandBuffer(
             VkCommandBuffer commandBuffer,
             uint32_t imageIndex,
-            const std::vector<size_t>* nodeOrder = nullptr,
+            std::span<const size_t> nodeOrder = {},
             bool doFramePrep = true,
             NodeQueueClass queueClass = NodeQueueClass::Graphics
         );

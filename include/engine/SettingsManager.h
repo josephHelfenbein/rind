@@ -418,8 +418,20 @@ namespace engine {
 
         std::vector<SettingsDefinition> defs = {
             { SettingsDefinition::Bool, "Show FPS Counter", "showFPS", &Settings::showFPS },
-            { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"} },
-            { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"} },
+            { SettingsDefinition::Enum, "Ambient Occlusion Mode", "aoMode", nullptr, &Settings::aoMode, {"Disabled", "SSAO", "GTAO"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f, 0.0f, "",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if ((prev->aoMode == 0) != (curr->aoMode == 0)) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
+            { SettingsDefinition::Enum, "Anti-Aliasing Mode", "aaMode", nullptr, &Settings::aaMode, {"Disabled", "FXAA", "SMAA"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f, 0.0f, "",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if ((prev->aaMode == 2) != (curr->aaMode == 2)) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
             { SettingsDefinition::Enum, "Screen Mode", "screenMode", nullptr, &Settings::screenMode, {"Windowed", "Borderless", "Fullscreen"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f, 0.0f, "",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
                     if (prev->screenMode != curr->screenMode) {
@@ -444,7 +456,13 @@ namespace engine {
                 }
             },
             { SettingsDefinition::Slider, "Volumetric Quality", "volumetricQuality", nullptr, nullptr, {}, &Settings::volumetricQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "" },
-            { SettingsDefinition::Slider, "SSR Quality", "ssrQuality", nullptr, nullptr, {}, &Settings::ssrQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "Off" },
+            { SettingsDefinition::Slider, "SSR Quality", "ssrQuality", nullptr, nullptr, {}, &Settings::ssrQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "Off",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if ((prev->ssrQuality >= 0.5f) != (curr->ssrQuality >= 0.5f)) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
         };
 
         static std::filesystem::path getConfigFilePath(const std::string& location) {

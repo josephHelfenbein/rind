@@ -72,6 +72,19 @@ float3 agxEotf(float3 val) {
     return pow(max(val, 0.0), 2.2);
 }
 
+float hash12(float2 p) {
+    float3 p3 = frac(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return frac((p3.x + p3.y) * p3.z);
+}
+
+float3 triangularDither(float2 pixel) {
+    float r = hash12(pixel) - hash12(pixel + 17.13);
+    float g = hash12(pixel + 41.71) - hash12(pixel + 71.29);
+    float b = hash12(pixel + 113.5) - hash12(pixel + 151.7);
+    return float3(r, g, b);
+}
+
 float4 main(VSOutput input) : SV_Target {
     float3 scene = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     float4 ssr = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
@@ -83,5 +96,11 @@ float4 main(VSOutput input) : SV_Target {
     combined *= pc.exposure;
     combined += bloom;
     combined = agxEotf(agxLookPunchy(agx(combined)));
+
+    uint texW, texH;
+    sceneTexture.GetDimensions(texW, texH);
+    float2 pixel = input.fragTexCoord * float2(texW, texH);
+    combined += triangularDither(pixel) * (1.0 / 255.0);
+
     return float4(combined, 1.0);
 }

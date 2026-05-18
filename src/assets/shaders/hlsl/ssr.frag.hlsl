@@ -38,6 +38,17 @@ struct PushConstants {
 
 static const float MAX_DISTANCE = 150.0;
 
+static const float2 kSSRPoisson[8] = {
+    float2(0.9012, 0.1357),
+    float2(0.2847, 0.7625),
+    float2(-0.5341, 0.6092),
+    float2(-0.9233, -0.1014),
+    float2(-0.3618, -0.7421),
+    float2(0.4127, -0.6839),
+    float2(0.6531, -0.1207),
+    float2(-0.1294, 0.2538)
+};
+
 float hash(float2 p) {
     return frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);
 }
@@ -191,8 +202,21 @@ float4 main(VSOutput input) : SV_Target {
         float surfaceDist = length(viewPos);
         float pathLength = surfaceDist + rayLength;
 
-        float mipLevel = clamp(pathLength * 0.04 + roughness * roughness * 6.0, 0.0, 4.0);
-        float4 reflectionColor = lightingTexture.SampleLevel(sampleSampler, hitUV, mipLevel);
+        float baseMip = clamp(pathLength * 0.04 + roughness * roughness * 3.0, 0.0, 4.0);
+        float gatherRadius = roughness * roughness * 0.05 + pathLength * 0.0004;
+        float gatherAngle = jitter * 6.28318530718;
+        float gca = cos(gatherAngle);
+        float gsa = sin(gatherAngle);
+        float4 reflectionColor = lightingTexture.SampleLevel(sampleSampler, hitUV, baseMip);
+        float gatherWeight = 1.0;
+        [unroll]
+        for (int g = 0; g < 8; g++) {
+            float2 d = kSSRPoisson[g];
+            float2 rd = float2(d.x * gca - d.y * gsa, d.x * gsa + d.y * gca) * gatherRadius;
+            reflectionColor += lightingTexture.SampleLevel(sampleSampler, hitUV + rd, baseMip);
+            gatherWeight += 1.0;
+        }
+        reflectionColor /= gatherWeight;
         float2 edgeFade = smoothstep(0.0, 0.1, hitUV) * smoothstep(1.0, 0.9, hitUV);
         float edgeFactor = min(edgeFade.x, edgeFade.y);
         float fresnelFactor = lerp(pow(1.0 - facingRatio, 3.0), 1.0, metallic);

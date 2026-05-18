@@ -91,6 +91,7 @@ namespace engine {
         std::optional<std::vector<PassImage>> images = std::nullopt;
         std::vector<VkRenderingAttachmentInfo> colorAttachments;
         std::optional<VkRenderingAttachmentInfo> depthAttachment;
+        std::function<bool(Renderer*)> enabledCondition = nullptr;
     };
 
     struct GraphicsShader {
@@ -140,6 +141,7 @@ namespace engine {
                 std::string sourceShaderName;
                 std::string attachmentName;
                 std::string textureName;
+                std::string fallbackTextureName;
                 std::function<VkDescriptorBufferInfo(engine::Renderer*, size_t frame)> bufferProvider;
                 std::function<void(engine::Renderer*, size_t frame, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos)> imageArrayProvider;
                 VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
@@ -199,6 +201,7 @@ namespace engine {
                 std::string sourceShaderName;
                 std::string attachmentName;
                 std::string textureName;
+                std::string fallbackTextureName;
                 std::function<VkDescriptorBufferInfo(engine::Renderer*, size_t frame)> bufferProvider;
                 std::function<void(engine::Renderer*, size_t frame, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos)> imageArrayProvider;
                 VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
@@ -275,8 +278,8 @@ namespace engine {
         void addGraphicsShader(GraphicsShader shader);
         void addComputeShader(ComputeShader shader);
 
-        std::vector<GraphicsShader> getGraphicsShaders() const;
-        std::vector<ComputeShader> getComputeShaders() const;
+        const std::vector<std::unique_ptr<GraphicsShader>>& getGraphicsShaders() const;
+        const std::vector<std::unique_ptr<ComputeShader>>& getComputeShaders() const;
 
         void loadAllShaders();
         void loadGraphicsShader(const std::string& name);
