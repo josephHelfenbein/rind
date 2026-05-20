@@ -97,7 +97,8 @@ bool rayMarch(float3 startScreen, float3 screenStep, int stepCount, float jitter
         float depthDiff = currSurfVZ - currRayVZ;
 
         float stepWorldDist = abs(currRayVZ - prevRayVZ);
-        float thickness = max(0.25, stepWorldDist * 1.5);
+        float depthPrecision = abs(currRayVZ) * 0.002;
+        float thickness = max(0.25 + depthPrecision, stepWorldDist * 1.5);
 
         bool crossed = prevDepthDiff <= 0.0 && depthDiff > 0.0 && depthDiff < thickness;
 
@@ -161,12 +162,14 @@ float4 main(VSOutput input) : SV_Target {
     float3 normalView = normalize(mul(float4(normal, 0.0), pc.view).xyz);
     float3 reflectDir = reflect(-viewDir, normalView);
 
-    if (reflectDir.z > 0.0) {
+    float dirFade = saturate(-reflectDir.z * 10.0);
+    if (dirFade <= 0.0) {
         return float4(0.0, 0.0, 0.0, 1.0);
     }
 
     float facingRatio = max(dot(normalView, viewDir), 0.0);
-    if (facingRatio < 0.1) {
+    float facingFade = smoothstep(0.02, 0.15, facingRatio);
+    if (facingFade <= 0.0) {
         return float4(0.0, 0.0, 0.0, 1.0);
     }
 
@@ -189,7 +192,9 @@ float4 main(VSOutput input) : SV_Target {
 
     float3 screenDelta = endScreen - startScreen;
     float2 pixelDelta = screenDelta.xy * screenSize;
-    int stepCount = clamp(int(max(abs(pixelDelta.x), abs(pixelDelta.y))), 16, int(pc.maxSteps));
+    float idealSteps = max(abs(pixelDelta.x), abs(pixelDelta.y));
+    int stepCount = clamp(int(idealSteps), 16, int(pc.maxSteps));
+    float coverageFade = saturate(float(pc.maxSteps) / max(idealSteps, 1.0));
     float3 screenStep = screenDelta / float(stepCount);
 
     float jitter = hash(uv + frac(width * 0.001));
@@ -222,7 +227,7 @@ float4 main(VSOutput input) : SV_Target {
         float fresnelFactor = lerp(pow(1.0 - facingRatio, 3.0), 1.0, metallic);
         float rayFade = 1.0 - smoothstep(MAX_DISTANCE * 0.7, MAX_DISTANCE, rayLength);
         float surfaceFade = 1.0 - smoothstep(MAX_DISTANCE * 0.6, MAX_DISTANCE * 1.2, surfaceDist);
-        float finalAlpha = reflectionColor.a * edgeFactor * fresnelFactor * rayFade * surfaceFade * roughnessFade;
+        float finalAlpha = reflectionColor.a * edgeFactor * fresnelFactor * rayFade * surfaceFade * roughnessFade * dirFade * facingFade * coverageFade;
         return float4(reflectionColor.rgb, finalAlpha);
     }
 
