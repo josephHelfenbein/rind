@@ -165,21 +165,21 @@ rind::GameInstance::GameInstance() {
             "titleLight3",
             glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 9.0f, -30.0f)),
             glm::vec3(1.0f),
-            2.0f,
+            2.5f,
             50.0f
         );
         lightManager->addLight(
             "titleLight4",
             glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 12.0f, -50.0f)),
             glm::vec3(1.0f),
-            1.5f,
+            2.0f,
             70.0f
         );
         lightManager->addLight(
             "titleLight5",
             glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 4.0f, -50.0f)),
             glm::vec3(1.0f),
-            1.0f,
+            1.5f,
             50.0f
         );
         lightManager->addLight(
@@ -481,6 +481,24 @@ rind::GameInstance::GameInstance() {
             glm::mat4(1.0f)
         );
         lightObject4->addChild(light4Collider);
+
+        std::vector<std::string> enemyMaterial = {
+            "materials_damaged_albedo",
+            "materials_damaged_metallic",
+            "materials_damaged_roughness",
+            "materials_damaged_normal"
+        };
+        engine::Entity* hangingDamagedEnemies = new engine::Entity(
+            entityManager,
+            "hangingDamagedEnemies",
+            "gbuffer",
+            glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.5f, 0.0f)), glm::vec3(1.5f, 1.5f, 1.5f)),
+            enemyMaterial,
+            false,
+            engine::Entity::EntityType::Static
+        );
+        engine::Model* hangingDamagedEnemiesModel = modelManager ? modelManager->getModel("damaged") : nullptr;
+        hangingDamagedEnemies->setModel(hangingDamagedEnemiesModel);
 
         rind::Player* player = new rind::Player(
             entityManager,
