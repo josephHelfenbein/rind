@@ -366,7 +366,7 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
     ParticlePC pushConstants = {
         .viewProj = camera->getViewProjectionMatrix(),
         .screenSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
-        .particleSize = 0.018f,
+        .particleSize = 0.017f,
         .trailWidth = 0.03f,
         .streakScale = 0.00045f
     };

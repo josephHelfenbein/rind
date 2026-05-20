@@ -440,8 +440,9 @@ void engine::ShaderManager::createDefaultShaders() {
         bloomPass->images = images;
     }
 
-    // Dual-filter bloom downsample/upsample chain.
-    // Source bright pass "BloomColor" is at /2. Chain: /4, /8, /16, /32, then upsample back to /4.
+    // Dual-filter bloom downsample/upsample chain
+    // Source bright pass "BloomColor" is at /2
+    // Chain: /4, /8, /16, /32, then upsample back to /4
     auto makeBloomChainPass = [&](const char* passName, const char* imageName, uint32_t divider) {
         auto pass = std::make_shared<PassInfo>();
         pass->name = passName;
@@ -463,6 +464,24 @@ void engine::ShaderManager::createDefaultShaders() {
     auto bloomDown3Pass = makeBloomChainPass("BloomDown3Pass", "BloomDown3Color", 16);
     auto bloomUp2Pass   = makeBloomChainPass("BloomUp2Pass",   "BloomUp2Color",   8);
     auto bloomUp1Pass   = makeBloomChainPass("BloomUp1Pass",   "BloomUp1Color",   4);
+
+    // Lens Flare Pass
+    // Sources from bloomdown2 (/8), writes a /4 flare buffer
+    auto flarePass = std::make_shared<PassInfo>();
+    flarePass->name = "FlarePass";
+    flarePass->usesSwapchain = false;
+    renderPasses.push_back(flarePass);
+    {
+        std::vector<PassImage> images;
+        images.push_back({
+            .name = "FlareColor",
+            .resolutionDivider = 4,
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
+            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        });
+        flarePass->images = images;
+    }
 
     // Combine Pass
     auto combinePass = std::make_shared<PassInfo>();
@@ -1784,6 +1803,34 @@ void engine::ShaderManager::createDefaultShaders() {
     addBloomUpShader("bloomup2", bloomUp2Pass, "bloomdown3", "BloomDown3Color", "bloomdown2", "BloomDown2Color");
     addBloomUpShader("bloomup1", bloomUp1Pass, "bloomup2", "BloomUp2Color", "bloomdown1", "BloomDown1Color");
 
+    // Lens Flare
+    {
+        GraphicsShader shader = {
+            .name = "flare",
+            .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
+            .fragment = { shaderPath("flare.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
+            .config = {
+                .vertexBitBindings = 0,
+                .fragmentBitBindings = 2,
+                .fragmentDescriptorCounts = { 1, 1 },
+                .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    VK_DESCRIPTOR_TYPE_SAMPLER
+                },
+                .cullMode = VK_CULL_MODE_NONE,
+                .depthWrite = false,
+                .enableDepth = false,
+                .passInfo = flarePass,
+                .colorAttachmentCount = 1,
+                .inputBindings = {
+                    { 0, "bloomdown2", "BloomDown2Color" }
+                }
+            }
+        };
+        shader.config.sampler = renderer->getLinearClampSampler();
+        addGraphicsShader(std::move(shader));
+    }
+
     // UI
     {
         GraphicsShader shader = {
@@ -1870,11 +1917,12 @@ void engine::ShaderManager::createDefaultShaders() {
             .fragment = { shaderPath("combine.frag"), VK_SHADER_STAGE_FRAGMENT_BIT },
             .config = {
                 .vertexBitBindings = 0,
-                .fragmentBitBindings = 4,
+                .fragmentBitBindings = 5,
                 .fragmentDescriptorCounts = {
-                    1, 1, 1, 1
+                    1, 1, 1, 1, 1
                 },
                 .fragmentDescriptorTypes = {
+                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1894,7 +1942,8 @@ void engine::ShaderManager::createDefaultShaders() {
                 .inputBindings = {
                     { 0, "lighting", "SceneColor" },
                     { .binding = 1, .sourceShaderName = "ssr", .attachmentName = "SceneColor", .fallbackTextureName = "fallback_black_2d" },
-                    { 2, "bloomup1", "BloomUp1Color" }
+                    { 2, "bloomup1", "BloomUp1Color" },
+                    { 3, "flare", "FlareColor" }
                 }
             }
         };
@@ -2353,11 +2402,19 @@ void engine::ShaderManager::createDefaultShaders() {
             .lane = generalGraphicsLane,
         },
         {
+            .name = "flare",
+            .is2D = true,
+            .passInfo = flarePass.get(),
+            .shaderNames = { "flare" },
+            .dependsOnNodeNames = { "bloom_down2" },
+            .lane = generalGraphicsLane,
+        },
+        {
             .name = "combine",
             .is2D = true,
             .passInfo = combinePass.get(),
             .shaderNames = { "combine" },
-            .dependsOnNodeNames = { "lighting", "ssr", "bloom_up1" },
+            .dependsOnNodeNames = { "lighting", "ssr", "bloom_up1", "flare" },
             .lane = generalGraphicsLane,
         },
         {

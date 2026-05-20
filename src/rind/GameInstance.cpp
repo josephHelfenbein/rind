@@ -165,21 +165,21 @@ rind::GameInstance::GameInstance() {
             "titleLight3",
             glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 9.0f, -30.0f)),
             glm::vec3(1.0f),
-            2.5f,
+            3.0f,
             50.0f
         );
         lightManager->addLight(
             "titleLight4",
             glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 12.0f, -50.0f)),
             glm::vec3(1.0f),
-            2.0f,
+            2.5f,
             70.0f
         );
         lightManager->addLight(
             "titleLight5",
             glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 4.0f, -50.0f)),
             glm::vec3(1.0f),
-            1.5f,
+            2.0f,
             50.0f
         );
         lightManager->addLight(
@@ -567,7 +567,7 @@ rind::GameInstance::GameInstance() {
             0,
             1,
             8.0f,
-            0.05f
+            0.075f
         );
         rind::EnemySpawner<rind::MissileBoss>* enemySpawner7 = new rind::EnemySpawner<rind::MissileBoss>(
             entityManager,
@@ -577,8 +577,8 @@ rind::GameInstance::GameInstance() {
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -25.0f, 50.0f)),
             0,
             1,
-            9.0f,
-            0.05f
+            8.0f,
+            0.065f
         );
 
         for (int i = -3; i <= 3; ++i) {

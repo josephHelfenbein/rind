@@ -10,6 +10,7 @@ struct VSOutput {
     [[vk::location(6)]] nointerpolation float ageFade : TEXCOORD6;
     [[vk::location(7)]] nointerpolation float earlyExitAlpha : TEXCOORD7;
     [[vk::location(8)]] nointerpolation uint doRejitter : TEXCOORD8;
+    [[vk::location(9)]] nointerpolation uint warpMode : TEXCOORD9;
 };
 
 struct VolumetricData {
@@ -33,7 +34,7 @@ struct PushConstants {
 
 static const float MAX_STEP_SCALE = 4.0;
 static const float THRESHOLD = 0.01;
-static const float HDR_SCALE = 3.0;
+static const float HDR_SCALE = 6.0;
 
 float hash3(float3 p) {
     p = frac(p * float3(443.897, 441.423, 437.195));
@@ -72,11 +73,44 @@ float fbm(float3 p, int octaves) {
     return v;
 }
 
-float sampleDensity(float3 localPos, float age, float ageFade, int fbmOctaves) {
+float3 potential(float3 p) {
+    return float3(
+        vnoise(p),
+        vnoise(p + float3(31.7, 17.3, 47.1)),
+        vnoise(p + float3(73.2, 91.4, 13.8))
+    );
+}
+
+float3 curlNoise(float3 p) {
+    const float e = 0.1;
+    float3 p0 = potential(p);
+    float3 px = potential(p + float3(e, 0.0, 0.0));
+    float3 py = potential(p + float3(0.0, e, 0.0));
+    float3 pz = potential(p + float3(0.0, 0.0, e));
+    float3 c = float3(
+        (py.z - p0.z) - (pz.y - p0.y),
+        (pz.x - p0.x) - (px.z - p0.z),
+        (px.y - p0.y) - (py.x - p0.x)
+    );
+    return c / e;
+}
+
+float sampleDensity(float3 localPos, float age, float ageFade, int fbmOctaves, uint warpMode) {
     float r2 = dot(localPos, localPos);
     if (r2 >= 0.46) return 0.0;
     float radial = exp(-r2 * 12.0);
-    float3 noiseCoord = localPos * 6.0 + float3(0.0, age * 0.4, age * 0.15);
+    if (radial * ageFade < THRESHOLD * 0.9) return 0.0;
+    float3 warp = float3(0.0, 0.0, 0.0);
+    if (warpMode >= 1u) {
+        float coarseAmp = (warpMode >= 2u) ? 0.35 : 0.2;
+        float3 warpCoord = localPos * 1.7 + float3(0.0, age * 0.6, age * 0.25);
+        warp = curlNoise(warpCoord) * coarseAmp;
+    }
+    if (warpMode >= 2u) {
+        float3 warpCoord2 = localPos * 4.0 + float3(age * 0.35, age * 0.15, age * 0.5);
+        warp += curlNoise(warpCoord2) * 0.25;
+    }
+    float3 noiseCoord = (localPos + warp) * 6.0 + float3(0.0, age * 0.4, age * 0.15);
     float n = max(fbm(noiseCoord, fbmOctaves) - 0.15, 0.0);
     return radial * n * ageFade;
 }
@@ -171,7 +205,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
         steps++;
         if (accum.a >= earlyExitAlpha) break;
         float3 localMid = localOrigin + (t + stepSize * 0.5) * localDir;
-        float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves);
+        float density = sampleDensity(localMid, vol.age, ageFade, fbmOctaves, input.warpMode);
         if (density <= THRESHOLD) {
             stepSize = min(stepSize * 1.5, maxStep);
             t += stepSize;

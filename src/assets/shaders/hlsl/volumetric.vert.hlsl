@@ -11,6 +11,7 @@ struct VSOutput {
     [[vk::location(6)]] nointerpolation float ageFade : TEXCOORD6;
     [[vk::location(7)]] nointerpolation float earlyExitAlpha : TEXCOORD7;
     [[vk::location(8)]] nointerpolation uint doRejitter : TEXCOORD8;
+    [[vk::location(9)]] nointerpolation uint warpMode : TEXCOORD9;
 };
 
 struct VolumetricData {
@@ -50,7 +51,7 @@ VSOutput main(float3 localPos : POSITION, uint instanceID : SV_InstanceID) {
     float minMaxSteps = lerp(6.0, 52.0, quality);
     float maxBaseDivs = lerp(8.0, 32.0, quality);
     float minBaseDivs = lerp(6.0, 24.0, quality);
-    float maxFbmOctaves = lerp(2.0, 5.0, quality);
+    float maxFbmOctaves = lerp(1.0, 3.0, quality);
 
     VSOutput output;
     output.gl_Position = mul(float4(worldPos, 1.0), pc.viewProj);
@@ -58,10 +59,13 @@ VSOutput main(float3 localPos : POSITION, uint instanceID : SV_InstanceID) {
     output.instanceID = instanceID;
     output.maxSteps = (uint) lerp(maxMaxSteps, minMaxSteps, lodT);
     output.baseDivs = lerp(maxBaseDivs, minBaseDivs, lodT);
-    output.fbmOctaves = (uint) lerp(maxFbmOctaves, 2.0, lodT);
+    output.fbmOctaves = (uint) lerp(maxFbmOctaves, 1.0, lodT);
     output.doRefinement = lodT < 0.5 ? 1u : 0u;
     output.ageFade = x * x * (1.0 + 0.2 * x);
     output.earlyExitAlpha = lerp(0.95, 0.99, quality);
     output.doRejitter = quality >= 0.5 ? 1u : 0u;
+    if (pc.camPos.w < 0.5) output.warpMode = 0u;
+    else if (pc.camPos.w < 1.5) output.warpMode = 1u;
+    else output.warpMode = 2u;
     return output;
 }

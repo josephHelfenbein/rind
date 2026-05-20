@@ -19,6 +19,9 @@ Texture2D<float4> ssrTexture;
 Texture2D<float4> bloomTexture;
 
 [[vk::binding(3)]]
+Texture2D<float4> flareTexture;
+
+[[vk::binding(4)]]
 SamplerState sampleSampler;
 
 static const float3x3 AgXInsetMatrix = {
@@ -89,12 +92,14 @@ float4 main(VSOutput input) : SV_Target {
     float3 scene = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     float4 ssr = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
     float3 bloom = bloomTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
+    float3 flare = flareTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
 
     bloom = bloom * bloom * 0.5;
 
     float3 combined = scene + ssr.rgb * ssr.a;
     combined *= pc.exposure;
     combined += bloom;
+    combined += flare;
     combined = agxEotf(agxLookPunchy(agx(combined)));
 
     uint texW, texH;
