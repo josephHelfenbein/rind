@@ -2,6 +2,7 @@
 
 #include <engine/Renderer.h>
 #include <engine/SettingsManager.h>
+#include <engine/EmbeddedAssets.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -21,6 +22,8 @@ namespace engine {
     public:
         AudioManager(Renderer* renderer);
         ~AudioManager();
+
+        void registerEmbeddedAudio(const std::unordered_map<std::string, EmbeddedAsset>& assets);
 
         void update();
         void cleanup();

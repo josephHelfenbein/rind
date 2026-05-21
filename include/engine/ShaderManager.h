@@ -1,6 +1,7 @@
 #pragma once
 
 #include <engine/Renderer.h>
+#include <engine/EmbeddedAssets.h>
 #include <string>
 #include <vector>
 #include <memory>
@@ -290,6 +291,9 @@ namespace engine {
 
         std::vector<char> getShaderBytes(const std::string& name) const;
 
+        void registerShaderBytes(const std::string& name, const unsigned char* data, size_t size);
+        void registerShaderBytes(const std::unordered_map<std::string, EmbeddedAsset>& assets);
+
         void loadSMAATextures();
         void createDefaultShaders();
         const std::vector<std::shared_ptr<PassInfo>>& getRenderPasses() const;
@@ -297,6 +301,12 @@ namespace engine {
         const std::vector<RenderNode>& getRenderGraph() const;
         const std::vector<size_t>& getScheduledNodeOrder() const;
         void resolveRenderGraphShaders();
+
+        // Call between createDefaultShaders() and resolveRenderGraphShaders() to inject or replace passes
+        void setOnRenderGraphReady(std::function<void(ShaderManager*)> cb) { onRenderGraphReady = std::move(cb); }
+        bool replaceRenderNode(const std::string& name, RenderNode replacement);
+        bool insertRenderNodeAfter(const std::string& predecessor, RenderNode node);
+        bool removeRenderNode(const std::string& name);
 
         static VkShaderModule createShaderModule(const std::vector<char>& code, Renderer* renderer);
 
@@ -311,5 +321,8 @@ namespace engine {
 
         engine::Renderer* renderer;
         RenderGraph renderGraph;
+
+        std::unordered_map<std::string, std::vector<unsigned char>> registeredShaderBytes;
+        std::function<void(ShaderManager*)> onRenderGraphReady;
     };
 };

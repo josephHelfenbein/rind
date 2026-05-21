@@ -163,6 +163,12 @@ engine::ComputeShader* engine::ShaderManager::getComputeShader(const std::string
 }
 
 std::vector<char> engine::ShaderManager::getShaderBytes(const std::string& name) const {
+    auto reg = registeredShaderBytes.find(name);
+    if (reg != registeredShaderBytes.end()) {
+        const auto& bytes = reg->second;
+        return std::vector<char>(reinterpret_cast<const char*>(bytes.data()),
+                                reinterpret_cast<const char*>(bytes.data()) + bytes.size());
+    }
     const auto& shaders = getEmbedded_shader();
     auto it = shaders.find(name);
     if (it != shaders.end()) {
@@ -172,6 +178,47 @@ std::vector<char> engine::ShaderManager::getShaderBytes(const std::string& name)
     }
     std::cerr << "Warning: Embedded shader not found: " << name << "\n";
     return {};
+}
+
+void engine::ShaderManager::registerShaderBytes(const std::string& name, const unsigned char* data, size_t size) {
+    registeredShaderBytes[name] = std::vector<unsigned char>(data, data + size);
+}
+
+void engine::ShaderManager::registerShaderBytes(const std::unordered_map<std::string, EmbeddedAsset>& assets) {
+    for (const auto& [name, asset] : assets) {
+        registerShaderBytes(name, asset.data, asset.size);
+    }
+}
+
+bool engine::ShaderManager::replaceRenderNode(const std::string& name, RenderNode replacement) {
+    for (auto& node : renderGraph.nodes) {
+        if (node.name == name) {
+            replacement.name = name;
+            node = std::move(replacement);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool engine::ShaderManager::insertRenderNodeAfter(const std::string& predecessor, RenderNode node) {
+    for (auto it = renderGraph.nodes.begin(); it != renderGraph.nodes.end(); ++it) {
+        if (it->name == predecessor) {
+            renderGraph.nodes.insert(it + 1, std::move(node));
+            return true;
+        }
+    }
+    return false;
+}
+
+bool engine::ShaderManager::removeRenderNode(const std::string& name) {
+    for (auto it = renderGraph.nodes.begin(); it != renderGraph.nodes.end(); ++it) {
+        if (it->name == name) {
+            renderGraph.nodes.erase(it);
+            return true;
+        }
+    }
+    return false;
 }
 
 const std::vector<std::unique_ptr<engine::GraphicsShader>>& engine::ShaderManager::getGraphicsShaders() const {
@@ -2465,7 +2512,7 @@ void engine::ShaderManager::createDefaultShaders() {
                             "fpsCounter",
                             glm::vec4(1.0f),
                             "0 FPS",
-                            "Lato",
+                            "",
                             Corner::TopLeft
                         ));
                     }
@@ -2550,6 +2597,9 @@ const std::vector<std::shared_ptr<engine::PassInfo>>& engine::ShaderManager::get
 }
 
 void engine::ShaderManager::resolveRenderGraphShaders() {
+    if (onRenderGraphReady) {
+        onRenderGraphReady(this);
+    }
     auto& nodes = renderGraph.nodes;
     renderGraph.scheduledNodeOrder.clear();
 

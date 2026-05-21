@@ -6,7 +6,16 @@
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
 #include <engine/ModelManager.h>
+#include <engine/ShaderManager.h>
+#include <engine/TextureManager.h>
+#include <engine/AudioManager.h>
 #include <engine/io.h>
+
+#include <audio/audio_registry.h>
+#include <font/font_registry.h>
+#include <model/model_registry.h>
+#include <texture/texture_registry.h>
+#include <game_shader/game_shader_registry.h>
 
 #include <rind/Player.h>
 #include <rind/WalkingEnemy.h>
@@ -613,6 +622,15 @@ rind::GameInstance::GameInstance() {
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     volumetricManager = std::make_unique<engine::VolumetricManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get());
+
+    // Hand the consumer's embedded asset registries to the engine managers
+    // before Renderer::run() initializes Vulkan and asks for them.
+    shaderManager->registerShaderBytes(getEmbedded_game_shader());
+    audioManager->registerEmbeddedAudio(getEmbedded_audio());
+    textureManager->registerEmbeddedTextures(getEmbedded_texture());
+    modelManager->registerEmbeddedModels(getEmbedded_model());
+    uiManager->registerEmbeddedFonts(getEmbedded_font());
+
     settingsManager = std::make_unique<engine::SettingsManager>(renderer.get(),
         std::vector<engine::SettingsManager::SettingsDefinition>{
             {

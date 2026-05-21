@@ -15,7 +15,7 @@ This repository is the source build of Rind. The codebase is open so people can 
 ## Prerequisites
 
 ### General
-- **CMake** 3.10+
+- **CMake** 3.21+
 - **Vulkan SDK** 1.3+ (must support Dynamic Rendering)
 - **C++20** compatible compiler
 - **DXC** (DirectX Shader Compiler), usually included with the Vulkan SDK
@@ -258,11 +258,11 @@ No extra tools required. A `.zip` of the distributable folder is created automat
 
 ## Repository layout
 
-- **`src/engine/`** and **`include/engine/`**: the engine. Renderer, shader and render-graph manager, entity and scene managers, asset managers, audio, input, UI, lighting, particles, volumetrics, collision. Nothing in here knows about the game.
-- **`src/rind/`** and **`include/rind/`**: the game. Character controller, player logic, enemy AI, elite variants, projectiles, status effects, spawners, score tracking, and the top-level `GameInstance` that wires it all together.
-- **`src/assets/`**: shaders (`shaders/hlsl/` source, `shaders/compiled/` SPIR-V output), `models/`, `textures/`, `audio/`, `fonts/`. Everything in here gets embedded into the binary at build time.
-- **`src/main.cpp`**: process entry point. Sets up the macOS Vulkan ICD path when needed and constructs `rind::GameInstance`.
-- **`cmake/`**: helper scripts for asset embedding (`embed_asset.py`, `generate_registry.py`) and packaging (`package.cmake`).
+- **`src/engine/`** and **`include/engine/`**: the engine, built as the static library target `rind_engine`. Renderer, shader and render-graph manager, entity and scene managers, asset managers, audio, input, UI, lighting, particles, volumetrics, collision. Engine-owned shaders live in `src/engine/assets/shaders/hlsl/` and compile into the library. Nothing in here knows about the game.
+- **`src/rind/`**: the game, built as the `Rind` executable that links against `rind_engine`. Character controller, player logic, enemy AI, elite variants, projectiles, status effects, spawners, score tracking, and the top-level `GameInstance` that wires it all together. Game headers live in `src/rind/include/rind/`. Game-only shaders go in `src/rind/assets/shaders/hlsl/`, which is empty by default since Rind currently has no game-specific shaders.
+- **`src/assets/`**: game-owned non-shader assets: `models/`, `textures/`, `audio/`, `fonts/`. These are embedded into the `Rind` executable, not into the engine library, and registered with the engine managers at startup via `registerEmbedded*()` calls in `GameInstance`.
+- **`src/main.cpp`**: process entry point. Six lines: calls `engine::Platform::initialize()` (macOS Vulkan ICD bootstrap, no-op elsewhere) and `engine::Platform::runWithCrashReport(...)` with a lambda that constructs and runs `rind::GameInstance`.
+- **`cmake/`**: `RindEngine.cmake` exports the build helpers consumers need (`embed_asset_category`, `rind_engine_compile_shaders`, `rind_engine_bundle_runtimes`); `embed_asset.py` and `generate_registry.py` are the worker scripts those helpers invoke; `package.cmake` builds release artifacts.
 - **`include/external/`**: vendored third-party libraries pulled in as submodules.
 
 ## Engine overview
@@ -307,15 +307,132 @@ Skip conditions are attached to nodes that can be empty (no renderable 3D entiti
 
 ## Game code
 
-All gameplay lives in `src/rind/` and `include/rind/`. The engine has no knowledge of these files - replacing them is how you would build a different game on the engine.
+All gameplay lives in `src/rind/`. The engine has no knowledge of these files; replacing them is how you would build a different game on the engine.
 
 `GameInstance` is the top-level controller that owns the engine managers, builds scenes, registers spawners, and drives the main loop. The player is a first-person `CharacterEntity` with a laser gun, grenades, melee, dash, and double jump. Enemies (`WalkingEnemy`, `FlyingEnemy`, `BashingEnemy`) extend a shared `Enemy` subclass of `CharacterEntity` with a state machine for spawning, chasing, and attacking. Four elite variants add dashes, grenades, or guided missiles. `EnemySpawner` is a templated wave spawner that scales difficulty along a sinusoidal curve.
 
 ## Asset pipeline
 
-Assets are embedded into the executable at build time, so a shipped binary needs no external asset folder. A CMake function scans each asset category for matching files, generates C++ sources holding the raw bytes, and emits a per-category lookup header. The engine resolves asset names to byte spans through this registry at runtime.
+Assets are embedded into the binary at build time, so a shipped executable needs no external asset folder. The `embed_asset_category` CMake function (in `cmake/RindEngine.cmake`) scans a directory for matching files, generates one `.cpp` per file holding the raw bytes, and emits a per-category `_registry.h` exposing a `getEmbedded_<category>()` lookup map. Each call attaches the generated sources to a CMake target you specify.
 
-Categories: **shader** (`.spv`, compiled from HLSL by `dxc` during the build), **font** (`.ttf`, `.otf`), **audio** (`.wav`), **model** (`.glb`), **texture** (`.png`, `.jpg`, `.hdr`).
+Categories used today:
+
+| Category | Owner | Target | Extensions |
+| --- | --- | --- | --- |
+| `shader` | engine | `rind_engine` | `.spv` (HLSL compiled by dxc) |
+| `game_shader` | game | `Rind` | `.spv` (HLSL compiled by dxc) |
+| `font` | game | `Rind` | `.ttf`, `.otf` |
+| `audio` | game | `Rind` | `.wav` |
+| `model` | game | `Rind` | `.glb` |
+| `texture` | game | `Rind` | `.png`, `.jpg`, `.hdr` |
+
+Engine shaders are baked into `librind_engine.a` at engine-build time. Every other category is consumer-owned: the game compiles its own assets into its executable and hands them to the engine managers at startup via runtime registration (`shaderManager->registerShaderBytes(...)`, `textureManager->registerEmbeddedTextures(...)`, etc.). This keeps the engine library free of any compile-time dependency on the consumer's assets.
+
+## Using `rind_engine` as a submodule
+
+A downstream project that wants to build a different game on this engine adds Rind as a submodule and links against the `rind_engine` static library. A minimal consumer `CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.21)
+project(MyGame)
+
+add_subdirectory(third_party/rind)
+
+add_executable(MyGame src/main.cpp src/MyGameInstance.cpp)
+target_include_directories(MyGame PRIVATE src)
+target_link_libraries(MyGame PRIVATE rind_engine)
+
+# Compile and embed your own shaders. Both graphics (.vert/.frag) and
+# compute (.comp) HLSL files are picked up by stem-based stage detection.
+rind_engine_compile_shaders(
+    TARGET MyGame
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/assets/shaders/hlsl
+    OUT_DIR    ${CMAKE_BINARY_DIR}/shaders/compiled)
+embed_asset_category(TARGET MyGame CATEGORY game_shader
+    DIRECTORY ${CMAKE_BINARY_DIR}/shaders/compiled
+    EXTENSIONS "*.spv")
+
+# Embed your own non-shader assets.
+embed_asset_category(TARGET MyGame CATEGORY texture
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/textures
+    EXTENSIONS "*.png" "*.hdr" RECURSIVE ON)
+embed_asset_category(TARGET MyGame CATEGORY font
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/fonts
+    EXTENSIONS "*.ttf" "*.otf" RECURSIVE ON)
+embed_asset_category(TARGET MyGame CATEGORY audio
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/audio
+    EXTENSIONS "*.wav")
+embed_asset_category(TARGET MyGame CATEGORY model
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/models
+    EXTENSIONS "*.glb" RECURSIVE ON)
+
+# Platform runtime bundling: copies Vulkan loader / MoltenVK / libomp / etc.
+# next to the executable for Win/macOS/Linux release builds.
+rind_engine_bundle_runtimes(MyGame)
+```
+
+A minimal consumer `main.cpp`:
+
+```cpp
+#include <engine/Platform.h>
+#include "MyGameInstance.h"
+
+int main() {
+    engine::Platform::initialize();
+    return engine::Platform::runWithCrashReport([] {
+        mygame::MyGameInstance game;
+        game.run();
+    });
+}
+```
+
+A minimal `MyGameInstance`, mirroring the wiring `rind::GameInstance` does:
+
+```cpp
+// Generated by embed_asset_category() for each category embedded above
+#include <texture/texture_registry.h>
+#include <font/font_registry.h>
+#include <audio/audio_registry.h>
+#include <model/model_registry.h>
+#include <game_shader/game_shader_registry.h>
+
+mygame::MyGameInstance::MyGameInstance() {
+    renderer        = std::make_unique<engine::Renderer>("MyGame");
+    entityManager   = std::make_unique<engine::EntityManager>(renderer.get());
+    // ... other managers ...
+    textureManager  = std::make_unique<engine::TextureManager>(renderer.get());
+    shaderManager   = std::make_unique<engine::ShaderManager>(renderer.get());
+    uiManager       = std::make_unique<engine::UIManager>(renderer.get());
+    modelManager    = std::make_unique<engine::ModelManager>(renderer.get());
+    audioManager    = std::make_unique<engine::AudioManager>(renderer.get());
+
+    // Hand consumer-side embedded assets to engine managers BEFORE run()
+    shaderManager->registerShaderBytes(getEmbedded_game_shader());
+    audioManager->registerEmbeddedAudio(getEmbedded_audio());
+    textureManager->registerEmbeddedTextures(getEmbedded_texture());
+    modelManager->registerEmbeddedModels(getEmbedded_model());
+    uiManager->registerEmbeddedFonts(getEmbedded_font());
+
+    // Optional: change the font that engine-internal widgets request
+    // uiManager->setDefaultFontName("MyFont");
+}
+```
+
+### Extending the engine: shader override and render-graph mutation
+
+`ShaderManager` exposes hooks for changing what the default render graph does without forking the engine:
+
+- `registerShaderBytes(name, data, size)` and the batch overload register additional shaders, or override one of the engine's defaults. Registered entries are checked before the engine's embedded shader registry, so a game can ship a `lighting.frag` (or `gbuffer.vert`, or any other named shader) that supersedes the engine's.
+- `setOnRenderGraphReady(callback)` is invoked at the top of `resolveRenderGraphShaders`, between the engine's `createDefaultShaders()` building the graph and the scheduler resolving it. Use this to mutate the graph.
+- `replaceRenderNode(name, newNode)`, `insertRenderNodeAfter(predecessor, newNode)`, and `removeRenderNode(name)` do surgical edits to the render graph by node name.
+
+### Known engine couplings to be aware of
+
+The engine bakes in some assumptions that consumers should know about:
+
+- **Default fonts.** The engine's built-in settings UI body text, FPS counter, and slider value labels request a font by the name set on `UIManager::setDefaultFontName(...)` (default `"Lato"`). The settings panel title uses `UIManager::setDefaultTitleFontName(...)` (default `"RubikGlitch"`). Register a font under whatever names you set, or change the defaults before any engine-internal widget is created.
+- **Material fallback names.** `EntityManager` falls back to texture names `materials_default_albedo`/`_metallic`/`_roughness`/`_normal` when a `gbuffer` entity's specified textures are missing, and to `ui_window` for missing UI textures. Missing entities just log a warning; they don't crash.
+- **SMAA texture names.** The engine's SMAA pass expects textures named `smaa_area` and `smaa_search` to be auto-created from the SMAA submodule's baked tables; this is handled internally and shouldn't need attention from consumers.
 
 ## Contributing
 
@@ -325,8 +442,9 @@ Notes:
 
 - For a debug build, configure with `-DCMAKE_BUILD_TYPE=Debug`. Vulkan validation layers are not enabled by default; install the Vulkan SDK's validation layers and set `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` (or the loader's `VK_LOADER_LAYERS_ENABLE` equivalent) in the environment when running.
 - Shader changes recompile from HLSL to SPIR-V automatically. If a shader fails to compile, the build error will name the source file.
-- The render graph is data-driven. New passes are added by appending a `RenderNode` in `ShaderManager::createDefaultShaders` with the right `dependsOnNodeNames` and lane assignment. There is no separate scheduler file to update.
-- The engine and game sources are picked up by `file(GLOB_RECURSE ... src/engine/*.cpp)` and `file(GLOB_RECURSE ... src/rind/*.cpp)` in the root `CMakeLists.txt`. New source files in those directories are picked up on the next reconfigure.
+- The engine and game sources are picked up by `file(GLOB_RECURSE ... src/engine/*.cpp)` into the `rind_engine` library target, and `file(GLOB_RECURSE ... src/rind/*.cpp)` into the `Rind` executable, both in the root `CMakeLists.txt`. New source files in those directories are picked up on the next reconfigure.
+- New engine shaders go in `src/engine/assets/shaders/hlsl/`; new game shaders go in `src/rind/assets/shaders/hlsl/`. Both are picked up automatically and compiled to SPIR-V by `rind_engine_compile_shaders` on the next configure. Stem-based stage detection: `*.vert.hlsl` maps to vertex, `*.frag.hlsl` to fragment, `*.comp.hlsl` to compute.
+- The render graph is data-driven. New passes are added by appending a `RenderNode` in `ShaderManager::createDefaultShaders` with the right `dependsOnNodeNames` and lane assignment; there is no separate scheduler file to update. Consumer projects that don't want to fork the engine can add or replace passes from outside via `setOnRenderGraphReady` plus `insertRenderNodeAfter` or `replaceRenderNode` (see "Extending the engine" above).
 
 ## Acknowledgements
 

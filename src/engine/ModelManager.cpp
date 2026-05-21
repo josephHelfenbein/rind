@@ -1,6 +1,4 @@
 #include <engine/ModelManager.h>
-#include <engine/EmbeddedAssets.h>
-#include <model/model_registry.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -474,9 +472,12 @@ engine::ModelManager::~ModelManager() {
     models.clear();
 }
 
+void engine::ModelManager::registerEmbeddedModels(const std::unordered_map<std::string, EmbeddedAsset>& assets) {
+    embeddedAssets.insert(assets.begin(), assets.end());
+}
+
 void engine::ModelManager::init() {
-    const auto& embeddedModels = getEmbedded_model();
-    for (const auto& [modelName, asset] : embeddedModels) {
+    for (const auto& [modelName, asset] : embeddedAssets) {
         if (models.find(modelName) != models.end()) {
             std::cout << "Warning: Duplicate model name detected: " << modelName << ". Skipping.\n";
             continue;

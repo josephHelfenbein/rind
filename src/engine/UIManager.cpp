@@ -1,6 +1,4 @@
 #include <engine/UIManager.h>
-#include <engine/EmbeddedAssets.h>
-#include <font/font_registry.h>
 #include <algorithm>
 #include <utility>
 #include <limits>
@@ -29,7 +27,9 @@ engine::TextObject::TextObject(
     const std::string& text,
     const std::string& font,
     const Corner& anchorCorner
-) : uiManager(uiManager), name(name), tint(tint), text(text), font(font), transform(transform), anchorCorner(anchorCorner) {
+) : uiManager(uiManager), name(name), tint(tint), text(text),
+    font(font.empty() ? uiManager->getDefaultFontName() : font),
+    transform(transform), anchorCorner(anchorCorner) {
         uiManager->addObject(this);
     }
 
@@ -473,14 +473,17 @@ void engine::UIManager::reloadFontDescriptorSets() {
     }
 }
 
+void engine::UIManager::registerEmbeddedFonts(const std::unordered_map<std::string, EmbeddedAsset>& assets) {
+    embeddedFontAssets.insert(assets.begin(), assets.end());
+}
+
 void engine::UIManager::loadFonts() {
     FT_Library ft;
     if (FT_Init_FreeType(&ft)) {
         std::cout << "Error: Could not init FreeType Library\n";
         return;
     }
-    const auto& embeddedFonts = getEmbedded_font();
-    for (const auto& [fontName, asset] : embeddedFonts) {
+    for (const auto& [fontName, asset] : embeddedFontAssets) {
             if (fonts.find(fontName) != fonts.end()) {
                 std::cout << "Warning: Duplicate font name detected: " << fontName << ". Skipping.\n";
                 continue;

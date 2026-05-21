@@ -1,5 +1,6 @@
 #pragma once
 #include <engine/Renderer.h>
+#include <engine/EmbeddedAssets.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <fastgltf/core.hpp>
@@ -88,6 +89,8 @@ namespace engine {
         ModelManager(Renderer* renderer);
         ~ModelManager();
 
+        void registerEmbeddedModels(const std::unordered_map<std::string, EmbeddedAsset>& assets);
+
         void init();
 
         Model* getModel(const std::string& name) {
@@ -98,5 +101,6 @@ namespace engine {
     private:
         Renderer* renderer;
         std::unordered_map<std::string, Model*> models;
+        std::unordered_map<std::string, EmbeddedAsset> embeddedAssets;
     };
 };

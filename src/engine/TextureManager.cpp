@@ -1,8 +1,6 @@
 #include <engine/TextureManager.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
-#include <engine/EmbeddedAssets.h>
-#include <texture/texture_registry.h>
 
 #include <iostream>
 #include <functional>
@@ -52,9 +50,12 @@ engine::TextureManager::~TextureManager() {
     }
 }
 
+void engine::TextureManager::registerEmbeddedTextures(const std::unordered_map<std::string, EmbeddedAsset>& assets) {
+    embeddedAssets.insert(assets.begin(), assets.end());
+}
+
 void engine::TextureManager::init() {
-    const auto& embeddedTextures = getEmbedded_texture();
-    for (const auto& [textureName, asset] : embeddedTextures) {
+    for (const auto& [textureName, asset] : embeddedAssets) {
         if (textures.find(textureName) != textures.end()) {
             std::cout << "Warning: Duplicate texture name detected: " << textureName << ". Skipping.\n";
             continue;

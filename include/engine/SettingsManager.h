@@ -194,7 +194,7 @@ namespace engine {
                 "settingsTitle",
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "SETTINGS",
-                "RubikGlitch",
+                uiManager->getDefaultTitleFontName(),
                 Corner::Top
             ));
             settingsUIObject->addChild(new ButtonObject(
@@ -205,7 +205,7 @@ namespace engine {
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
                 "ui_window",
                 "Close",
-                "Lato",
+                "",
                 [this]() {
                     this->hideSettingsUI();
                     if (this->onCloseCallback) {
@@ -224,7 +224,7 @@ namespace engine {
                     def.key + "Label",
                     glm::vec4(1.0f),
                     def.label,
-                    "Lato",
+                    "",
                     Corner::TopLeft
                 ));
                 switch (def.type) {
@@ -259,7 +259,7 @@ namespace engine {
                             def.key + "EnumLabel",
                             glm::vec4(1.0f),
                             enumOptionsLabel,
-                            "Lato",
+                            "",
                             Corner::TopRight
                         ));
                         std::vector<CheckboxObject*> checkboxes;
@@ -329,7 +329,7 @@ namespace engine {
                 glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                 "ui_window",
                 "Apply",
-                "Lato",
+                "",
                 [this]() {
                     for (const auto& enumState : this->enumStates) {
                         for (uint32_t i = 0; i < enumState.flags.size(); ++i) {

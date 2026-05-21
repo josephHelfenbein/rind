@@ -1,7 +1,5 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include <engine/AudioManager.h>
-#include <engine/EmbeddedAssets.h>
-#include <audio/audio_registry.h>
 #include <iostream>
 
 ma_result init_engine_with_channels(ma_engine* engine, ma_uint32 channels) {
@@ -24,11 +22,13 @@ engine::AudioManager::AudioManager(Renderer* renderer) : renderer(renderer) {
         throw std::runtime_error("Failed to initialize audio engine");
     }
     m_initialized = true;
+}
 
-    const auto& embeddedAudio = getEmbedded_audio();
-    for (const auto& [name, asset] : embeddedAudio) {
-        ma_resource_manager* pResourceManager = ma_engine_get_resource_manager(&m_engine);
-        result = ma_resource_manager_register_encoded_data(pResourceManager, name.c_str(), asset.data, asset.size);
+void engine::AudioManager::registerEmbeddedAudio(const std::unordered_map<std::string, EmbeddedAsset>& assets) {
+    if (!m_initialized) return;
+    ma_resource_manager* pResourceManager = ma_engine_get_resource_manager(&m_engine);
+    for (const auto& [name, asset] : assets) {
+        ma_result result = ma_resource_manager_register_encoded_data(pResourceManager, name.c_str(), asset.data, asset.size);
         if (result != MA_SUCCESS) {
             std::cerr << "Failed to register embedded audio: " << name << std::endl;
             continue;

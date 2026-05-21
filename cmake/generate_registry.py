@@ -3,8 +3,8 @@ import sys
 import os
 
 def main():
-    if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} CATEGORY OUTPUT_DIR NAME1 NAME2 ...", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} CATEGORY OUTPUT_DIR [NAME1 NAME2 ...]", file=sys.stderr)
         sys.exit(1)
 
     category = sys.argv[1]

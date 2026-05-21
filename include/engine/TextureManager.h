@@ -1,6 +1,7 @@
 #pragma once
 
 #include <engine/Renderer.h>
+#include <engine/EmbeddedAssets.h>
 #include <stb/stb_image.h>
 #include <string>
 #include <unordered_map>
@@ -26,6 +27,8 @@ namespace engine {
         TextureManager(engine::Renderer* renderer);
         ~TextureManager();
 
+        void registerEmbeddedTextures(const std::unordered_map<std::string, EmbeddedAsset>& assets);
+
         void init();
 
         Texture* getTexture(const std::string& name);
@@ -33,6 +36,7 @@ namespace engine {
 
     private:
         std::unordered_map<std::string, Texture> textures;
+        std::unordered_map<std::string, EmbeddedAsset> embeddedAssets;
         engine::Renderer* renderer;
     };
 };

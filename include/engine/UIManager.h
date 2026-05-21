@@ -9,6 +9,7 @@
 #include <engine/TextureManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/PushConstants.h>
+#include <engine/EmbeddedAssets.h>
 #include <external/freetype/include/ft2build.h>
 #include FT_FREETYPE_H
 #include <variant>
@@ -248,7 +249,7 @@ namespace engine {
                     name + "_valueText",
                     glm::vec4(1.0f),
                     "",
-                    "Lato",
+                    "",
                     Corner::Right
                 );
                 this->addChild(valueTextObject);
@@ -346,6 +347,16 @@ namespace engine {
         void loadTextures();
         void reloadFontDescriptorSets();
         void loadFonts();
+
+        void registerEmbeddedFonts(const std::unordered_map<std::string, EmbeddedAsset>& assets);
+
+        // Defaults to "Lato"
+        void setDefaultFontName(std::string name) { defaultFontName = std::move(name); }
+        const std::string& getDefaultFontName() const { return defaultFontName; }
+
+        // Defaults to "RubikGlitch"
+        void setDefaultTitleFontName(std::string name) { defaultTitleFontName = std::move(name); }
+        const std::string& getDefaultTitleFontName() const { return defaultTitleFontName; }
         UIObject* processMouseMovement(GLFWwindow* window, double xpos, double ypos);
 
         Renderer* getRenderer() const { return renderer; }
@@ -394,6 +405,9 @@ namespace engine {
         std::unordered_map<std::string, std::variant<UIObject*, TextObject*>> objects;
         std::unordered_map<std::string, std::variant<UIObject*, TextObject*>> rootObjects;
         std::unordered_map<std::string, Font> fonts;
+        std::unordered_map<std::string, EmbeddedAsset> embeddedFontAssets;
+        std::string defaultFontName = "Lato";
+        std::string defaultTitleFontName = "RubikGlitch";
         UIObject* cursor = nullptr;
         bool showCursor = false;
         std::vector<std::string> pendingRemovals;

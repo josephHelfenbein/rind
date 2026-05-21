@@ -41,6 +41,8 @@
 *.dwo
 
 src/assets/shaders/compiled
+src/engine/assets/shaders/compiled
+src/rind/assets/shaders/compiled
 
 .DS_Store
 .cache
