@@ -4,13 +4,13 @@ Rind is an open-source first-person shooter and the custom Vulkan engine it runs
 
 Licensed under Apache 2.0.
 
-## About the game
+## The game
 
-You play a robot with a laser gun, grenades, a melee punch, a dash, and a double jump. The laser gun can overheat, so timing is important. Enemy robots arrive in waves that scale with difficulty: walking grunts, flying drones, and heavy bashers, plus four elite variants (flying, bashing, grenade, missile) with their own attack patterns. An enemy kill can give a random status effect that buffs or debuffs the player. The player can also heal from the explosion left behind when killing an enemy. The score will keep climbing until you lose.
+You play a robot with a laser gun, grenades, a melee punch, a dash, and a double jump. The laser gun overheats, so timing matters. Enemies arrive in waves: walking grunts, flying drones, and heavy bashers, plus four elite variants (flying, bashing, grenade-throwing, missile-firing). Kills can give a random status effect that buffs or debuffs the player, and the explosion left behind can heal the player. The score will keep climbing until you lose.
 
-## About this repository
+## The repository
 
-This repository is the source build of Rind. The codebase is open so people can read the code, contribute, mod the game, or build something of their own on top of the engine. The Steam page can be found [here](https://store.steampowered.com/app/4412940/Rind/).
+The codebase is open so people can read it, contribute, mod the game, or build their own game on top of the engine. The Steam page is [here](https://store.steampowered.com/app/4412940/Rind/).
 
 ## Prerequisites
 
@@ -24,11 +24,9 @@ This repository is the source build of Rind. The codebase is open so people can 
 
 ### Windows
 
-1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload selected. This provides MSVC, CMake, and the Windows SDK.
+1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload selected. This provides MSVC, CMake, the Windows SDK, and the LLVM OpenMP runtime.
 2. Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows). This includes `dxc.exe` and sets up `VULKAN_SDK` in your environment automatically.
 3. Verify `dxc.exe` is accessible. It should be on your PATH after the SDK install. If not, add `%VULKAN_SDK%\Bin` to your PATH manually.
-
-> OpenMP is provided by MSVC's built-in LLVM OpenMP runtime, so no separate install is required.
 
 ---
 
@@ -258,58 +256,59 @@ No extra tools required. A `.zip` of the distributable folder is created automat
 
 ## Repository layout
 
-- **`src/engine/`** and **`include/engine/`**: the engine, built as the static library target `rind_engine`. Renderer, shader and render-graph manager, entity and scene managers, asset managers, audio, input, UI, lighting, particles, volumetrics, collision. Engine-owned shaders live in `src/engine/assets/shaders/hlsl/` and compile into the library. Nothing in here knows about the game.
-- **`src/rind/`**: the game, built as the `Rind` executable that links against `rind_engine`. Character controller, player logic, enemy AI, elite variants, projectiles, status effects, spawners, score tracking, and the top-level `GameInstance` that wires it all together. Game headers live in `src/rind/include/rind/`. Game-only shaders go in `src/rind/assets/shaders/hlsl/`, which is empty by default since Rind currently has no game-specific shaders.
-- **`src/assets/`**: game-owned non-shader assets: `models/`, `textures/`, `audio/`, `fonts/`. These are embedded into the `Rind` executable, not into the engine library, and registered with the engine managers at startup via `registerEmbedded*()` calls in `GameInstance`.
-- **`src/main.cpp`**: process entry point. Six lines: calls `engine::Platform::initialize()` (macOS Vulkan ICD bootstrap, no-op elsewhere) and `engine::Platform::runWithCrashReport(...)` with a lambda that constructs and runs `rind::GameInstance`.
-- **`cmake/`**: `RindEngine.cmake` exports the build helpers consumers need (`embed_asset_category`, `rind_engine_compile_shaders`, `rind_engine_bundle_runtimes`); `embed_asset.py` and `generate_registry.py` are the worker scripts those helpers invoke; `package.cmake` builds release artifacts.
-- **`include/external/`**: vendored third-party libraries pulled in as submodules.
+- **`src/engine/`**, **`include/engine/`**: engine sources and headers, built as the `rind_engine` static library. Engine-owned shaders live in `src/engine/assets/shaders/hlsl/` and compile into the library.
+- **`src/rind/`**: game sources, built as the `Rind` executable that links against `rind_engine`. Game headers live in `src/rind/include/rind/`; game-only shaders in `src/rind/assets/shaders/hlsl/`.
+- **`src/assets/`**: game-owned non-shader assets (`models/`, `textures/`, `audio/`, `fonts/`). Embedded into the `Rind` executable and registered with the engine managers at startup via `registerEmbedded*()` calls in `GameInstance`.
+- **`src/main.cpp`**: process entry point. Calls `engine::Platform::initialize()` then `runWithCrashReport(...)` with a lambda that constructs and runs `rind::GameInstance`.
+- **`cmake/`**: `RindEngine.cmake` exports the build helpers (`embed_asset_category`, `rind_engine_compile_shaders`, `rind_engine_bundle_runtimes`); `embed_asset.py` and `generate_registry.py` are the worker scripts those helpers invoke; `package.cmake` builds release artifacts.
+- **`include/external/`**: vendored third-party libraries, pulled in as submodules.
 
 ## Engine overview
 
-The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering. The renderer owns the shared GPU state and every other manager asks it for resources or hands work back to it. Headers are in `include/engine/` and sources are in `src/engine/`.
+The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering. The renderer owns the shared GPU state; other managers request resources from it and submit work back through it. Headers are in `include/engine/` and sources in `src/engine/`.
 
-- **Renderer** - Vulkan host: instance, device, queues, swapchain, command pools, descriptor allocators, and per-frame command recording.
-- **ShaderManager** - Shader modules, render passes, and the render graph. Passes are `RenderNode`s organized into `RenderLane`s; async-capable lanes run on a separate compute queue in parallel with graphics. The current graph runs five lanes: `GeneralGraphics`, `Volumetric`, `Shadow`, `IrradianceSH`, and `IrradianceRender`.
-- **LightManager** - Up to 16 point lights, each with a static baked shadow cubemap and a per-frame dynamic cubemap for moving lights.
-- **IrradianceManager** - Up to 64 irradiance probes with baked color cubemaps and dynamic cubemaps projected to spherical harmonics for indirect lighting. Runs on its own async lanes.
-- **ParticleManager** - CPU-side particle pool with lifetime, velocity, and collision simulation, written to a persistently mapped GPU buffer.
-- **VolumetricManager** - Smoke, muzzle flash, and explosion volumes with lifetime easing.
-- **EntityManager / SceneManager** - Hierarchical entity tree with transform inheritance, skeletal animation, and colliders. SceneManager swaps between top-level scenes.
-- **ModelManager** - glTF 2.0 loading via `fastgltf`, GPU buffers, skeleton and animation data.
-- **TextureManager** - Image resources for materials, UI, render targets, and HDR environment maps.
-- **Collider / SpatialGrid** - AABB, OBB, and convex-hull SAT tests, broad-phased by a 3D hash grid.
-- **AudioManager** - `miniaudio` wrapper with 3D spatialization and pitch variation.
-- **InputManager** - GLFW keyboard, mouse, and gamepad input. Controller mode provides on-screen cursor navigation for menus.
-- **UIManager** - 2D overlay with `FreeType` glyph caching and anchored widget layout.
-- **Camera** - Perspective camera with frustum culling.
-- **SettingsManager** - Persistent video, audio, and input settings.
+- **Renderer**: Vulkan host. Owns the instance, device, queues, swapchain, command pools, descriptor allocators, and per-frame command recording.
+- **ShaderManager**: Shader modules, render passes, and the render graph. Passes are `RenderNode`s organized into `RenderLane`s; async-capable lanes run on a separate compute queue in parallel with graphics. Default graph lanes: `GeneralGraphics`, `Volumetric`, `Shadow`, `IrradianceSH`, `IrradianceRender`.
+- **LightManager**: Point lights with a baked shadow cubemap per light and a dynamic cubemap for moving lights (currently capped at 16).
+- **IrradianceManager**: Irradiance probes with baked color cubemaps and dynamic cubemaps projected to spherical harmonics for indirect lighting (currently capped at 64). Runs on its own async lanes.
+- **ParticleManager**: CPU-side particle pool with two types: physics particles (gravity, bounce off `AABB`/`OBB`/`ConvexHull` colliders, OpenMP-parallel) and static trail segments. Each particle keeps two prior positions so the renderer can fit a quadratic Bezier tangent for motion streaking. Live particles are packed into a per-frame host-coherent vertex buffer with camera-visible particles at the front; the buffer auto-grows up to a hard cap.
+- **VolumetricManager**: Smoke, muzzle flash, and explosion volumes with lifetime easing.
+- **EntityManager / SceneManager**: Hierarchical entity tree with transform inheritance, skeletal animation, and colliders. `SceneManager` swaps between top-level scenes.
+- **ModelManager**: glTF 2.0 loading via `fastgltf`, GPU buffers, skeleton and animation data.
+- **TextureManager**: Image resources for materials, UI, render targets, and HDR environment maps.
+- **Collider / SpatialGrid**: AABB, OBB, and convex-hull SAT tests, broad-phased by a 3D hash grid.
+- **AudioManager**: `miniaudio` wrapper with 3D spatialization and pitch variation.
+- **InputManager**: GLFW keyboard, mouse, and gamepad input. Controller mode provides on-screen cursor navigation for menus.
+- **UIManager**: 2D overlay with `FreeType` glyph caching and anchored widget layout.
+- **Camera**: Perspective camera with frustum culling.
+- **SettingsManager**: Persistent video, audio, and input settings.
 
 ## Rendering pipeline
 
-The graph is described in `ShaderManager::createDefaultShaders`. One frame runs roughly in this order, with the lanes noted in parentheses indicating where work can run in parallel.
+The graph is described in `ShaderManager::createDefaultShaders`. One frame runs roughly in the order below; the lane name after each step matches the `RenderLane::name` it is assigned to in code, and async lanes run in parallel with the main `GeneralGraphics` lane on a separate compute queue.
 
-1. **G-buffer** (GeneralGraphics). Writes albedo, normal, depth, and material parameters for every renderable 3D entity.
-2. **AO** and **Volumetric** (graphics + Volumetric lane). Both depend only on the G-buffer and run concurrently with the work below. AO uses a compute shader (`ao.comp.hlsl`). Each volumetric effect is a cube mesh; the fragment shader ray-marches from the camera through the cube, sampling a curl-noise density field built with FBM for turbulence, fading by age, and clipping against scene depth. The pass uses adaptive step refinement and per-frame rejitter.
-3. **Shadow preparation, image generation, and blur** (Shadow lane, async). The scene is rendered into point-light cubemaps that store linear depth from the light. A compute pass (`shadowimage.comp.hlsl`) reads those cubemaps and writes a soft-shadow image atlas using PCSS: a blocker search on a world-space-rotated disk pattern, a penumbra estimate from the blocker depths, then a second filtered sample pass at the computed radius. Two compute passes (`blurarray.comp.hlsl`) then apply a bilateral, depth- and normal-aware blur horizontally and vertically. The whole chain rides the Shadow lane so it does not block the G-buffer or lighting.
-4. **Irradiance probe update** (IrradianceRender then IrradianceSH lanes, async). Each probe's dynamic cubemap is re-rendered with simplified particles, finalized, projected to spherical harmonics, and reduced. The baked color cubemap from scene load is left alone. The whole chain runs on its own lanes in parallel with the graphics work above.
-5. **Particles** (GeneralGraphics). CPU simulation then draw from persistently mapped GPU buffer, depends on the G-buffer for depth-aware scaling and occlusion.
-6. **Lighting** (GeneralGraphics). Consumes the G-buffer, shadow image, AO, volumetric contribution, particle contribution, and probe SH coefficients to produce the lit HDR image. This is the synchronization point where all the async lanes rejoin the main lane.
-7. **SSR**. Reads the lit image and the G-buffer, ray-marches against depth, and produces a roughness-aware screen-space reflection contribution.
-8. **Bloom** down-sample chain then **bloom** up-sample chain. Reads the lit image and produces a bloom blur pyramid.
-9. **Flare**. Reads a mid-pyramid bloom mip and produces lens flare contributions for very bright pixels.
-10. **Combine**. Mixes lighting, SSR, the bloom up-sample, and flare into a single HDR image.
-11. **SMAA** edge detection, then weight calculation, then blend. Three sequential passes that produce the anti-aliased image when enabled.
-12. **UI**. Renders the 2D overlay into its own image. Has no graph dependencies and can record alongside earlier passes.
-13. **Composite**. Final pass. Depends on combine, ui, and smaa_blend. Mixes the anti-aliased lit image with the UI overlay, dithers to the swapchain format, and produces the presentable frame.
+1. **`gbuffer`** (`GeneralGraphics`): writes albedo, normal, depth, and material parameters for every renderable 3D entity.
+2. **`ao`** (`GeneralGraphics`): depends on `gbuffer`. Tiled compute pass with three modes selected by the `aoMode` setting: off, SSAO (rotated sphere kernel), or GTAO (horizon-based). Writes a single-channel occlusion image consumed by `lighting`.
+3. **`volumetric`** (`Volumetric`, async): depends on `gbuffer`. One ray-marched cube mesh per volume in the fragment shader, with curl-noise-warped FBM density and an age-based fade. Steps, octaves, and warp passes are picked from the `volumetricQuality` setting and a per-instance distance LOD. Writes alpha-premultiplied HDR color plus the volume's entry depth so later passes can z-test against the front face.
+4. **`shadow_prep`**, **`shadow_image`**, **`shadow_blur_h`**, **`shadow_blur_v`** (`Shadow`, async): point-light shadow cubemaps are rendered to linear depth, then `shadow_image` (compute) builds a PCSS soft-shadow atlas (blocker search + filtered sample), and two bilateral blur passes smooth it.
+5. **`irradiance_dynamic_prepare`**, **`irradiance_dynamic_render`**, **`irradiance_dynamic_finalize`** (`IrradianceRender`, async), then **`irradiance_dynamic_sh`**, **`irradiance_dynamic_sh_reduce`** (`IrradianceSH`, async): each probe's dynamic cubemap is re-rendered with simplified particles, projected to spherical harmonics, and reduced. The baked color cubemap from scene load is left alone.
+6. **`particle`** (`GeneralGraphics`): depends on `gbuffer`. One instanced quad per visible particle. Writes additive HDR color and a min-blended particle depth that `lighting` samples; the fragment shader discards against the G-buffer depth. The vertex shader branches between trail quads and motion-streaked physics quads.
+7. **`lighting`** (`GeneralGraphics`): consumes `gbuffer`, `shadow_blur_v`, `ao`, `volumetric`, `particle`, and `irradiance_dynamic_sh_reduce` to produce the lit HDR image. This is the join point where async lanes rejoin the main lane.
+8. **`ssr`** (`GeneralGraphics`): reads the lit image and G-buffer, ray-marches against depth, and produces a roughness-aware screen-space reflection contribution.
+9. **`bloom`**, then **`bloom_down1`**, **`bloom_down2`**, **`bloom_down3`**, then **`bloom_up2`**, **`bloom_up1`** (`GeneralGraphics`): bloom blur pyramid built from the lit image via a downsample chain followed by an upsample chain.
+10. **`flare`** (`GeneralGraphics`): reads `bloom_down2` and produces lens flare contributions for very bright pixels.
+11. **`combine`** (`GeneralGraphics`): mixes `lighting`, `ssr`, `bloom_up1`, and `flare` into a single HDR image.
+12. **`smaa_edge`**, **`smaa_weight`**, **`smaa_blend`** (`GeneralGraphics`): three sequential passes producing the anti-aliased image when SMAA is enabled.
+13. **`ui`** (`GeneralGraphics`): renders the 2D overlay (and the FPS counter, if enabled) into its own image. Has no graph dependencies and records alongside earlier passes.
+14. **`composite`** (`GeneralGraphics`): final pass. Depends on `combine`, `ui`, and `smaa_blend`. Mixes the anti-aliased lit image with the UI overlay, dithers to the swapchain format, and produces the presentable frame.
 
-Skip conditions are attached to nodes that can be empty (no renderable 3D entities, no particles, no probes needing update), so quiet frames are cheaper than busy ones.
+Nodes that can be empty (no renderable 3D entities, no particles, no probes needing update) carry skip conditions so they cost nothing when there is no work.
 
 ## Game code
 
-All gameplay lives in `src/rind/`. The engine has no knowledge of these files; replacing them is how you would build a different game on the engine.
+All gameplay lives in `src/rind/`. The engine knows nothing about it; a downstream consumer ships its own equivalent (see "Using `rind_engine` as a submodule" below).
 
-`GameInstance` is the top-level controller that owns the engine managers, builds scenes, registers spawners, and drives the main loop. The player is a first-person `CharacterEntity` with a laser gun, grenades, melee, dash, and double jump. Enemies (`WalkingEnemy`, `FlyingEnemy`, `BashingEnemy`) extend a shared `Enemy` subclass of `CharacterEntity` with a state machine for spawning, chasing, and attacking. Four elite variants add dashes, grenades, or guided missiles. `EnemySpawner` is a templated wave spawner that scales difficulty along a sinusoidal curve.
+`GameInstance` is the top-level controller that owns the engine managers, builds scenes, registers spawners, and drives the main loop. The player is a first-person `CharacterEntity` with a laser gun, grenades, melee, dash, and double jump. Enemies (`WalkingEnemy`, `FlyingEnemy`, `BashingEnemy`) extend a shared `Enemy` subclass of `CharacterEntity` with a state machine for spawning, chasing, and attacking. Four elite variants add dashes, grenades, or guided missiles. `EnemySpawner` is a templated wave spawner whose wave size and pacing follow a sinusoidal curve over time.
 
 ## Asset pipeline
 
@@ -426,13 +425,41 @@ mygame::MyGameInstance::MyGameInstance() {
 - `setOnRenderGraphReady(callback)` is invoked at the top of `resolveRenderGraphShaders`, between the engine's `createDefaultShaders()` building the graph and the scheduler resolving it. Use this to mutate the graph.
 - `replaceRenderNode(name, newNode)`, `insertRenderNodeAfter(predecessor, newNode)`, and `removeRenderNode(name)` do surgical edits to the render graph by node name.
 
-### Known engine couplings to be aware of
+### Adding game-specific settings
 
-The engine bakes in some assumptions that consumers should know about:
+`SettingsManager`'s constructor takes a `std::vector<SettingsDefinition>` that describes each row in the settings UI. The built-in engine settings (anti-aliasing mode, AO mode, FPS limit, shadow/volumetric/SSR quality, sensitivity, master volume, screen mode, show-FPS) are appended automatically; anything the consumer passes in shows up first. Each definition is one of three `type`s (`Bool`, `Enum`, `Slider`) and binds either to a member of the engine's built-in `Settings` struct (via `Settings::*` member pointers) or to a consumer-owned variable (via the `ext*` raw pointers).
 
-- **Default fonts.** The engine's built-in settings UI body text, FPS counter, and slider value labels request a font by the name set on `UIManager::setDefaultFontName(...)` (default `"Lato"`). The settings panel title uses `UIManager::setDefaultTitleFontName(...)` (default `"RubikGlitch"`). Register a font under whatever names you set, or change the defaults before any engine-internal widget is created.
-- **Material fallback names.** `EntityManager` falls back to texture names `materials_default_albedo`/`_metallic`/`_roughness`/`_normal` when a `gbuffer` entity's specified textures are missing, and to `ui_window` for missing UI textures. Missing entities just log a warning; they don't crash.
-- **SMAA texture names.** The engine's SMAA pass expects textures named `smaa_area` and `smaa_search` to be auto-created from the SMAA submodule's baked tables; this is handled internally and shouldn't need attention from consumers.
+The Rind game uses this to add a difficulty enum that lives on `GameInstance` itself:
+
+```cpp
+// Member on the game's top-level object.
+uint32_t difficulty = 0;
+
+// Passed when constructing the SettingsManager.
+settingsManager = std::make_unique<engine::SettingsManager>(renderer.get(),
+    std::vector<engine::SettingsManager::SettingsDefinition>{
+        {
+            .type = engine::SettingsManager::SettingsDefinition::Enum,
+            .label = "Difficulty",
+            .key = "difficulty",
+            .enumOptions = {"Easy", "Normal", "Hard"},
+            .extEnum = &difficulty,
+        },
+    },
+    "mygame"  // Settings file lives under this name on disk.
+);
+```
+
+`label` is shown to the user; `key` is the serialization key in the JSON settings file. `extEnum` binds the chosen index back to the `difficulty` variable. The same pattern works for `Bool` (via `extBool` / `defaultBool`) and `Slider` (via `extFloat` plus the usual range, formatting, and clamp fields; see `SettingsDefinition` for the full list). An optional `onChange` callback fires when the setting is applied, receiving the previous settings, the new settings, and the renderer; use it to push the new value somewhere that observes changes (audio volume, screen mode, etc.).
+
+`SettingsManager::addToDefs(...)` lets later code append more definitions before the UI is shown, which is useful if some settings depend on assets being registered first.
+
+### Known engine couplings
+
+A few engine internals reach for assets by name, so consumers need to either register them under those names or change the defaults:
+
+- **Default fonts.** Settings UI body text, FPS counter, and slider value labels request the font set on `UIManager::setDefaultFontName(...)` (default `"Lato"`). The settings panel title uses `UIManager::setDefaultTitleFontName(...)` (default `"RubikGlitch"`). Either register fonts under those names, or set new defaults before any engine widget is created.
+- **Material fallback names.** `EntityManager` falls back to texture names `materials_default_albedo` / `_metallic` / `_roughness` / `_normal` when a `gbuffer` entity's specified textures are missing, and to `ui_window` for missing UI textures. Missing entities log a warning instead of crashing.
 
 ## Contributing
 
