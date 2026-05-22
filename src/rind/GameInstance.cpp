@@ -160,43 +160,43 @@ rind::GameInstance::GameInstance() {
             "titleLight",
             glm::translate(glm::mat4(1.0f), glm::vec3(-3.0f, 3.5f, -4.0f)),
             glm::vec3(1.0f, 0.0f, 0.0f),
-            0.3f,
+            0.5f,
             200.0f
         );
         lightManager->addLight(
             "titleLight2",
             glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 1.0f, 1.0f)),
             glm::vec3(0.5f, 0.5f, 1.0f),
-            0.75f,
+            0.85f,
             30.0f
         );
         lightManager->addLight(
             "titleLight3",
             glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 9.0f, -30.0f)),
             glm::vec3(1.0f),
-            3.0f,
-            50.0f
+            3.5f,
+            70.0f
         );
         lightManager->addLight(
             "titleLight4",
             glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 12.0f, -50.0f)),
             glm::vec3(1.0f),
-            2.5f,
-            70.0f
+            4.0f,
+            100.0f
         );
         lightManager->addLight(
             "titleLight5",
             glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 4.0f, -50.0f)),
             glm::vec3(1.0f),
             2.0f,
-            50.0f
+            70.0f
         );
         lightManager->addLight(
             "titleLight5",
             glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 2.0f, 0.5f)),
             glm::vec3(1.0f),
-            5.0f,
-            4.0f
+            5.5f,
+            6.0f
         );
         for (int i = -2; i <= 2; i++) {
             for (int j = -2; j <= 2; j++) {
@@ -354,8 +354,8 @@ rind::GameInstance::GameInstance() {
                 ), engine::blenderRemap(glm::vec3(13.5296f, -13.3857f, -0.136268f))
             ),
             glm::vec3(1.0f),
-            5.0f,
-            150.0f
+            6.0f,
+            175.0f
         );
         
         engine::ConvexHullCollider* lightCollider = new engine::ConvexHullCollider(
@@ -395,8 +395,8 @@ rind::GameInstance::GameInstance() {
                 ), engine::blenderRemap(glm::vec3(13.5296f, 13.6124f, -0.136268f))
             ),
             glm::vec3(1.0f),
-            5.0f,
-            150.0f
+            6.0f,
+            175.0f
         );
 
         engine::ConvexHullCollider* light2Collider = new engine::ConvexHullCollider(
@@ -435,8 +435,8 @@ rind::GameInstance::GameInstance() {
                 ), engine::blenderRemap(glm::vec3(-13.365f, 13.6124f, -0.136268f))
             ),
             glm::vec3(1.0f),
-            5.0f,
-            150.0f
+            6.0f,
+            175.0f
         );
 
         engine::ConvexHullCollider* light3Collider = new engine::ConvexHullCollider(
@@ -475,8 +475,8 @@ rind::GameInstance::GameInstance() {
                 ), engine::blenderRemap(glm::vec3(-13.365f, -13.3857f, -0.136268f))
             ),
             glm::vec3(1.0f),
-            5.0f,
-            150.0f
+            6.0f,
+            175.0f
         );
 
         engine::ConvexHullCollider* light4Collider = new engine::ConvexHullCollider(

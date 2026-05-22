@@ -61,8 +61,8 @@ float3 agx(float3 val) {
 }
 
 float3 agxLookPunchy(float3 val) {
-    const float3 slope  = float3(1.0, 1.0, 1.0);
-    const float3 power  = float3(1.35, 1.35, 1.35);
+    const float3 slope = float3(1.0, 1.0, 1.0);
+    const float3 power = float3(1.35, 1.35, 1.35);
     const float3 offset = float3(0.0, 0.0, 0.0);
     const float saturation = 1.4;
     val = pow(max(val * slope + offset, 0.0), power);
@@ -101,6 +101,7 @@ float4 main(VSOutput input) : SV_Target {
     combined += bloom;
     combined += flare;
     combined = agxEotf(agxLookPunchy(agx(combined)));
+    combined = min((combined - 0.5) * 1.05 + 0.5, 1.0); // monitor used during testing had high contrast
 
     uint texW, texH;
     sceneTexture.GetDimensions(texW, texH);
