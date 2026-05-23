@@ -256,7 +256,11 @@ embed_asset_category(
 
 # Rind executable
 file(GLOB_RECURSE RIND_SOURCES "src/rind/*.cpp")
-add_executable(${PROJECT_NAME} src/main.cpp ${RIND_SOURCES})
+set(RIND_EXTRA_SOURCES)
+if(WIN32)
+    list(APPEND RIND_EXTRA_SOURCES "${CMAKE_SOURCE_DIR}/cmake/Rind.rc")
+endif()
+add_executable(${PROJECT_NAME} src/main.cpp ${RIND_SOURCES} ${RIND_EXTRA_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src/rind/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE rind_engine)
 
