@@ -23,7 +23,13 @@ Texture2D<float4> smaaTexture;
 SamplerState sampleSampler;
 
 float3 FXAA(float2 uv) {
-    const float edgeThreshold = 0.08;
+    const float3 luma = float3(0.299, 0.587, 0.114);
+    const float FXAA_EDGE_THRESHOLD = 0.125;
+    const float FXAA_EDGE_THRESHOLD_MIN = 0.0312;
+    const float FXAA_REDUCE_MUL = 1.0 / 8.0;
+    const float FXAA_REDUCE_MIN = 1.0 / 128.0;
+    const float FXAA_SPAN_MAX = 8.0;
+
     float2 texelSize = pc.invScreenSize;
     float3 rgbNW = sceneTexture.Sample(sampleSampler, saturate(uv + float2(-texelSize.x, -texelSize.y))).rgb;
     float3 rgbNE = sceneTexture.Sample(sampleSampler, saturate(uv + float2(texelSize.x, -texelSize.y))).rgb;
@@ -31,17 +37,17 @@ float3 FXAA(float2 uv) {
     float3 rgbSE = sceneTexture.Sample(sampleSampler, saturate(uv + float2(texelSize.x, texelSize.y))).rgb;
     float3 rgbM  = sceneTexture.Sample(sampleSampler, uv).rgb;
 
-    float lumaNW = dot(rgbNW, float3(0.299, 0.587, 0.114));
-    float lumaNE = dot(rgbNE, float3(0.299, 0.587, 0.114));
-    float lumaSW = dot(rgbSW, float3(0.299, 0.587, 0.114));
-    float lumaSE = dot(rgbSE, float3(0.299, 0.587, 0.114));
-    float lumaM  = dot(rgbM,  float3(0.299, 0.587, 0.114));
+    float lumaNW = dot(rgbNW, luma);
+    float lumaNE = dot(rgbNE, luma);
+    float lumaSW = dot(rgbSW, luma);
+    float lumaSE = dot(rgbSE, luma);
+    float lumaM  = dot(rgbM,  luma);
 
     float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
     float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
 
     float range = lumaMax - lumaMin;
-    if (range < edgeThreshold) {
+    if (range < max(FXAA_EDGE_THRESHOLD_MIN, lumaMax * FXAA_EDGE_THRESHOLD)) {
         return rgbM;
     }
 
@@ -49,21 +55,24 @@ float3 FXAA(float2 uv) {
     dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
     dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
 
-    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * 0.5), 1e-6);
+    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
-    dir = saturate(dir * rcpDirMin) * float2(texelSize.x, texelSize.y);
+    dir = clamp(dir * rcpDirMin,
+                float2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),
+                float2( FXAA_SPAN_MAX,  FXAA_SPAN_MAX)) * texelSize;
+
     float3 rgbA = 0.5 * (
         sceneTexture.Sample(sampleSampler, saturate(uv + dir * (1.0 / 3.0 - 0.5))).rgb +
         sceneTexture.Sample(sampleSampler, saturate(uv + dir * (2.0 / 3.0 - 0.5))).rgb);
     float3 rgbB = rgbA * 0.5 + 0.25 * (
         sceneTexture.Sample(sampleSampler, saturate(uv + dir * -0.5)).rgb +
-        sceneTexture.Sample(sampleSampler, saturate(uv + dir * 0.5)).rgb);
-    float subpixelBlend = 0.75;
-    if (dot(rgbB, float3(0.299, 0.587, 0.114)) < lumaMin || dot(rgbB, float3(0.299, 0.587, 0.114)) > lumaMax) {
-        return lerp(rgbA, rgbB, 1.0 - subpixelBlend);
-    } else {
-        return lerp(rgbA, rgbB, subpixelBlend);
+        sceneTexture.Sample(sampleSampler, saturate(uv + dir *  0.5)).rgb);
+
+    float lumaB = dot(rgbB, luma);
+    if (lumaB < lumaMin || lumaB > lumaMax) {
+        return rgbA;
     }
+    return rgbB;
 }
 
 float4 main(VSOutput input) : SV_Target {
