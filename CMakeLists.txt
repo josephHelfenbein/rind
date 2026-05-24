@@ -9,6 +9,7 @@ option(BUNDLE_LINUX_RUNTIMES "Bundle runtime .so files next to Linux executable 
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(RELEASE_MARCH "native" CACHE STRING "Target -march for release builds (e.g. native, x86-64-v2, znver2)")
 
 set(_is_single_config_release FALSE)
 if(NOT CMAKE_CONFIGURATION_TYPES AND CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -72,6 +73,13 @@ if(IS_WINDOWS)
 endif()
 if(TARGET fastgltf)
   target_compile_options(fastgltf PRIVATE -Wno-nan-infinity-disabled)
+  if(NOT RELEASE_MARCH STREQUAL "native")
+    target_compile_definitions(fastgltf PRIVATE
+      SIMDJSON_IMPLEMENTATION_ICELAKE=0
+      SIMDJSON_IMPLEMENTATION_HASWELL=0
+    )
+    target_compile_options(fastgltf PRIVATE -mcrc32)
+  endif()
 endif()
 
 # Bundled freetype + glfw (Windows always, Linux when bundling, macOS uses system)
@@ -387,13 +395,13 @@ endif()
 foreach(_tgt rind_engine ${PROJECT_NAME})
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${_tgt} PRIVATE
-      $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -fvectorize -fslp-vectorize -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -finline-functions -Wno-nan-infinity-disabled>
+      $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -fvectorize -fslp-vectorize -ffast-math -march=${RELEASE_MARCH} -mtune=${RELEASE_MARCH} -flto -fomit-frame-pointer -finline-functions -Wno-nan-infinity-disabled>
       $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(${_tgt} PRIVATE
-      $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -finline-functions -ftree-vectorize>
+      $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -ffast-math -march=${RELEASE_MARCH} -mtune=${RELEASE_MARCH} -flto -fomit-frame-pointer -finline-functions -ftree-vectorize>
       $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)

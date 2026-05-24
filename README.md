@@ -94,7 +94,17 @@ For **Ubuntu 22.04 (Jammy)**:
 sudo apt install libfreetype6-dev
 ```
 
-**2. Install DXC via LunarG apt repo**
+**2. Install Zig** (required for packaging only)
+
+Zig is used by the packaging script to build against an older glibc, ensuring the AppImage runs on systems like the Steam Deck.
+
+```bash
+sudo snap install zig --classic --beta
+```
+
+Alternatively, download from [ziglang.org](https://ziglang.org/download/).
+
+**3. Install DXC via LunarG apt repo**
 
 DXC is not in Ubuntu's standard repositories. Install it from the LunarG apt repo:
 
@@ -129,7 +139,17 @@ sudo apt install \
   libomp-dev
 ```
 
-**2. Install DXC**
+**2. Install Zig** (required for packaging only)
+
+Zig is used by the packaging script to build against an older glibc, ensuring the AppImage runs on systems like the Steam Deck.
+
+```bash
+sudo snap install zig --classic --beta
+```
+
+Alternatively, download from [ziglang.org](https://ziglang.org/download/).
+
+**3. Install DXC**
 
 There is no LunarG apt repo for Debian. Download the pre-built DXC binary from the [DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases):
 
@@ -155,7 +175,8 @@ sudo pacman -S \
   glfw \
   freetype2 \
   openmp \
-  directx-shader-compiler
+  directx-shader-compiler \
+  zig
 ```
 
 - `vulkan-icd-loader` - Vulkan loader (runtime). You also need a Vulkan ICD driver for your GPU:
@@ -166,6 +187,7 @@ sudo pacman -S \
 - `freetype2` - font rendering library
 - `openmp` - OpenMP runtime (companion to GCC's built-in support)
 - `directx-shader-compiler` - DXC, available in the official `extra` repo
+- `zig` - used by the packaging script to target older glibc for portable AppImages
 
 > You may also want `vulkan-validation-layers` for debugging.
 
@@ -239,7 +261,17 @@ No extra tools required. The `.app` bundle includes the bundled dylibs and Vulka
 
 ### Linux
 
-Requires `appimagetool` on PATH. Download the latest release from [AppImageKit](https://github.com/AppImage/appimagetool/releases/tag/continuous):
+Requires **Zig** and **appimagetool** on PATH.
+
+The packaging script automatically rebuilds the project using `zig cc` to target glibc 2.36, so the resulting AppImage runs on older systems like the Steam Deck. The target glibc version and architecture can be overridden:
+
+```bash
+cmake -DZIG_GLIBC=2.38 -DRELEASE_MARCH=x86_64_v3 -P cmake/package.cmake
+```
+
+Zig uses underscored CPU names (e.g. `x86_64_v2`, `znver2`). Run `zig cc --print-supported-cpus` to see the full list.
+
+Download `appimagetool` from [AppImageKit](https://github.com/AppImage/appimagetool/releases/tag/continuous):
 
 ```bash
 chmod +x appimagetool-x86_64.AppImage

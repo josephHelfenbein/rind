@@ -48,5 +48,6 @@ src/rind/assets/shaders/compiled
 .cache
 
 build
+build-dist
 bin
 dist

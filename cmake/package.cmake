@@ -25,6 +25,67 @@ message(STATUS "Packaging for: ${PLATFORM}")
 message(STATUS "Bin dir:       ${BIN_DIR}")
 message(STATUS "Output dir:    ${OUTPUT_DIR}")
 
+# Build with zig cc for glibc compatibility (Linux only)
+if(PLATFORM STREQUAL "linux")
+  find_program(_ZIG zig)
+  if(NOT _ZIG)
+    message(FATAL_ERROR
+      "zig not found. Install Zig for your distro:\n"
+      "  Arch:          sudo pacman -S zig\n"
+      "  Ubuntu/Debian: sudo snap install zig --classic --beta\n"
+      "  Other:         https://ziglang.org/download/"
+    )
+  endif()
+
+  if(NOT DEFINED ZIG_GLIBC)
+    set(ZIG_GLIBC "2.36")
+  endif()
+  if(NOT DEFINED RELEASE_MARCH)
+    set(RELEASE_MARCH "x86_64_v2")
+  endif()
+
+  set(_zig_build "${PROJECT_ROOT}/build-dist")
+  message(STATUS "Building with zig cc (glibc ${ZIG_GLIBC}, march=${RELEASE_MARCH}) ...")
+
+  # Find OpenMP for zig cc
+  set(_omp_flags "")
+  find_library(_OMP_LIB NAMES omp PATHS /usr/lib /usr/lib64 /usr/local/lib NO_DEFAULT_PATH)
+  if(_OMP_LIB)
+    set(_omp_flags
+      "-DOpenMP_C_FLAGS:STRING=-fopenmp"
+      "-DOpenMP_CXX_FLAGS:STRING=-fopenmp"
+      "-DOpenMP_C_LIB_NAMES:STRING=omp"
+      "-DOpenMP_CXX_LIB_NAMES:STRING=omp"
+      "-DOpenMP_omp_LIBRARY:FILEPATH=${_OMP_LIB}"
+    )
+  endif()
+
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}"
+      -B "${_zig_build}" -S "${PROJECT_ROOT}"
+      -DCMAKE_BUILD_TYPE=Release
+      "-DCMAKE_TOOLCHAIN_FILE=${PROJECT_ROOT}/cmake/zig-toolchain.cmake"
+      "-DZIG_GLIBC=${ZIG_GLIBC}"
+      "-DRELEASE_MARCH=${RELEASE_MARCH}"
+      ${_omp_flags}
+    RESULT_VARIABLE _cfg_rc
+  )
+  if(NOT _cfg_rc EQUAL 0)
+    message(FATAL_ERROR "Zig configure failed (exit ${_cfg_rc})")
+  endif()
+
+  cmake_host_system_information(RESULT _nproc QUERY NUMBER_OF_LOGICAL_CORES)
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" --build "${_zig_build}" --parallel ${_nproc}
+    RESULT_VARIABLE _build_rc
+  )
+  if(NOT _build_rc EQUAL 0)
+    message(FATAL_ERROR "Zig build failed (exit ${_build_rc})")
+  endif()
+
+  message(STATUS "Zig build complete")
+endif()
+
 # Sanity check: binary must exist
 if(PLATFORM STREQUAL "windows")
   set(_EXPECTED_BIN "${BIN_DIR}/${APP_NAME}.exe")
@@ -48,8 +109,7 @@ if(PLATFORM STREQUAL "macos")
   file(REMOVE_RECURSE "${APP_BUNDLE}")
   file(MAKE_DIRECTORY "${MACOS_DIR}")
 
-  # Copy the Mach-O binary directly — the binary uses _NSGetExecutablePath to
-  # locate and set VK_ICD_FILENAMES at startup, so no shell wrapper is needed.
+  # Copy the Mach-O binary directly 
   file(COPY "${BIN_DIR}/${APP_NAME}" DESTINATION "${MACOS_DIR}")
   file(CHMOD "${MACOS_DIR}/${APP_NAME}"
        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
@@ -131,9 +191,9 @@ elseif(PLATFORM STREQUAL "linux")
   # AppRun sets LD_LIBRARY_PATH so bundled libs are found
   file(WRITE "${APPDIR}/AppRun"
     "#!/bin/bash\n"
-    "HERE=\"$(dirname \"$(readlink -f \"$0\")\")\"\n"
-    "export LD_LIBRARY_PATH=\"$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n"
-    "exec \"$HERE/usr/bin/${APP_NAME}\" \"$@\"\n"
+    "HERE=\"\$(dirname \"\$(readlink -f \"\$0\")\")\"\n"
+    "export LD_LIBRARY_PATH=\"\$HERE/usr/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"\n"
+    "exec \"\$HERE/usr/bin/${APP_NAME}\" \"\$@\"\n"
   )
   file(CHMOD "${APPDIR}/AppRun"
        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
