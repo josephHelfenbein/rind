@@ -126,7 +126,15 @@ namespace engine {
         const std::vector<glm::vec3>& getWorldVerts() const { return worldVerts; }
         const std::vector<glm::vec3>& getEdgeAxesCached() const { return edgeAxesCached; }
         const std::vector<glm::vec3>& getFaceAxesCached() const { return faceAxesCached; }
+<<<<<<< Updated upstream
         const std::vector<glm::vec2>& getFaceAxisSelfProjCached() const { return faceAxisSelfProjCached; }
+=======
+        // SoA mirror of worldVerts
+        const std::vector<float>& getWorldVertsX() const { return worldVertsX; }
+        const std::vector<float>& getWorldVertsY() const { return worldVertsY; }
+        const std::vector<float>& getWorldVertsZ() const { return worldVertsZ; }
+        static constexpr size_t kSoAPad = 8;
+>>>>>>> Stashed changes
         glm::vec3 getWorldCenter() const { return worldCenter; }
         void setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform = glm::mat4(1.0f));
         void setVertsFromModel(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const glm::mat4& transform);
@@ -135,9 +143,15 @@ namespace engine {
         std::vector<glm::vec3> localVerts;
         std::vector<glm::ivec3> localTris;
         std::vector<glm::vec3> worldVerts;
+        std::vector<float> worldVertsX;
+        std::vector<float> worldVertsY;
+        std::vector<float> worldVertsZ;
         std::vector<glm::vec3> edgeAxesCached;
         std::vector<glm::vec3> faceAxesCached;
+<<<<<<< Updated upstream
         std::vector<glm::vec2> faceAxisSelfProjCached;
+=======
+>>>>>>> Stashed changes
         AABB cachedAABB{};
         glm::vec3 worldCenter{0.0f};
         uint32_t lastTransformGeneration = 0;

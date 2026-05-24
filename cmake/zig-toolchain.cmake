@@ -8,7 +8,7 @@ file(MAKE_DIRECTORY "${_zig_dir}")
 set(_target "x86_64-linux-gnu.${ZIG_GLIBC}")
 
 # -isystem /usr/include: zig cc doesn't search system include paths by default,
-# needed for non-libc system headers like omp.h (OpenMP)
+# needed for non-libc system headers
 file(WRITE "${_zig_dir}/cc"  "#!/bin/sh\nexec zig cc  -target ${_target} -isystem /usr/include \"$@\"\n")
 file(WRITE "${_zig_dir}/cxx" "#!/bin/sh\nexec zig c++ -target ${_target} -isystem /usr/include \"$@\"\n")
 file(CHMOD "${_zig_dir}/cc"  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)

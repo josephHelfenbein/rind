@@ -202,42 +202,9 @@ function(rind_engine_bundle_runtimes target_name)
                 endif()
             endif()
 
-            if(MSVC)
+            if(MINGW)
                 get_filename_component(_compiler_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
-                foreach(_omp_dll_name libomp140.x86_64.dll libomp.dll vcomp140.dll)
-                    unset(_omp_dll_path CACHE)
-                    unset(_omp_dll_path)
-                    find_file(_omp_dll_path NAMES ${_omp_dll_name}
-                        HINTS
-                            "${_compiler_bin_dir}"
-                            "${_compiler_bin_dir}/../../../../../VC/Redist/MSVC"
-                            "${_compiler_bin_dir}/../../../../../VC/Tools/Llvm/x64/bin"
-                        PATH_SUFFIXES
-                            x64/Microsoft.VC143.CRT
-                            x64/Microsoft.VC142.CRT
-                    )
-                    if(_omp_dll_path)
-                        install(FILES "${_omp_dll_path}" DESTINATION . CONFIGURATIONS Release)
-                        if(CMAKE_CONFIGURATION_TYPES)
-                            add_custom_command(TARGET ${target_name} POST_BUILD
-                                COMMAND ${CMAKE_COMMAND}
-                                    -DBUILD_CONFIG="$<CONFIG>"
-                                    -DSOURCE_FILE="${_omp_dll_path}"
-                                    -DDEST_DIR="$<TARGET_FILE_DIR:${target_name}>"
-                                    -P "${RIND_ENGINE_CMAKE_DIR}/copy_if_release.cmake"
-                                COMMENT "Copying ${_omp_dll_name} to runtime output (Release only)"
-                            )
-                        elseif(_is_single_config_release)
-                            add_custom_command(TARGET ${target_name} POST_BUILD
-                                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_omp_dll_path}" "$<TARGET_FILE_DIR:${target_name}>"
-                                COMMENT "Copying ${_omp_dll_name} to runtime output"
-                            )
-                        endif()
-                    endif()
-                endforeach()
-            elseif(MINGW)
-                get_filename_component(_compiler_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
-                foreach(_mingw_runtime_dll libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll libgomp-1.dll)
+                foreach(_mingw_runtime_dll libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll)
                     unset(_mingw_runtime_path CACHE)
                     unset(_mingw_runtime_path)
                     find_file(_mingw_runtime_path NAMES ${_mingw_runtime_dll}
@@ -282,13 +249,11 @@ function(rind_engine_bundle_runtimes target_name)
                 "/opt/homebrew/lib"
                 "/opt/homebrew/opt/glfw/lib"
                 "/opt/homebrew/opt/freetype/lib"
-                "/opt/homebrew/opt/libomp/lib"
                 "/opt/homebrew/opt/vulkan-loader/lib"
                 "/opt/homebrew/opt/molten-vk/lib"
                 "/usr/local/lib"
                 "/usr/local/opt/glfw/lib"
                 "/usr/local/opt/freetype/lib"
-                "/usr/local/opt/libomp/lib"
                 "/usr/local/opt/vulkan-loader/lib"
                 "/usr/local/opt/molten-vk/lib"
             )
@@ -413,28 +378,6 @@ function(rind_engine_bundle_runtimes target_name)
             configure_file("${RIND_ENGINE_CMAKE_DIR}/linux_bundle_runtime.cmake.in" "${_linux_bundle_script}" @ONLY)
 
             set(_linux_extra_libs "")
-            if(OpenMP_CXX_FOUND)
-                set(_omp_search_dirs ${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES} /usr/lib /usr/lib64 /usr/local/lib)
-                # Match the runtime to the compiler: clang/zig uses libomp, GCC uses libgomp
-                if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-                    set(_omp_names libomp.so libgomp.so.1)
-                else()
-                    set(_omp_names libgomp.so.1 libomp.so)
-                endif()
-                set(_omp_bundled FALSE)
-                foreach(_name IN LISTS _omp_names)
-                    if(_omp_bundled)
-                        break()
-                    endif()
-                    foreach(_dir IN LISTS _omp_search_dirs)
-                        if(EXISTS "${_dir}/${_name}")
-                            list(APPEND _linux_extra_libs "${_dir}/${_name}")
-                            set(_omp_bundled TRUE)
-                            break()
-                        endif()
-                    endforeach()
-                endforeach()
-            endif()
             string(REPLACE ";" "|" _linux_extra_libs_pipe "${_linux_extra_libs}")
 
             add_custom_command(TARGET ${target_name} POST_BUILD

@@ -47,19 +47,6 @@ if(PLATFORM STREQUAL "linux")
   set(_zig_build "${PROJECT_ROOT}/build-dist")
   message(STATUS "Building with zig cc (glibc ${ZIG_GLIBC}, march=${RELEASE_MARCH}) ...")
 
-  # Find OpenMP for zig cc
-  set(_omp_flags "")
-  find_library(_OMP_LIB NAMES omp PATHS /usr/lib /usr/lib64 /usr/local/lib NO_DEFAULT_PATH)
-  if(_OMP_LIB)
-    set(_omp_flags
-      "-DOpenMP_C_FLAGS:STRING=-fopenmp"
-      "-DOpenMP_CXX_FLAGS:STRING=-fopenmp"
-      "-DOpenMP_C_LIB_NAMES:STRING=omp"
-      "-DOpenMP_CXX_LIB_NAMES:STRING=omp"
-      "-DOpenMP_omp_LIBRARY:FILEPATH=${_OMP_LIB}"
-    )
-  endif()
-
   execute_process(
     COMMAND "${CMAKE_COMMAND}"
       -B "${_zig_build}" -S "${PROJECT_ROOT}"
@@ -67,7 +54,6 @@ if(PLATFORM STREQUAL "linux")
       "-DCMAKE_TOOLCHAIN_FILE=${PROJECT_ROOT}/cmake/zig-toolchain.cmake"
       "-DZIG_GLIBC=${ZIG_GLIBC}"
       "-DRELEASE_MARCH=${RELEASE_MARCH}"
-      ${_omp_flags}
     RESULT_VARIABLE _cfg_rc
   )
   if(NOT _cfg_rc EQUAL 0)

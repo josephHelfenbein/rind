@@ -24,7 +24,7 @@ The codebase is open so people can read it, contribute, mod the game, or build t
 
 ### Windows
 
-1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload selected. This provides MSVC, CMake, the Windows SDK, and the LLVM OpenMP runtime.
+1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload selected. This provides MSVC, CMake, and the Windows SDK.
 2. Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows). This includes `dxc.exe` and sets up `VULKAN_SDK` in your environment automatically.
 3. Verify `dxc.exe` is accessible. It should be on your PATH after the SDK install. If not, add `%VULKAN_SDK%\Bin` to your PATH manually.
 
@@ -46,7 +46,7 @@ xcode-select --install
 
 **3. Install dependencies**
 ```bash
-brew install cmake glfw freetype libomp molten-vk vulkan-loader vulkan-headers
+brew install cmake glfw freetype molten-vk vulkan-loader vulkan-headers
 ```
 
 - `molten-vk` - Vulkan implementation on top of Metal (required on macOS)
@@ -54,7 +54,6 @@ brew install cmake glfw freetype libomp molten-vk vulkan-loader vulkan-headers
 - `vulkan-headers` - Vulkan header files
 - `glfw` - windowing library
 - `freetype` - font rendering library
-- `libomp` - LLVM OpenMP runtime (used for CPU parallelism)
 
 **4. Install DXC (DirectX Shader Compiler)**
 
@@ -80,8 +79,7 @@ sudo apt install \
   build-essential cmake git \
   libvulkan-dev \
   libglfw3-dev \
-  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-  libomp-dev
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 ```
 
 For **Ubuntu 24.04 (Noble)**:
@@ -135,8 +133,7 @@ sudo apt install \
   libvulkan-dev \
   libglfw3-dev \
   libfreetype6-dev \
-  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-  libomp-dev
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 ```
 
 **2. Install Zig** (required for packaging only)
@@ -174,7 +171,6 @@ sudo pacman -S \
   vulkan-headers vulkan-icd-loader \
   glfw \
   freetype2 \
-  openmp \
   directx-shader-compiler \
   zig
 ```
@@ -185,7 +181,6 @@ sudo pacman -S \
   - Intel: `vulkan-intel`
 - `glfw` - provides both X11 and Wayland support
 - `freetype2` - font rendering library
-- `openmp` - OpenMP runtime (companion to GCC's built-in support)
 - `directx-shader-compiler` - DXC, available in the official `extra` repo
 - `zig` - used by the packaging script to target older glibc for portable AppImages
 
@@ -303,7 +298,7 @@ The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering
 - **ShaderManager**: Shader modules, render passes, and the render graph. Passes are `RenderNode`s organized into `RenderLane`s; async-capable lanes run on a separate compute queue in parallel with graphics. Default graph lanes: `GeneralGraphics`, `Volumetric`, `Shadow`, `IrradianceSH`, `IrradianceRender`.
 - **LightManager**: Point lights with a baked shadow cubemap per light and a dynamic cubemap for moving lights (currently capped at 16).
 - **IrradianceManager**: Irradiance probes with baked color cubemaps and dynamic cubemaps projected to spherical harmonics for indirect lighting (currently capped at 64). Runs on its own async lanes.
-- **ParticleManager**: CPU-side particle pool with two types: physics particles (gravity, bounce off `AABB`/`OBB`/`ConvexHull` colliders, OpenMP-parallel) and static trail segments. Each particle keeps two prior positions so the renderer can fit a quadratic Bezier tangent for motion streaking. Live particles are packed into a per-frame host-coherent vertex buffer with camera-visible particles at the front; the buffer auto-grows up to a hard cap.
+- **ParticleManager**: CPU-side particle pool with two types: physics particles (gravity, bounce off `AABB`/`OBB`/`ConvexHull` colliders, multithreaded via the engine thread pool) and static trail segments. Each particle keeps two prior positions so the renderer can fit a quadratic Bezier tangent for motion streaking. Live particles are packed into a per-frame host-coherent vertex buffer with camera-visible particles at the front; the buffer auto-grows up to a hard cap.
 - **VolumetricManager**: Smoke, muzzle flash, and explosion volumes with lifetime easing.
 - **EntityManager / SceneManager**: Hierarchical entity tree with transform inheritance, skeletal animation, and colliders. `SceneManager` swaps between top-level scenes.
 - **ModelManager**: glTF 2.0 loading via `fastgltf`, GPU buffers, skeleton and animation data.
@@ -314,6 +309,7 @@ The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering
 - **UIManager**: 2D overlay with `FreeType` glyph caching and anchored widget layout.
 - **Camera**: Perspective camera with frustum culling.
 - **SettingsManager**: Persistent video, audio, and input settings.
+- **ThreadPool**: Persistent worker pool used for data-parallel hot paths (particles, convex-hull world-space vertex transforms). One worker per logical core minus one; the caller thread runs the first chunk, workers handle the rest, completion is a short spin-wait so chunked work doesn't pay a condvar wakeup.
 
 ## Rendering pipeline
 
@@ -397,7 +393,7 @@ embed_asset_category(TARGET MyGame CATEGORY model
     DIRECTORY ${CMAKE_SOURCE_DIR}/assets/models
     EXTENSIONS "*.glb" RECURSIVE ON)
 
-# Platform runtime bundling: copies Vulkan loader / MoltenVK / libomp / etc.
+# Platform runtime bundling: copies Vulkan loader / MoltenVK / etc.
 # next to the executable for Win/macOS/Linux release builds.
 rind_engine_bundle_runtimes(MyGame)
 ```

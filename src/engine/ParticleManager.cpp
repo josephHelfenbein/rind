@@ -3,35 +3,98 @@
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
+#include <engine/ThreadPool.h>
 
-engine::Particle::Particle(
-    EntityManager* entityManager,
-    const glm::vec3& position,
-    const glm::vec3& color,
-    const glm::vec3& velocity,
-    float lifetime,
-    float type,
-    float size
-) : entityManager(entityManager), position(position), color(color), velocity(velocity), lifetime(lifetime), type(type), size(size) {
-        prevPosition = position;
-        prevPrevPosition = prevPosition;
-    }
+void engine::ParticleManager::ParticleSoA::clearAll() {
+    posX.clear(); posY.clear(); posZ.clear();
+    velX.clear(); velY.clear(); velZ.clear();
+    prevPosX.clear(); prevPosY.clear(); prevPosZ.clear();
+    prevPrevPosX.clear(); prevPrevPosY.clear(); prevPrevPosZ.clear();
+    age.clear(); lifetime.clear(); type.clear(); dead.clear();
+    size.clear(); colorR.clear(); colorG.clear(); colorB.clear();
+}
 
-void engine::Particle::update(float deltaTime) {
-    age += deltaTime;
-    if (age >= lifetime) {
-        markForDeletion();
-        return;
+size_t engine::ParticleManager::ParticleSoA::push(
+    const glm::vec3& pos, const glm::vec3& col, const glm::vec3& vel,
+    float life, float typ, float sz)
+{
+    const size_t i = posX.size();
+    posX.push_back(pos.x); posY.push_back(pos.y); posZ.push_back(pos.z);
+    velX.push_back(vel.x); velY.push_back(vel.y); velZ.push_back(vel.z);
+    prevPosX.push_back(pos.x); prevPosY.push_back(pos.y); prevPosZ.push_back(pos.z);
+    prevPrevPosX.push_back(pos.x); prevPrevPosY.push_back(pos.y); prevPrevPosZ.push_back(pos.z);
+    age.push_back(0.0f);
+    lifetime.push_back(life);
+    type.push_back(typ);
+    dead.push_back(0);
+    size.push_back(sz);
+    colorR.push_back(col.r); colorG.push_back(col.g); colorB.push_back(col.b);
+    return i;
+}
+
+void engine::ParticleManager::ParticleSoA::truncateFront(size_t n) {
+    auto eraseN = [n](auto& v) { v.erase(v.begin(), v.begin() + n); };
+    eraseN(posX); eraseN(posY); eraseN(posZ);
+    eraseN(velX); eraseN(velY); eraseN(velZ);
+    eraseN(prevPosX); eraseN(prevPosY); eraseN(prevPosZ);
+    eraseN(prevPrevPosX); eraseN(prevPrevPosY); eraseN(prevPrevPosZ);
+    eraseN(age); eraseN(lifetime); eraseN(type); eraseN(dead);
+    eraseN(size); eraseN(colorR); eraseN(colorG); eraseN(colorB);
+}
+
+void engine::ParticleManager::ParticleSoA::compactDead() {
+    const size_t n = count();
+    size_t w = 0;
+    for (size_t r = 0; r < n; ++r) {
+        if (dead[r]) continue;
+        if (w != r) {
+            posX[w] = posX[r]; posY[w] = posY[r]; posZ[w] = posZ[r];
+            velX[w] = velX[r]; velY[w] = velY[r]; velZ[w] = velZ[r];
+            prevPosX[w] = prevPosX[r]; prevPosY[w] = prevPosY[r]; prevPosZ[w] = prevPosZ[r];
+            prevPrevPosX[w] = prevPrevPosX[r]; prevPrevPosY[w] = prevPrevPosY[r]; prevPrevPosZ[w] = prevPrevPosZ[r];
+            age[w] = age[r]; lifetime[w] = lifetime[r]; type[w] = type[r];
+            dead[w] = 0;
+            size[w] = size[r];
+            colorR[w] = colorR[r]; colorG[w] = colorG[r]; colorB[w] = colorB[r];
+        }
+        ++w;
     }
-    if (type == 1.0f) {
-        return;
-    }
-    velocity.y -= gravity * deltaTime; // gravity
-    glm::vec3 currentPos = position;
-    prevPrevPosition = prevPosition;
-    prevPosition = currentPos;
+    posX.resize(w); posY.resize(w); posZ.resize(w);
+    velX.resize(w); velY.resize(w); velZ.resize(w);
+    prevPosX.resize(w); prevPosY.resize(w); prevPosZ.resize(w);
+    prevPrevPosX.resize(w); prevPrevPosY.resize(w); prevPrevPosZ.resize(w);
+    age.resize(w); lifetime.resize(w); type.resize(w); dead.resize(w);
+    size.resize(w); colorR.resize(w); colorG.resize(w); colorB.resize(w);
+}
+
+engine::ParticleGPU engine::ParticleManager::makeGPU(size_t i) const {
+    return {
+        .position = glm::vec4(particles.posX[i], particles.posY[i], particles.posZ[i], particles.age[i]),
+        .prevPosition = glm::vec4(particles.prevPosX[i], particles.prevPosY[i], particles.prevPosZ[i], particles.lifetime[i]),
+        .prevPrevPosition = glm::vec4(particles.prevPrevPosX[i], particles.prevPrevPosY[i], particles.prevPrevPosZ[i], particles.type[i]),
+        .color = glm::vec4(particles.colorR[i], particles.colorG[i], particles.colorB[i], particles.size[i])
+    };
+}
+
+void engine::ParticleManager::updateOne(size_t i, float deltaTime) {
+    particles.age[i] += deltaTime;
+    if (particles.age[i] >= particles.lifetime[i]) { particles.dead[i] = 1; return; }
+    if (particles.type[i] == 1.0f) return;
+
+    particles.velY[i] -= kGravity * deltaTime;
+
+    const glm::vec3 currentPos(particles.posX[i], particles.posY[i], particles.posZ[i]);
+    particles.prevPrevPosX[i] = particles.prevPosX[i];
+    particles.prevPrevPosY[i] = particles.prevPosY[i];
+    particles.prevPrevPosZ[i] = particles.prevPosZ[i];
+    particles.prevPosX[i] = currentPos.x;
+    particles.prevPosY[i] = currentPos.y;
+    particles.prevPosZ[i] = currentPos.z;
+
+    glm::vec3 velocity(particles.velX[i], particles.velY[i], particles.velZ[i]);
     glm::vec3 newPos = currentPos + velocity * deltaTime;
     float speedSq = glm::dot(velocity, velocity);
+<<<<<<< Updated upstream
     if (speedSq < 0.01f) {
         markForDeletion();
         return;
@@ -47,27 +110,45 @@ void engine::Particle::update(float deltaTime) {
         static thread_local std::vector<engine::Collider*> candidates;
         entityManager->getSpatialGrid().query(sweepAABB, candidates);
         Collider::Collision collision = narrowPhaseCollision(newPos, candidates);
+=======
+    if (speedSq < 0.01f) { particles.dead[i] = 1; return; }
+
+    if (particles.age[i] > 0.15f && speedSq > 1.0f) {
+        Collider::Collision collision = checkCollision(newPos);
+>>>>>>> Stashed changes
         if (collision.other) {
             glm::vec3 normal = glm::normalize(collision.mtv.normal);
             velocity = velocity - 2.0f * glm::dot(velocity, normal) * normal;
             velocity *= 0.5f;
+            particles.velX[i] = velocity.x;
+            particles.velY[i] = velocity.y;
+            particles.velZ[i] = velocity.z;
             newPos = currentPos + velocity * deltaTime;
+<<<<<<< Updated upstream
             if (narrowPhaseCollision(newPos, candidates).other) {
                 markForDeletion();
+=======
+            if (checkCollision(newPos).other) {
+                particles.dead[i] = 1;
+>>>>>>> Stashed changes
                 return;
             }
         }
     }
-    position = newPos;
+
+    particles.posX[i] = newPos.x;
+    particles.posY[i] = newPos.y;
+    particles.posZ[i] = newPos.z;
 }
 
-engine::Collider::Collision engine::Particle::checkCollision(const glm::vec3& position) {
+engine::Collider::Collision engine::ParticleManager::checkCollision(const glm::vec3& position) {
     const float particleRadius = 0.05f;
     engine::AABB particleAABB = {
         .min = position - glm::vec3(particleRadius),
         .max = position + glm::vec3(particleRadius)
     };
     static thread_local std::vector<engine::Collider*> candidates;
+<<<<<<< Updated upstream
     entityManager->getSpatialGrid().query(particleAABB, candidates);
     return narrowPhaseCollision(position, candidates);
 }
@@ -78,6 +159,9 @@ engine::Collider::Collision engine::Particle::narrowPhaseCollision(const glm::ve
         .min = position - glm::vec3(particleRadius),
         .max = position + glm::vec3(particleRadius)
     };
+=======
+    renderer->getEntityManager()->getSpatialGrid().query(particleAABB, candidates);
+>>>>>>> Stashed changes
     for (const auto& collider : candidates) {
         engine::AABB otherAABB = collider->getWorldAABB();
         if (!engine::Collider::aabbIntersects(particleAABB, otherAABB, 0.0f)) {
@@ -210,13 +294,11 @@ engine::ParticleManager::~ParticleManager() {
     particleBuffers.clear();
     particleBufferMemory.clear();
     particleBuffersMapped.clear();
-    particles.clear();
+    particles.clearAll();
 }
 
 void engine::ParticleManager::clear() {
-    for (auto& particle : particles) {
-        particle.markForDeletion();
-    }
+    std::fill(particles.dead.begin(), particles.dead.end(), uint8_t{1});
 }
 
 void engine::ParticleManager::createParticleDescriptorSets() {
@@ -291,9 +373,9 @@ void engine::ParticleManager::createParticleDescriptorSets() {
 }
 
 void engine::ParticleManager::burstParticles(const glm::vec3& position, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size) {
-    if (particles.size() >= hardCap) return;
+    if (particles.count() >= hardCap) return;
     float velLength = glm::length(velocity) + dist(rng) * 0.1f * glm::length(velocity);
-    size_t remaining = hardCap - particles.size();
+    size_t remaining = hardCap - particles.count();
     size_t spawnCount = std::min(static_cast<size_t>(count), remaining);
     for (size_t i = 0; i < spawnCount; ++i) {
         float offsetX = dist(rng) * spread * velLength;
@@ -304,28 +386,32 @@ void engine::ParticleManager::burstParticles(const glm::vec3& position, const gl
         glm::vec3 colorOffset = glm::vec3(dist(rng), dist(rng), dist(rng)) * 0.1f;
         glm::vec3 particleColor = color + colorOffset;
         particleColor = glm::clamp(particleColor, glm::vec3(0.0f), glm::vec3(1.0f));
-        particles.emplace_back(renderer->getEntityManager(), position, particleColor, velocity + velocityOffset, particleLifetime, 0.0f, size);
+        particles.push(position, particleColor, velocity + velocityOffset, particleLifetime, 0.0f, size);
     }
 }
 
 void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3& dir, const glm::vec3& color, float lifetime, float fakeAge) {
-    if (particles.size() >= hardCap) return;
-    particles.emplace_back(renderer->getEntityManager(), start, color, glm::vec3(0.0f), lifetime, 1.0f);
-    Particle& p = particles.back();
-    p.setPrevPosition(dir);
-    p.setPrevPrevPosition(start);
-    p.setAge(fakeAge);
+    if (particles.count() >= hardCap) return;
+    const size_t i = particles.push(start, color, glm::vec3(0.0f), lifetime, 1.0f, 1.0f);
+    // Trail particles encode (start, dir) into the prevPrev / prev slots for streak rendering
+    particles.prevPosX[i] = dir.x;
+    particles.prevPosY[i] = dir.y;
+    particles.prevPosZ[i] = dir.z;
+    particles.prevPrevPosX[i] = start.x;
+    particles.prevPrevPosY[i] = start.y;
+    particles.prevPrevPosZ[i] = start.z;
+    particles.age[i] = fakeAge;
 }
 
 void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
     VkDevice device = renderer->getDevice();
-    if (particles.size() > hardCap) {
-        size_t toRemove = particles.size() - hardCap;
-        particles.erase(particles.begin(), particles.begin() + toRemove);
+    if (particles.count() > hardCap) {
+        size_t toRemove = particles.count() - hardCap;
+        particles.truncateFront(toRemove);
     }
-    if (particles.size() > maxParticles) {
+    if (particles.count() > maxParticles) {
         vkDeviceWaitIdle(device);
-        maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.size())), hardCap);
+        maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.count())), hardCap);
         for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {
             if (particleBuffersMapped[i] != nullptr && i < particleBufferMemory.size() && particleBufferMemory[i] != VK_NULL_HANDLE) {
                 vkUnmapMemory(device, particleBufferMemory[i]);
@@ -358,17 +444,18 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
     }
     ParticleGPU* gpuData = static_cast<ParticleGPU*>(particleBuffersMapped[currentFrame]);
     visibleCount = 0;
-    uint32_t backIdx = static_cast<uint32_t>(particles.size());
+    uint32_t backIdx = static_cast<uint32_t>(particles.count());
     Camera* camera = renderer->getEntityManager()->getCamera();
     if (!camera) return;
-    for (size_t i = 0; i < particles.size(); ++i) {
-        if (camera->isSphereInFrustum(particles[i].getPosition(), 0.1f)) {
-            gpuData[visibleCount++] = particles[i].getGPUData();
+    const size_t n = particles.count();
+    for (size_t i = 0; i < n; ++i) {
+        if (camera->isSphereInFrustum(positionAt(i), 0.1f)) {
+            gpuData[visibleCount++] = makeGPU(i);
         } else {
-            gpuData[--backIdx] = particles[i].getGPUData();
+            gpuData[--backIdx] = makeGPU(i);
         }
     }
-    for (size_t i = visibleCount; i < particles.size(); ++i) {
+    for (size_t i = visibleCount; i < n; ++i) {
         gpuData[i] = gpuData[backIdx++];
     }
 }
@@ -393,19 +480,17 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
 }
 
 void engine::ParticleManager::updateAll(float deltaTime) {
-#if defined(USE_OPENMP)
-    const int count = static_cast<int>(particles.size());
+    const size_t count = particles.count();
     if (count > 64) {
-        #pragma omp parallel for
-        for (int i = 0; i < count; ++i) {
-            particles[i].update(deltaTime);
+        ThreadPool::global().parallel_for_chunks(0, count, 32, [&](size_t b, size_t e, size_t) {
+            for (size_t i = b; i < e; ++i) {
+                updateOne(i, deltaTime);
+            }
+        });
+    } else {
+        for (size_t i = 0; i < count; ++i) {
+            updateOne(i, deltaTime);
         }
-    } else
-#endif
-    for (auto& particle : particles) {
-        particle.update(deltaTime);
     }
-    std::erase_if(particles, [](const Particle& p) {
-        return p.isMarkedForDeletion();
-    });
+    particles.compactDead();
 }

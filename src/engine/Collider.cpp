@@ -1,7 +1,7 @@
 #include <engine/Collider.h>
 #include <engine/SpatialGrid.h>
+#include <engine/ThreadPool.h>
 #include <algorithm>
-#include <atomic>
 
 engine::Collider::Collider(
     EntityManager* entityManager,
@@ -376,6 +376,7 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
     float minPenetration = std::numeric_limits<float>::max();
     glm::vec3 bestAxis(0.0f);
 
+<<<<<<< Updated upstream
     const bool haveACache = aSelfProjOnAxesA.size() == naxA;
     const bool haveBCache = bSelfProjOnAxesB.size() == naxB;
 
@@ -456,11 +457,14 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
 #else
     for (size_t i = 0; i < axes.size(); ++i) {
         const glm::vec3& axis = axes[i];
+=======
+    for (const auto& axis : axes) {
+>>>>>>> Stashed changes
         float aMin, aMax, bMin, bMax;
         projectA(i, axis, aMin, aMax);
         projectB(i, axis, bMin, bMax);
         float overlap = glm::min(aMax, bMax) - glm::max(aMin, bMin);
-        if (overlap <= 0.0f) {
+        if (overlap <= 1e-6f) {
             return false;
         }
         if (overlap < minPenetration) {
@@ -471,7 +475,6 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
     if (minPenetration <= 1e-6f) {
         return false;
     }
-#endif
     if (glm::dot(bestAxis, centerDelta) < 0.0f) {
         bestAxis = -bestAxis;
     }
@@ -487,16 +490,17 @@ void engine::ConvexHullCollider::buildConvexData(const std::vector<glm::vec3>& v
     outFaceAxes.clear();
     outCenter = glm::vec3(0.0f);
     outVerts.resize(verts.size());
-#if defined(USE_OPENMP)
-    if (verts.size() > 128) {
-        #pragma omp parallel for
-        for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
-            outVerts[i] = glm::vec3(transform * glm::vec4(verts[static_cast<size_t>(i)], 1.0f));
+    const size_t vcount = verts.size();
+    if (vcount > 128) {
+        ThreadPool::global().parallel_for_chunks(0, vcount, 64, [&](size_t b, size_t e, size_t) {
+            for (size_t i = b; i < e; ++i) {
+                outVerts[i] = glm::vec3(transform * glm::vec4(verts[i], 1.0f));
+            }
+        });
+    } else {
+        for (size_t i = 0; i < vcount; ++i) {
+            outVerts[i] = glm::vec3(transform * glm::vec4(verts[i], 1.0f));
         }
-    } else
-#endif
-    for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
-        outVerts[i] = glm::vec3(transform * glm::vec4(verts[static_cast<size_t>(i)], 1.0f));
     }
     if (outVerts.empty()) {
         return;
@@ -843,7 +847,10 @@ void engine::ConvexHullCollider::ensureCached() {
     if (worldVerts.empty()) {
         glm::vec3 p = glm::vec3(worldTransform[3]);
         cachedAABB = AABB{p - glm::vec3(0.001f), p + glm::vec3(0.001f)};
+<<<<<<< Updated upstream
         faceAxisSelfProjCached.clear();
+=======
+>>>>>>> Stashed changes
     } else {
         glm::vec3 minW(std::numeric_limits<float>::max());
         glm::vec3 maxW(std::numeric_limits<float>::lowest());
@@ -852,6 +859,7 @@ void engine::ConvexHullCollider::ensureCached() {
             maxW = glm::max(maxW, w);
         }
         cachedAABB = AABB{minW, maxW};
+<<<<<<< Updated upstream
 
         faceAxisSelfProjCached.resize(faceAxesCached.size());
         for (size_t a = 0; a < faceAxesCached.size(); ++a) {
@@ -864,6 +872,32 @@ void engine::ConvexHullCollider::ensureCached() {
                 if (p > pMax) pMax = p;
             }
             faceAxisSelfProjCached[a] = glm::vec2(pMin, pMax);
+=======
+    }
+
+    const size_t nReal = worldVerts.size();
+    if (nReal == 0) {
+        worldVertsX.clear();
+        worldVertsY.clear();
+        worldVertsZ.clear();
+    } else {
+        const size_t nPad = ((nReal + kSoAPad - 1) / kSoAPad) * kSoAPad;
+        worldVertsX.resize(nPad);
+        worldVertsY.resize(nPad);
+        worldVertsZ.resize(nPad);
+        for (size_t i = 0; i < nReal; ++i) {
+            worldVertsX[i] = worldVerts[i].x;
+            worldVertsY[i] = worldVerts[i].y;
+            worldVertsZ[i] = worldVerts[i].z;
+        }
+        const float padX = worldVerts[0].x;
+        const float padY = worldVerts[0].y;
+        const float padZ = worldVerts[0].z;
+        for (size_t i = nReal; i < nPad; ++i) {
+            worldVertsX[i] = padX;
+            worldVertsY[i] = padY;
+            worldVertsZ[i] = padZ;
+>>>>>>> Stashed changes
         }
     }
 
