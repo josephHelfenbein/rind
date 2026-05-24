@@ -13,56 +13,6 @@ namespace engine {
         alignas(16) glm::vec4 prevPrevPosition; // w = type
         alignas(16) glm::vec4 color; // w = size
     };
-<<<<<<< Updated upstream
-    class Particle {
-    public:
-        Particle(
-            EntityManager* entityManager,
-            const glm::vec3& position,
-            const glm::vec3& color,
-            const glm::vec3& velocity,
-            float lifetime,
-            float type = 0.0f,
-            float size = 1.0f
-        );
-        void update(float deltaTime);
-
-        engine::Collider::Collision checkCollision(const glm::vec3& position);
-        engine::Collider::Collision narrowPhaseCollision(const glm::vec3& position, const std::vector<engine::Collider*>& candidates);
-
-        ParticleGPU getGPUData() const {
-            return {
-                .position = glm::vec4(position, age),
-                .prevPosition = glm::vec4(prevPosition, lifetime),
-                .prevPrevPosition = glm::vec4(prevPrevPosition, type),
-                .color = glm::vec4(color, size)
-            };
-        }
-
-        void setPrevPosition(const glm::vec3& pos) { prevPosition = pos; }
-        void setPrevPrevPosition(const glm::vec3& pos) { prevPrevPosition = pos; }
-        void setAge(float a) { age = a; }
-        const glm::vec3& getPosition() const { return position; }
-
-        void markForDeletion() { markedForDeletion = true; }
-        bool isMarkedForDeletion() const { return markedForDeletion; }
-
-    private:
-        EntityManager* entityManager;
-        glm::vec3 position{0.0f};
-        glm::vec3 prevPosition{0.0f};
-        glm::vec3 prevPrevPosition{0.0f};
-        glm::vec3 velocity;
-        float gravity = 9.81f;
-        float lifetime = 0.0f;
-        float age = 0.0f;
-        float type = 0.0f;
-        float size = 1.0f;
-        glm::vec3 color;
-        bool markedForDeletion = false;
-    };
-=======
->>>>>>> Stashed changes
     class ParticleManager {
     public:
         ParticleManager(engine::Renderer* renderer);
