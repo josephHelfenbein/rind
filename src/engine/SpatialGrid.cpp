@@ -1,5 +1,6 @@
 #include <engine/SpatialGrid.h>
 #include <engine/Collider.h>
+#include <algorithm>
 
 engine::SpatialGrid::SpatialGrid(float cellSize)
     : cellSize(cellSize), invCellSize(1.0f / cellSize) {}
@@ -104,16 +105,14 @@ void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCan
     outCandidates.clear();
     CellCoord minCell, maxCell;
     getCellRange(aabb, minCell, maxCell);
-    static thread_local std::unordered_set<engine::Collider*> seen;
-    seen.clear();
-    
+
     const int maxCellsPerAxis = 150;
     int rangeX = std::min(maxCell.x - minCell.x, maxCellsPerAxis);
     int rangeY = std::min(maxCell.y - minCell.y, maxCellsPerAxis);
     int rangeZ = std::min(maxCell.z - minCell.z, maxCellsPerAxis);
-    
+
     const std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash>* grids[2] = { &dynamicCells, &staticCells };
-    
+
     for (int x = minCell.x; x <= minCell.x + rangeX; ++x) {
         for (int y = minCell.y; y <= minCell.y + rangeY; ++y) {
             for (int z = minCell.z; z <= minCell.z + rangeZ; ++z) {
@@ -121,15 +120,18 @@ void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCan
                 for (const auto* cells : grids) {
                     auto it = cells->find(coord);
                     if (it != cells->end()) {
-                        for (Collider* c : it->second) {
-                            if (seen.insert(c).second) {
-                                outCandidates.push_back(c);
-                            }
-                        }
+                        const auto& vec = it->second;
+                        outCandidates.insert(outCandidates.end(), vec.begin(), vec.end());
                     }
                 }
             }
         }
+    }
+
+    const size_t totalCells = static_cast<size_t>(rangeX + 1) * static_cast<size_t>(rangeY + 1) * static_cast<size_t>(rangeZ + 1);
+    if (totalCells > 1 && outCandidates.size() > 1) {
+        std::sort(outCandidates.begin(), outCandidates.end());
+        outCandidates.erase(std::unique(outCandidates.begin(), outCandidates.end()), outCandidates.end());
     }
 }
 

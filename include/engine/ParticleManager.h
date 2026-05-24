@@ -26,6 +26,7 @@ namespace engine {
         void update(float deltaTime);
 
         engine::Collider::Collision checkCollision(const glm::vec3& position);
+        engine::Collider::Collision narrowPhaseCollision(const glm::vec3& position, const std::vector<engine::Collider*>& candidates);
 
         ParticleGPU getGPUData() const {
             return {

@@ -37,13 +37,22 @@ void engine::Particle::update(float deltaTime) {
         return;
     }
     if (age > 0.15f && speedSq > 1.0f) {
-        Collider::Collision collision = checkCollision(newPos);
+        const float particleRadius = 0.05f;
+        const float stepLen = std::sqrt(speedSq) * deltaTime;
+        const float expand = particleRadius + stepLen;
+        engine::AABB sweepAABB = {
+            .min = glm::min(currentPos, newPos) - glm::vec3(expand),
+            .max = glm::max(currentPos, newPos) + glm::vec3(expand)
+        };
+        static thread_local std::vector<engine::Collider*> candidates;
+        entityManager->getSpatialGrid().query(sweepAABB, candidates);
+        Collider::Collision collision = narrowPhaseCollision(newPos, candidates);
         if (collision.other) {
             glm::vec3 normal = glm::normalize(collision.mtv.normal);
             velocity = velocity - 2.0f * glm::dot(velocity, normal) * normal;
             velocity *= 0.5f;
             newPos = currentPos + velocity * deltaTime;
-            if (checkCollision(newPos).other) {
+            if (narrowPhaseCollision(newPos, candidates).other) {
                 markForDeletion();
                 return;
             }
@@ -60,6 +69,15 @@ engine::Collider::Collision engine::Particle::checkCollision(const glm::vec3& po
     };
     static thread_local std::vector<engine::Collider*> candidates;
     entityManager->getSpatialGrid().query(particleAABB, candidates);
+    return narrowPhaseCollision(position, candidates);
+}
+
+engine::Collider::Collision engine::Particle::narrowPhaseCollision(const glm::vec3& position, const std::vector<engine::Collider*>& candidates) {
+    const float particleRadius = 0.05f;
+    engine::AABB particleAABB = {
+        .min = position - glm::vec3(particleRadius),
+        .max = position + glm::vec3(particleRadius)
+    };
     for (const auto& collider : candidates) {
         engine::AABB otherAABB = collider->getWorldAABB();
         if (!engine::Collider::aabbIntersects(particleAABB, otherAABB, 0.0f)) {

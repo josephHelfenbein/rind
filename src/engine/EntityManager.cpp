@@ -29,11 +29,17 @@ void engine::EntityManager::removeDynamicCollider(Collider* collider) {
 
 void engine::EntityManager::rebuildSpatialGrid() {
     spatialGrid.rebuild(colliders);
+    for (Collider* c : dynamicColliders) {
+        c->lastGridGeneration = c->getTransformGeneration();
+    }
 }
 
 void engine::EntityManager::updateDynamicColliders() {
     for (Collider* c : dynamicColliders) {
+        const uint32_t gen = c->getTransformGeneration();
+        if (gen == c->lastGridGeneration) continue;
         spatialGrid.update(c, c->getWorldAABB());
+        c->lastGridGeneration = gen;
     }
 }
 
@@ -216,18 +222,36 @@ void engine::Entity::playAnimation(const std::string& animationName, bool loop, 
     }
 }
 
+static inline size_t findKeyIndex(const std::vector<float>& times, float t, size_t cachedIdx) {
+    const size_t n = times.size();
+    if (n == 0) return 0;
+    if (cachedIdx < n) {
+        if (cachedIdx + 1 < n) {
+            if (t >= times[cachedIdx] && t < times[cachedIdx + 1]) return cachedIdx;
+            if (cachedIdx + 2 < n && t >= times[cachedIdx + 1] && t < times[cachedIdx + 2]) {
+                return cachedIdx + 1;
+            }
+        } else if (t >= times[cachedIdx]) {
+            return cachedIdx;
+        }
+    }
+    auto it = std::lower_bound(times.begin(), times.end(), t);
+    if (it != times.begin()) --it;
+    return static_cast<size_t>(std::distance(times.begin(), it));
+}
+
 void engine::Entity::updateAnimation(float deltaTime) {
     if (!model || !model->hasAnimations() || animState.currentAnimation.empty()) return;
     const engine::Model::AnimationClip* clip = model->getAnimation(animState.currentAnimation);
     if (!clip) return;
     const std::vector<engine::Model::Joint>& skeleton = model->getSkeleton();
     if (skeleton.empty()) return;
-    
+
     const float blendSpeed = 8.0f;
     if (animState.blendFactor < 1.0f) {
         animState.blendFactor = glm::min(1.0f, animState.blendFactor + deltaTime * blendSpeed);
     }
-    
+
     animState.currentTime += deltaTime * animState.playbackSpeed;
     if (animState.currentTime > clip->duration) {
         if (animState.looping) {
@@ -236,6 +260,16 @@ void engine::Entity::updateAnimation(float deltaTime) {
             animState.currentTime = clip->duration;
         }
     }
+
+    if (!visible && !castShadow) return;
+
+    if (clip != cachedClipPtr) {
+        cachedClipPtr = clip;
+        samplerKeyCache.assign(clip->samplers.size(), 0);
+    } else if (samplerKeyCache.size() != clip->samplers.size()) {
+        samplerKeyCache.assign(clip->samplers.size(), 0);
+    }
+
     if (jointMatrices.size() != skeleton.size()) {
         jointMatrices.resize(skeleton.size(), glm::mat4(1.0f));
     }
@@ -268,15 +302,20 @@ void engine::Entity::updateAnimation(float deltaTime) {
     if (animState.blendFactor < 1.0f && !animState.prevAnimation.empty()) {
         if (prevClip) {
             float prevTime = fmod(animState.currentTime, prevClip->duration);
-            
+            if (prevClip != cachedPrevClipPtr) {
+                cachedPrevClipPtr = prevClip;
+                prevSamplerKeyCache.assign(prevClip->samplers.size(), 0);
+            } else if (prevSamplerKeyCache.size() != prevClip->samplers.size()) {
+                prevSamplerKeyCache.assign(prevClip->samplers.size(), 0);
+            }
+
             for (const engine::Model::AnimationChannel& channel : prevClip->channels) {
-                if (channel.targetNode >= skeleton.size()) continue;        
+                if (channel.targetNode >= skeleton.size()) continue;
                 const engine::Model::AnimationSampler& sampler = prevClip->samplers[channel.samplerIndex];
                 if (sampler.inputTimes.empty()) continue;
                 float t = prevTime;
-                auto it = std::lower_bound(sampler.inputTimes.begin(), sampler.inputTimes.end(), t);
-                if (it != sampler.inputTimes.begin()) --it;
-                size_t keyIndex = std::distance(sampler.inputTimes.begin(), it);
+                size_t keyIndex = findKeyIndex(sampler.inputTimes, t, prevSamplerKeyCache[channel.samplerIndex]);
+                prevSamplerKeyCache[channel.samplerIndex] = keyIndex;
                 float t0 = sampler.inputTimes[keyIndex];
                 float t1 = sampler.inputTimes[std::min(keyIndex + 1, sampler.inputTimes.size() - 1)];
                 float factor = (t1 > t0) ? glm::clamp((t - t0) / (t1 - t0), 0.0f, 1.0f) : 0.0f;
@@ -319,9 +358,8 @@ void engine::Entity::updateAnimation(float deltaTime) {
         const engine::Model::AnimationSampler& sampler = clip->samplers[channel.samplerIndex];
         if (sampler.inputTimes.empty()) continue;
         float t = animState.currentTime;
-        auto it = std::lower_bound(sampler.inputTimes.begin(), sampler.inputTimes.end(), t);
-        if (it != sampler.inputTimes.begin()) --it;
-        size_t keyIndex = std::distance(sampler.inputTimes.begin(), it);
+        size_t keyIndex = findKeyIndex(sampler.inputTimes, t, samplerKeyCache[channel.samplerIndex]);
+        samplerKeyCache[channel.samplerIndex] = keyIndex;
         float t0 = sampler.inputTimes[keyIndex];
         float t1 = sampler.inputTimes[std::min(keyIndex + 1, sampler.inputTimes.size() - 1)];
         float factor = (t1 > t0) ? glm::clamp((t - t0) / (t1 - t0), 0.0f, 1.0f) : 0.0f;

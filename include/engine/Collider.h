@@ -4,6 +4,8 @@
 #include <engine/ModelManager.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cstdint>
+#include <limits>
 #include <span>
 
 namespace engine {
@@ -63,6 +65,8 @@ namespace engine {
             }
             isDynamic = dynamic;
         }
+
+        uint32_t lastGridGeneration = std::numeric_limits<uint32_t>::max();
     protected:
         static std::array<glm::vec3, 8> buildOBBCorners(const glm::mat4& transform, const glm::vec3& half);
         static std::pair<float, float> projectOntoAxis(const std::array<glm::vec3, 8>& corners, const glm::vec3& axis); // min, max
@@ -70,7 +74,7 @@ namespace engine {
         static glm::vec3 normalizeOrZero(const glm::vec3& v);
         static void addAxisUnique(std::vector<glm::vec3>& axes, const glm::vec3& axis);
         static std::pair<float, float> projectVertsOntoAxis(std::span<const glm::vec3> verts, const glm::vec3& axis, const glm::vec3& offset = glm::vec3(0.0f)); // min, max
-        static bool satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f));
+        static bool satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f), std::span<const glm::vec2> aSelfProjOnAxesA = {}, std::span<const glm::vec2> bSelfProjOnAxesB = {});
     private:
         bool isTrigger = false;
         bool isDynamic = false;
@@ -122,6 +126,7 @@ namespace engine {
         const std::vector<glm::vec3>& getWorldVerts() const { return worldVerts; }
         const std::vector<glm::vec3>& getEdgeAxesCached() const { return edgeAxesCached; }
         const std::vector<glm::vec3>& getFaceAxesCached() const { return faceAxesCached; }
+        const std::vector<glm::vec2>& getFaceAxisSelfProjCached() const { return faceAxisSelfProjCached; }
         glm::vec3 getWorldCenter() const { return worldCenter; }
         void setVertsFromModel(std::vector<glm::vec3>&& vertices, std::vector<uint32_t>&& indices, const glm::mat4& transform = glm::mat4(1.0f));
         void setVertsFromModel(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const glm::mat4& transform);
@@ -132,6 +137,8 @@ namespace engine {
         std::vector<glm::vec3> worldVerts;
         std::vector<glm::vec3> edgeAxesCached;
         std::vector<glm::vec3> faceAxesCached;
+        std::vector<glm::vec2> faceAxisSelfProjCached;
+        AABB cachedAABB{};
         glm::vec3 worldCenter{0.0f};
         uint32_t lastTransformGeneration = 0;
         bool isCached = false;

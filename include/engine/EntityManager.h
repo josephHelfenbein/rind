@@ -139,6 +139,10 @@ namespace engine {
         std::vector<glm::quat> prevRotations;
         std::vector<glm::vec3> prevScales;
         std::vector<glm::mat4> globalTransforms;
+        std::vector<size_t> samplerKeyCache;
+        std::vector<size_t> prevSamplerKeyCache;
+        const void* cachedClipPtr = nullptr;
+        const void* cachedPrevClipPtr = nullptr;
 
         bool castShadow = true;
         bool visible = true;
