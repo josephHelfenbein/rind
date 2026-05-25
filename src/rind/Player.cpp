@@ -545,23 +545,23 @@ void rind::Player::update(float deltaTime) {
     }
 
     // heal zone check
-    static thread_local std::vector<engine::Collider*> candidates;
-    candidates.clear();
-    getEntityManager()->getSpatialGrid().query(getCollider()->getWorldAABB(), candidates);
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    getEntityManager()->getSpatialGrid().query(getCollider()->getWorldAABB(), candidates, 0.0f);
     bool foundHealZone = false;
-    for (engine::Collider* collider : candidates) {
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!candidates.intersects[i]) continue;
+        engine::Collider* collider = candidates.colliders[i];
         if (collider->getType() == engine::Entity::EntityType::Trigger) {
             rind::TempTrigger* trigger = dynamic_cast<rind::TempTrigger*>(collider);
             if (trigger) {
-                if (engine::Collider::aabbIntersects(getCollider()->getWorldAABB(), trigger->getWorldAABB())) {
-                    inHealZone = true;
-                    healEffectColor = trigger->getColor();
-                    foundHealZone = true;
-                    if (keybindHintDuration <= 0.0f) {
-                        showKeybindHint(HintActions::Heal, "To heal, press");
-                    }
-                    break;
+                inHealZone = true;
+                healEffectColor = trigger->getColor();
+                foundHealZone = true;
+                if (keybindHintDuration <= 0.0f) {
+                    showKeybindHint(HintActions::Heal, "To heal, press");
                 }
+                break;
             }
         }
     }
@@ -1272,16 +1272,22 @@ void rind::Player::punch() {
         corner = glm::vec3(cameraWorld * glm::vec4(corner, 1.0f));
     }
     engine::AABB hitboxAABB = engine::Collider::aabbFromCorners(corners);
-    static thread_local std::vector<engine::Collider*> candidates;
-    candidates.clear();
-    getEntityManager()->getSpatialGrid().query(hitboxAABB, candidates);
-    for (auto& candidate : candidates) {
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    getEntityManager()->getSpatialGrid().query(hitboxAABB, candidates, 0.0f);
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        // SIMD broad-phase already filtered against world-space hitbox AABB
+        if (!candidates.intersects[i]) continue;
+        engine::Collider* candidate = candidates.colliders[i];
         if (candidate == getCollider()) {
             continue;
         }
         engine::Entity* other = candidate->getParent();
         if (other && other->getType() == engine::Entity::EntityType::Enemy) {
-            engine::AABB candidateWorldAABB = candidate->getWorldAABB();
+            const engine::AABB candidateWorldAABB = {
+                .min = glm::vec3(candidates.minX[i], candidates.minY[i], candidates.minZ[i]),
+                .max = glm::vec3(candidates.maxX[i], candidates.maxY[i], candidates.maxZ[i])
+            };
             std::array<glm::vec3, 8> candidateCorners = engine::Collider::getCornersFromAABB(candidateWorldAABB);
             for (auto& corner : candidateCorners) {
                 corner = glm::vec3(invCameraWorld * glm::vec4(corner, 1.0f));

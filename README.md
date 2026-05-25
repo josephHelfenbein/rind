@@ -19,6 +19,7 @@ The codebase is open so people can read it, contribute, mod the game, or build t
 - **Vulkan SDK** 1.3+ (must support Dynamic Rendering)
 - **C++20** compatible compiler
 - **DXC** (DirectX Shader Compiler), usually included with the Vulkan SDK
+- **ISPC** 1.20+ ([Intel SPMD Program Compiler](https://github.com/ispc/ispc))
 
 ---
 
@@ -27,6 +28,7 @@ The codebase is open so people can read it, contribute, mod the game, or build t
 1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload selected. This provides MSVC, CMake, and the Windows SDK.
 2. Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows). This includes `dxc.exe` and sets up `VULKAN_SDK` in your environment automatically.
 3. Verify `dxc.exe` is accessible. It should be on your PATH after the SDK install. If not, add `%VULKAN_SDK%\Bin` to your PATH manually.
+4. Install **ISPC**. Download the latest Windows `.zip` from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract it somewhere stable, and add the extracted `bin\` directory to your PATH so `ispc.exe` is discoverable. Alternatively `scoop install main/ispc` if you use [Scoop](https://scoop.sh/).
 
 ---
 
@@ -46,7 +48,7 @@ xcode-select --install
 
 **3. Install dependencies**
 ```bash
-brew install cmake glfw freetype molten-vk vulkan-loader vulkan-headers
+brew install cmake glfw freetype molten-vk vulkan-loader vulkan-headers ispc
 ```
 
 - `molten-vk` - Vulkan implementation on top of Metal (required on macOS)
@@ -54,6 +56,7 @@ brew install cmake glfw freetype molten-vk vulkan-loader vulkan-headers
 - `vulkan-headers` - Vulkan header files
 - `glfw` - windowing library
 - `freetype` - font rendering library
+- `ispc` - Intel SPMD Program Compiler, used to build the engine's SIMD kernels
 
 **4. Install DXC (DirectX Shader Compiler)**
 
@@ -79,7 +82,8 @@ sudo apt install \
   build-essential cmake git \
   libvulkan-dev \
   libglfw3-dev \
-  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+  ispc
 ```
 
 For **Ubuntu 24.04 (Noble)**:
@@ -91,6 +95,8 @@ For **Ubuntu 22.04 (Jammy)**:
 ```bash
 sudo apt install libfreetype6-dev
 ```
+
+> If your distro's `ispc` package is older than 1.20 (Ubuntu 22.04 ships an older release), grab a current Linux tarball from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract, and either put the extracted `bin/ispc` on your `PATH` or `sudo cp bin/ispc /usr/local/bin/ispc`.
 
 **2. Install Zig** (required for packaging only)
 
@@ -136,6 +142,8 @@ sudo apt install \
   libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 ```
 
+> Debian stable has no `ispc` package. Download the Linux tarball from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract, and `sudo cp bin/ispc /usr/local/bin/ispc`.
+
 **2. Install Zig** (required for packaging only)
 
 Zig is used by the packaging script to build against an older glibc, ensuring the AppImage runs on systems like the Steam Deck.
@@ -172,6 +180,7 @@ sudo pacman -S \
   glfw \
   freetype2 \
   directx-shader-compiler \
+  ispc \
   zig
 ```
 
@@ -182,6 +191,7 @@ sudo pacman -S \
 - `glfw` - provides both X11 and Wayland support
 - `freetype2` - font rendering library
 - `directx-shader-compiler` - DXC, available in the official `extra` repo
+- `ispc` - Intel SPMD Program Compiler for the engine's SIMD kernels
 - `zig` - used by the packaging script to target older glibc for portable AppImages
 
 > You may also want `vulkan-validation-layers` for debugging.
@@ -300,16 +310,17 @@ The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering
 - **IrradianceManager**: Irradiance probes with baked color cubemaps and dynamic cubemaps projected to spherical harmonics for indirect lighting (currently capped at 64). Runs on its own async lanes.
 - **ParticleManager**: CPU-side particle pool with two types: physics particles (gravity, bounce off `AABB`/`OBB`/`ConvexHull` colliders, multithreaded via the engine thread pool) and static trail segments. Each particle keeps two prior positions so the renderer can fit a quadratic Bezier tangent for motion streaking. Live particles are packed into a per-frame host-coherent vertex buffer with camera-visible particles at the front; the buffer auto-grows up to a hard cap.
 - **VolumetricManager**: Smoke, muzzle flash, and explosion volumes with lifetime easing.
-- **EntityManager / SceneManager**: Hierarchical entity tree with transform inheritance, skeletal animation, and colliders. `SceneManager` swaps between top-level scenes.
+- **EntityManager / SceneManager**: Hierarchical entity tree with transform inheritance, skeletal animation, and colliders. The per-frame update runs the transform/game-logic traverse serially (transform inheritance is depth-first; `update()` can have cross-entity side effects), then dispatches `updateAnimation` for all animated entities through the engine thread pool. `SceneManager` swaps between top-level scenes.
 - **ModelManager**: glTF 2.0 loading via `fastgltf`, GPU buffers, skeleton and animation data.
-- **TextureManager**: Image resources for materials, UI, render targets, and HDR environment maps.
-- **Collider / SpatialGrid**: AABB, OBB, and convex-hull SAT tests, broad-phased by a 3D hash grid.
+- **TextureManager**: Image resources for materials, UI, render targets, and HDR environment maps. Init runs a two-phase load: CPU decode parallelized across the engine thread pool, then a serial Vulkan upload pass.
+- **Collider / SpatialGrid**: AABB, OBB, and convex-hull SAT tests, broad-phased by a 3D hash grid. SpatialGrid queries return SoA candidate AABBs with a SIMD AABB-vs-AABB filter already applied. Callers iterate the survivors and run narrow-phase. Raycast paths run an additional SIMD ray-vs-AABB slab test before per-candidate narrow-phase. Convex-hull SAT projections also vectorize across hull verts.
 - **AudioManager**: `miniaudio` wrapper with 3D spatialization and pitch variation.
 - **InputManager**: GLFW keyboard, mouse, and gamepad input. Controller mode provides on-screen cursor navigation for menus.
 - **UIManager**: 2D overlay with `FreeType` glyph caching and anchored widget layout.
-- **Camera**: Perspective camera with frustum culling.
+- **Camera**: Perspective camera. Exposes the six frustum planes, and the actual per-frame entity cull lives in `EntityManager::renderEntities` which batches all visible-candidate AABBs through `simd::cullAABBsAgainstFrustum`.
 - **SettingsManager**: Persistent video, audio, and input settings.
-- **ThreadPool**: Persistent worker pool used for data-parallel hot paths (particles, convex-hull world-space vertex transforms). One worker per logical core minus one; the caller thread runs the first chunk, workers handle the rest, completion is a short spin-wait so chunked work doesn't pay a condvar wakeup.
+- **ThreadPool**: Persistent worker pool used for data-parallel hot paths like per-frame particle collision and animation passes, convex-hull world-space vertex transforms, and init-time texture decode. One worker per logical core minus one; the caller thread runs the first chunk, workers handle the rest, completion is a short spin-wait so chunked work doesn't pay a condvar wakeup.
+- **SIMD module**: Wraps a small set of ISPC kernels (`src/engine/kernels.ispc`) compiled into per-CPU-target variants with first-call CPUID dispatch built into ISPC. Used for batched frustum culling, AABB-vs-AABB and ray-vs-AABB broad-phase filtering, convex-hull SAT projection, and particle kinematics integration.
 
 ## Rendering pipeline
 

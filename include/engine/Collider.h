@@ -9,6 +9,13 @@
 #include <span>
 
 namespace engine {
+    struct ColliderVertSoA {
+        const float* x = nullptr;
+        const float* y = nullptr;
+        const float* z = nullptr;
+        size_t paddedCount = 0;
+    };
+
     class Collider : public Entity {
     public:
         enum class ColliderType {
@@ -74,7 +81,7 @@ namespace engine {
         static glm::vec3 normalizeOrZero(const glm::vec3& v);
         static void addAxisUnique(std::vector<glm::vec3>& axes, const glm::vec3& axis);
         static std::pair<float, float> projectVertsOntoAxis(std::span<const glm::vec3> verts, const glm::vec3& axis, const glm::vec3& offset = glm::vec3(0.0f)); // min, max
-        static bool satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f), std::span<const glm::vec2> aSelfProjOnAxesA = {}, std::span<const glm::vec2> bSelfProjOnAxesB = {});
+        static bool satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA = glm::vec3(0.0f), const glm::vec3& offsetB = glm::vec3(0.0f), std::span<const glm::vec2> aSelfProjOnAxesA = {}, std::span<const glm::vec2> bSelfProjOnAxesB = {}, ColliderVertSoA aSoa = {}, ColliderVertSoA bSoa = {});
     private:
         bool isTrigger = false;
         bool isDynamic = false;

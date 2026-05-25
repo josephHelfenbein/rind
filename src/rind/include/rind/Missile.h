@@ -63,12 +63,15 @@ namespace rind {
                 }
             }
             setTransform(glm::translate(getTransform(), movement));
-            static thread_local std::vector<engine::Collider*> candidates;
-            getEntityManager()->getSpatialGrid().query(collider->getWorldAABB(), candidates);
+            static thread_local engine::SpatialGrid::Candidates candidates;
+            getEntityManager()->getSpatialGrid().query(collider->getWorldAABB(), candidates, 0.0f);
 
             engine::Collider* hitCollider = nullptr;
 
-            for (engine::Collider* other : candidates) {
+            const size_t n = candidates.size();
+            for (size_t i = 0; i < n; ++i) {
+                if (!candidates.intersects[i]) continue;
+                engine::Collider* other = candidates.colliders[i];
                 if (other == collider || other->getType() == engine::Entity::EntityType::Trigger) continue;
 
                 engine::Collider::CollisionMTV mtv;
@@ -139,20 +142,21 @@ namespace rind {
             if (exploded) return;
             exploded = true;
             getEntityManager()->markForDeletion(this);
-            static thread_local std::vector<engine::Collider*> candidates;
+            static thread_local engine::SpatialGrid::Candidates candidates;
             engine::AABB bigAABB = collider->getWorldAABB();
             bigAABB.min -= glm::vec3(10.0f);
             bigAABB.max += glm::vec3(10.0f);
-            getEntityManager()->getSpatialGrid().query(bigAABB, candidates);
-            
-            engine::Collider* hitCollider = nullptr;
-            
+            getEntityManager()->getSpatialGrid().query(bigAABB, candidates, 0.0f);
+
             bool showHitmarker = false;
             glm::vec3 hitmarkerColor{0.0f};
 
-            for (engine::Collider* candidate : candidates) {
+            const size_t n = candidates.size();
+            for (size_t i = 0; i < n; ++i) {
+                if (!candidates.intersects[i]) continue;
+                engine::Collider* candidate = candidates.colliders[i];
                 if (candidate == collider || candidate->getType() == engine::Entity::EntityType::Trigger) continue;
-                
+
                 engine::Entity* other = candidate->getParent();
                 float distance = glm::length(glm::vec3(getWorldTransform()[3]) - other->getWorldPosition());
                 float damage = glm::clamp(100.0f * (1.0f - distance / 10.0f), 0.0f, 100.0f);

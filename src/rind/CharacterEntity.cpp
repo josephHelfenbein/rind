@@ -318,19 +318,25 @@ engine::Collider::Collision rind::CharacterEntity::willCollide(const glm::vec3& 
         myAABB.min - glm::vec3(margin),
         myAABB.max + glm::vec3(margin)
     };
-    static thread_local std::vector<engine::Collider*> candidates;
-    getEntityManager()->getSpatialGrid().query(queryAABB, candidates);
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    getEntityManager()->getSpatialGrid().query(queryAABB, candidates, 0.0f);
 
     engine::Collider::Collision bestCollision;
     float bestScore = -std::numeric_limits<float>::max();
 
     glm::mat4 deltaTransform = glm::translate(glm::mat4(1.0f), worldOffset);
-    for (engine::Collider* otherCollider : candidates) {
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        // broad-phase
+        if (!candidates.intersects[i]) continue;
+        engine::Collider* otherCollider = candidates.colliders[i];
         if (otherCollider == collider || otherCollider->getIsTrigger()) {
             continue;
         }
-        engine::AABB otherAABB = otherCollider->getWorldAABB();
-        if (!engine::Collider::aabbIntersects(myAABB, otherAABB, 0.002f)) {
+        // tighter scalar filter
+        if (myAABB.min.x - 0.002f > candidates.maxX[i] || myAABB.max.x + 0.002f < candidates.minX[i] ||
+            myAABB.min.y - 0.002f > candidates.maxY[i] || myAABB.max.y + 0.002f < candidates.minY[i] ||
+            myAABB.min.z - 0.002f > candidates.maxZ[i] || myAABB.max.z + 0.002f < candidates.minZ[i]) {
             continue;
         }
         engine::Collider::Collision collision;

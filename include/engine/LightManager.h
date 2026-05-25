@@ -3,7 +3,6 @@
 #include <engine/EntityManager.h>
 #include <engine/PushConstants.h>
 #include <glm/glm.hpp>
-#include <algorithm>
 #include <array>
 #include <memory>
 #include <unordered_map>
@@ -86,7 +85,6 @@ namespace engine {
         glm::mat4 transform;
 
         glm::mat4 viewProjs[6];
-        std::array<glm::vec4, 6> frustumPlanes[6];
         glm::vec3 getWorldAABBCenter(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
             const glm::vec3 localCenter = (aabb.min + aabb.max) * 0.5f;
             return glm::vec3(worldTransform * glm::vec4(localCenter, 1.0f));
@@ -107,43 +105,6 @@ namespace engine {
             const float cullRangeScale = 1.02f;
             return (distanceToLight - boundsRadius) <= (radius * cullRangeScale);
         }
-        bool shouldSkipFaceFrustumCull(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
-            const glm::vec3 center = getWorldAABBCenter(aabb, worldTransform);
-            const float boundsRadius = getWorldAABBBoundingRadius(aabb, worldTransform);
-            const float distanceToLight = glm::length(center - getWorldPosition());
-            const float overlapDistance = std::max(1.0f, radius * 0.35f) + boundsRadius;
-            return distanceToLight <= overlapDistance;
-        }
-        float getShadowCullPlaneSlack() const {
-            return std::max(0.05f, radius * 0.005f);
-        }
-        bool isAABBInFrustum(int idx, const engine::AABB& aabb, const glm::mat4& transform) const {
-            glm::vec3 corners[8] = {
-                glm::vec3(aabb.min.x, aabb.min.y, aabb.min.z),
-                glm::vec3(aabb.max.x, aabb.min.y, aabb.min.z),
-                glm::vec3(aabb.min.x, aabb.max.y, aabb.min.z),
-                glm::vec3(aabb.max.x, aabb.max.y, aabb.min.z),
-                glm::vec3(aabb.min.x, aabb.min.y, aabb.max.z),
-                glm::vec3(aabb.max.x, aabb.min.y, aabb.max.z),
-                glm::vec3(aabb.min.x, aabb.max.y, aabb.max.z),
-                glm::vec3(aabb.max.x, aabb.max.y, aabb.max.z)
-            };
-            const float cullSlack = getShadowCullPlaneSlack();
-            for (const auto& plane : frustumPlanes[idx]) {
-                int out = 0;
-                for (const auto& corner : corners) {
-                    glm::vec3 worldCorner = glm::vec3(transform * glm::vec4(corner, 1.0f));
-                    if (glm::dot(glm::vec3(plane), worldCorner) + plane.w < -cullSlack) {
-                        out++;
-                    }
-                }
-                if (out == 8) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
         LightHandle handle = kInvalidLightHandle; // stable id
         uint32_t lightIdx = 0xFFFFFFFF; // upload-slot index, reassigned by reorderLights
 

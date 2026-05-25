@@ -1,5 +1,6 @@
 #include <engine/SpatialGrid.h>
 #include <engine/Collider.h>
+#include <engine/SIMD.h>
 #include <algorithm>
 
 engine::SpatialGrid::SpatialGrid(float cellSize)
@@ -101,8 +102,8 @@ void engine::SpatialGrid::update(Collider* collider, const AABB& aabb) {
     insert(collider, aabb);
 }
 
-void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCandidates) const {
-    outCandidates.clear();
+void engine::SpatialGrid::query(const AABB& aabb, Candidates& out, float margin) const {
+    out.clear();
     CellCoord minCell, maxCell;
     getCellRange(aabb, minCell, maxCell);
 
@@ -113,6 +114,7 @@ void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCan
 
     const std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash>* grids[2] = { &dynamicCells, &staticCells };
 
+    // gather colliders from overlapping cells, deduplicated within each grid, with their world AABBs pushed into the SoA columns
     for (int x = minCell.x; x <= minCell.x + rangeX; ++x) {
         for (int y = minCell.y; y <= minCell.y + rangeY; ++y) {
             for (int z = minCell.z; z <= minCell.z + rangeZ; ++z) {
@@ -121,7 +123,7 @@ void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCan
                     auto it = cells->find(coord);
                     if (it != cells->end()) {
                         const auto& vec = it->second;
-                        outCandidates.insert(outCandidates.end(), vec.begin(), vec.end());
+                        out.colliders.insert(out.colliders.end(), vec.begin(), vec.end());
                     }
                 }
             }
@@ -129,9 +131,30 @@ void engine::SpatialGrid::query(const AABB& aabb, std::vector<Collider*>& outCan
     }
 
     const size_t totalCells = static_cast<size_t>(rangeX + 1) * static_cast<size_t>(rangeY + 1) * static_cast<size_t>(rangeZ + 1);
-    if (totalCells > 1 && outCandidates.size() > 1) {
-        std::sort(outCandidates.begin(), outCandidates.end());
-        outCandidates.erase(std::unique(outCandidates.begin(), outCandidates.end()), outCandidates.end());
+    if (totalCells > 1 && out.colliders.size() > 1) {
+        std::sort(out.colliders.begin(), out.colliders.end());
+        out.colliders.erase(std::unique(out.colliders.begin(), out.colliders.end()), out.colliders.end());
+    }
+
+    const size_t n = out.colliders.size();
+    out.minX.resize(n); out.minY.resize(n); out.minZ.resize(n);
+    out.maxX.resize(n); out.maxY.resize(n); out.maxZ.resize(n);
+    out.intersects.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+        const AABB world = out.colliders[i]->getWorldAABB();
+        out.minX[i] = world.min.x; out.minY[i] = world.min.y; out.minZ[i] = world.min.z;
+        out.maxX[i] = world.max.x; out.maxY[i] = world.max.y; out.maxZ[i] = world.max.z;
+    }
+
+    // SIMD AABB-vs-AABB filter against the query AABB
+    if (n > 0) {
+        const float qMin[3] = {aabb.min.x, aabb.min.y, aabb.min.z};
+        const float qMax[3] = {aabb.max.x, aabb.max.y, aabb.max.z};
+        engine::simd::aabbVsManyAABBs(
+            qMin, qMax,
+            out.minX.data(), out.minY.data(), out.minZ.data(),
+            out.maxX.data(), out.maxY.data(), out.maxZ.data(),
+            n, margin, out.intersects.data());
     }
 }
 

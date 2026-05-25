@@ -4,6 +4,8 @@
 #include <engine/Collider.h>
 #include <engine/SettingsManager.h>
 #include <engine/LightManager.h>
+#include <engine/SIMD.h>
+#include <engine/ThreadPool.h>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
@@ -677,16 +679,30 @@ void engine::EntityManager::updateAll(float deltaTime) {
         updateDynamicColliders();
     }
     
+    animatedToUpdate.clear();
     auto traverse = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
         entity->updateWorldTransform(parentWorld);
         entity->update(deltaTime);
-        entity->updateAnimation(deltaTime);
+        if (entity->isAnimated()) {
+            animatedToUpdate.push_back(entity);
+        }
         for (Entity* child : entity->getChildren()) {
             self(self, child, entity->getWorldTransform());
         }
     };
     for (Entity* rootEntity : rootEntities) {
         traverse(traverse, rootEntity, glm::mat4(1.0f));
+    }
+
+    const size_t animCount = animatedToUpdate.size();
+    if (animCount > 1) {
+        ThreadPool::global().parallel_for_chunks(0, animCount, 1, [&](size_t b, size_t e, size_t) {
+            for (size_t i = b; i < e; ++i) {
+                animatedToUpdate[i]->updateAnimation(deltaTime);
+            }
+        });
+    } else if (animCount == 1) {
+        animatedToUpdate[0]->updateAnimation(deltaTime);
     }
     if (textureLoadDirty) {
         loadTextures();
@@ -737,6 +753,9 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32
         std::cout << "Warning: No camera set in EntityManager. Skipping entity rendering.\n";
         return;
     }
+    ShaderManager* shaderManager = renderer->getShaderManager();
+    GraphicsShader* shader = shaderManager->getGraphicsShader("gbuffer");
+    if (!shader) return;
 
     auto updateJointMatricesUBO = [&](Entity* entity) {
         if (!entity->isAnimated()) return;
@@ -749,74 +768,134 @@ void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32
         if (bufferIndex >= uniformBuffers.size()) return;
         VkBuffer buffer = uniformBuffers[bufferIndex];
         if (buffer == VK_NULL_HANDLE) return;
-        void* data;
-        VkDeviceMemory memory = entity->getUniformBuffersMemory()[bufferIndex];
         memcpy(entity->getUniformBuffersMapped()[bufferIndex], jointMatrices.data(), jointMatrices.size() * sizeof(glm::mat4));
     };
 
-    auto drawEntity = [&](auto& self, Entity* entity) -> void {
-        ShaderManager* shaderManager = renderer->getShaderManager();
-        Model* model = entity->getModel();
-        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("gbuffer");
-        if (model && shader && entity->isVisible()
-         && (camera->isAABBInFrustum(model->getAABB(), entity->getWorldTransform())
-             || entity->isAnimated()
-            )
-        ) {
-            updateJointMatricesUBO(entity);
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
-            VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
-            VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
-            if (model->hasSkinning()) {
-                VkBuffer skinBuffers[] = { model->getSkinningBuffer().first };
-                vkCmdBindVertexBuffers(commandBuffer, 1, 1, skinBuffers, offsets);
-            } else {
-                VkBuffer dummyBuffers[] = { dummySkinningBuffer };
-                vkCmdBindVertexBuffers(commandBuffer, 1, 1, dummyBuffers, offsets);
-            }
-            
-            if (shader->config.fillPushConstants) {
-                shader->config.fillPushConstants(renderer, shader, commandBuffer);
-            }
-            if (camera) {
-                GBufferPC pc = {
-                    .model = entity->getWorldTransform(),
-                    .view = camera->getViewMatrix(),
-                    .projection = camera->getProjectionMatrix(),
-                    .camPos = glm::vec4(camera->getWorldPosition(), model->hasSkinning() ? 1u : 0u)
-                };
-                vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
-            }
-            const std::vector<VkDescriptorSet>& descriptorSets = entity->getDescriptorSets();
-            if (!descriptorSets.empty()) {
-                const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(descriptorSets.size() - 1));
-                if (DEBUG_RENDER_LOGS) {
-                    std::cout << "[drawEntities] shader=" << shader->name << " bind DS idx=" << dsIndex
-                              << " handle=" << descriptorSets[dsIndex] << std::endl;
-                }
-                vkCmdBindDescriptorSets(
-                    commandBuffer,
-                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    shader->pipelineLayout,
-                    0,
-                    1,
-                    &descriptorSets[dsIndex],
-                    0,
-                    nullptr
-                );
-            } else if (DEBUG_RENDER_LOGS) {
-                std::cout << "[drawEntities] shader=" << shader->name << " has NO descriptor sets" << std::endl;
-            }
+    // separate into cullables and alwaysVisible (animated)
+    static thread_local std::vector<Entity*> cullables;
+    static thread_local std::vector<float> aabbMinX, aabbMinY, aabbMinZ;
+    static thread_local std::vector<float> aabbMaxX, aabbMaxY, aabbMaxZ;
+    static thread_local std::vector<uint8_t> visible;
+    static thread_local std::vector<Entity*> alwaysVisible;
+    cullables.clear();
+    aabbMinX.clear(); aabbMinY.clear(); aabbMinZ.clear();
+    aabbMaxX.clear(); aabbMaxY.clear(); aabbMaxZ.clear();
+    alwaysVisible.clear();
 
-            vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
+    auto computeWorldAABB = [](const AABB& local, const glm::mat4& world) -> AABB {
+        const glm::vec3 corners[8] = {
+            {local.min.x, local.min.y, local.min.z},
+            {local.max.x, local.min.y, local.min.z},
+            {local.min.x, local.max.y, local.min.z},
+            {local.max.x, local.max.y, local.min.z},
+            {local.min.x, local.min.y, local.max.z},
+            {local.max.x, local.min.y, local.max.z},
+            {local.min.x, local.max.y, local.max.z},
+            {local.max.x, local.max.y, local.max.z}
+        };
+        glm::vec3 mn(std::numeric_limits<float>::max());
+        glm::vec3 mx(std::numeric_limits<float>::lowest());
+        for (const glm::vec3& c : corners) {
+            const glm::vec3 wc = glm::vec3(world * glm::vec4(c, 1.0f));
+            mn = glm::min(mn, wc);
+            mx = glm::max(mx, wc);
+        }
+        return {mn, mx};
+    };
+
+    auto collect = [&](auto& self, Entity* entity) -> void {
+        Model* model = entity->getModel();
+        if (model && entity->isVisible()) {
+            if (entity->isAnimated()) {
+                alwaysVisible.push_back(entity);
+            } else {
+                const AABB world = computeWorldAABB(model->getAABB(), entity->getWorldTransform());
+                cullables.push_back(entity);
+                aabbMinX.push_back(world.min.x);
+                aabbMinY.push_back(world.min.y);
+                aabbMinZ.push_back(world.min.z);
+                aabbMaxX.push_back(world.max.x);
+                aabbMaxY.push_back(world.max.y);
+                aabbMaxZ.push_back(world.max.z);
+            }
         }
         for (Entity* child : entity->getChildren()) {
             self(self, child);
         }
     };
-    for (Entity* entity : rootEntities) {
-        drawEntity(drawEntity, entity);
+    for (Entity* root : rootEntities) {
+        collect(collect, root);
+    }
+
+    // SIMD batched frustum cull for all cullables
+    visible.assign(cullables.size(), 0);
+    if (!cullables.empty()) {
+        const auto& planes4 = camera->getFrustumPlanes();
+        engine::simd::Plane planes[6];
+        for (int i = 0; i < 6; ++i) {
+            planes[i] = { planes4[i].x, planes4[i].y, planes4[i].z, planes4[i].w };
+        }
+        engine::simd::cullAABBsAgainstFrustum(
+            aabbMinX.data(), aabbMinY.data(), aabbMinZ.data(),
+            aabbMaxX.data(), aabbMaxY.data(), aabbMaxZ.data(),
+            cullables.size(),
+            planes,
+            visible.data());
+    }
+
+    // render visible cullables, then alwaysVisible (animated) entities
+    auto drawOne = [&](Entity* entity) {
+        Model* model = entity->getModel();
+        updateJointMatricesUBO(entity);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
+        VkBuffer vertexBuffers[] = { model->getVertexBuffer().first };
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, model->getIndexBuffer().first, 0, VK_INDEX_TYPE_UINT32);
+        if (model->hasSkinning()) {
+            VkBuffer skinBuffers[] = { model->getSkinningBuffer().first };
+            vkCmdBindVertexBuffers(commandBuffer, 1, 1, skinBuffers, offsets);
+        } else {
+            VkBuffer dummyBuffers[] = { dummySkinningBuffer };
+            vkCmdBindVertexBuffers(commandBuffer, 1, 1, dummyBuffers, offsets);
+        }
+        if (shader->config.fillPushConstants) {
+            shader->config.fillPushConstants(renderer, shader, commandBuffer);
+        }
+        GBufferPC pc = {
+            .model = entity->getWorldTransform(),
+            .view = camera->getViewMatrix(),
+            .projection = camera->getProjectionMatrix(),
+            .camPos = glm::vec4(camera->getWorldPosition(), model->hasSkinning() ? 1u : 0u)
+        };
+        vkCmdPushConstants(commandBuffer, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(GBufferPC), &pc);
+        const std::vector<VkDescriptorSet>& descriptorSets = entity->getDescriptorSets();
+        if (!descriptorSets.empty()) {
+            const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(descriptorSets.size() - 1));
+            if (DEBUG_RENDER_LOGS) {
+                std::cout << "[drawEntities] shader=" << shader->name << " bind DS idx=" << dsIndex
+                          << " handle=" << descriptorSets[dsIndex] << std::endl;
+            }
+            vkCmdBindDescriptorSets(
+                commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                shader->pipelineLayout,
+                0,
+                1,
+                &descriptorSets[dsIndex],
+                0,
+                nullptr
+            );
+        } else if (DEBUG_RENDER_LOGS) {
+            std::cout << "[drawEntities] shader=" << shader->name << " has NO descriptor sets" << std::endl;
+        }
+        vkCmdDrawIndexed(commandBuffer, model->getIndexCount(), 1, 0, 0, 0);
+    };
+
+    for (size_t i = 0; i < cullables.size(); ++i) {
+        if (visible[i]) drawOne(cullables[i]);
+    }
+    for (Entity* entity : alwaysVisible) {
+        drawOne(entity);
     }
 }

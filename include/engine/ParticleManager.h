@@ -3,6 +3,7 @@
 #include <engine/Renderer.h>
 #include <engine/EntityManager.h>
 #include <engine/Collider.h>
+#include <engine/SpatialGrid.h>
 #include <cstdint>
 #include <random>
 
@@ -56,8 +57,9 @@ namespace engine {
             void compactDead();
         };
 
-        void updateOne(size_t i, float deltaTime);
+        void collideOne(size_t i, float deltaTime);
         Collider::Collision checkCollision(const glm::vec3& position);
+        Collider::Collision narrowPhaseCollision(const glm::vec3& position, const engine::SpatialGrid::Candidates& candidates);
         ParticleGPU makeGPU(size_t i) const;
         glm::vec3 positionAt(size_t i) const {
             return glm::vec3(particles.posX[i], particles.posY[i], particles.posZ[i]);

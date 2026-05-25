@@ -38,15 +38,18 @@ void rind::SlowBullet::update(float deltaTime) {
     }
     
     engine::AABB bulletAABB = collider->getWorldAABB();
-    static thread_local std::vector<engine::Collider*> candidates;
-    getEntityManager()->getSpatialGrid().query(bulletAABB, candidates);
-    
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    getEntityManager()->getSpatialGrid().query(bulletAABB, candidates, 0.0f);
+
     engine::Collider* hitCollider = nullptr;
     engine::Collider::CollisionMTV hitMtv;
-    
-    for (engine::Collider* other : candidates) {
+
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!candidates.intersects[i]) continue;
+        engine::Collider* other = candidates.colliders[i];
         if (other == collider || other->getType() == engine::Entity::EntityType::Trigger) continue;
-        
+
         engine::Collider::CollisionMTV mtv;
         if (collider->intersectsMTV(*other, mtv)) {
             hitCollider = other;

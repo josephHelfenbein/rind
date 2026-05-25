@@ -248,6 +248,8 @@ namespace engine {
         bool renderable3DCache = false;
         bool computeHasRenderable3D() const;
 
+        std::vector<Entity*> animatedToUpdate;
+
         Camera* camera = nullptr;
 
         VkBuffer dummySkinningBuffer = VK_NULL_HANDLE;

@@ -96,31 +96,6 @@ namespace engine {
             }
             return true;
         }
-        bool isAABBInFrustum(const engine::AABB& aabb, const glm::mat4& transform) const {
-            glm::vec3 corners[8] = {
-                glm::vec3(aabb.min.x, aabb.min.y, aabb.min.z),
-                glm::vec3(aabb.max.x, aabb.min.y, aabb.min.z),
-                glm::vec3(aabb.min.x, aabb.max.y, aabb.min.z),
-                glm::vec3(aabb.max.x, aabb.max.y, aabb.min.z),
-                glm::vec3(aabb.min.x, aabb.min.y, aabb.max.z),
-                glm::vec3(aabb.max.x, aabb.min.y, aabb.max.z),
-                glm::vec3(aabb.min.x, aabb.max.y, aabb.max.z),
-                glm::vec3(aabb.max.x, aabb.max.y, aabb.max.z)
-            };
-            for (const auto& plane : frustumPlanes) {
-                int out = 0;
-                for (const auto& corner : corners) {
-                    glm::vec3 worldCorner = glm::vec3(transform * glm::vec4(corner, 1.0f));
-                    if (glm::dot(glm::vec3(plane), worldCorner) + plane.w < 0) {
-                        out++;
-                    }
-                }
-                if (out == 8) {
-                    return false;
-                }
-            }
-            return true;
-        }
         const std::array<glm::vec4, 6>& getFrustumPlanes() const {
             return frustumPlanes;
         }

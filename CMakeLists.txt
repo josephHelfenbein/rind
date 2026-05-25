@@ -1,8 +1,17 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Rind)
+project(Rind LANGUAGES C CXX ISPC)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ISPC settings: which CPU targets to emit per .ispc source
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+  set(CMAKE_ISPC_INSTRUCTION_SETS "neon-i32x4" CACHE STRING "ISPC target ISAs")
+else()
+  set(CMAKE_ISPC_INSTRUCTION_SETS "sse2-i32x4;sse4-i32x4;avx2-i32x8" CACHE STRING "ISPC target ISAs")
+endif()
+
+set(CMAKE_ISPC_HEADER_SUFFIX "_ispc.h")
 option(BUNDLE_WINDOWS_RUNTIMES "Bundle required runtime DLLs next to Windows executable and in install package" ON)
 option(BUNDLE_MACOS_RUNTIMES "Bundle required runtime dylibs and Vulkan ICD next to macOS executable" ON)
 option(BUNDLE_LINUX_RUNTIMES "Bundle runtime .so files next to Linux executable for standalone distribution" ON)
@@ -135,8 +144,12 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/RindEngine.cmake)
 
 # rind_engine library
-file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp")
+file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp" "src/engine/*.ispc")
 add_library(rind_engine STATIC ${ENGINE_SOURCES})
+
+# ISPC header output
+target_include_directories(rind_engine PRIVATE
+    "${CMAKE_BINARY_DIR}/CMakeFiles/rind_engine.dir")
 
 target_include_directories(rind_engine PUBLIC
     ${CMAKE_SOURCE_DIR}/include
@@ -145,6 +158,7 @@ target_include_directories(rind_engine PUBLIC
     ${CMAKE_SOURCE_DIR}/include/external/glfw/include
     ${CMAKE_SOURCE_DIR}/include/external/fastgltf/include
     ${CMAKE_SOURCE_DIR}/include/external/freetype/include
+    ${CMAKE_BINARY_DIR}/generated
 )
 
 if(IS_MACOS)
@@ -341,30 +355,31 @@ if(IS_MACOS)
   endif()
 endif()
 
-# Compiler flags: apply to both targets
+# Compiler flags: apply to both targets (ISPC has its own flag syntax)
 foreach(_tgt rind_engine ${PROJECT_NAME})
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${_tgt} PRIVATE
-      $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -fvectorize -fslp-vectorize -ffast-math -march=${RELEASE_MARCH} -mtune=${RELEASE_MARCH} -flto -fomit-frame-pointer -finline-functions -Wno-nan-infinity-disabled>
-      $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-fvectorize;-fslp-vectorize;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-flto;-fomit-frame-pointer;-finline-functions;-Wno-nan-infinity-disabled>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-O0>"
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(${_tgt} PRIVATE
-      $<$<CONFIG:Release>:-O3 -DNDEBUG -funroll-loops -ffast-math -march=${RELEASE_MARCH} -mtune=${RELEASE_MARCH} -flto -fomit-frame-pointer -finline-functions -ftree-vectorize>
-      $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-flto;-fomit-frame-pointer;-finline-functions;-ftree-vectorize>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-O0>"
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(${_tgt} PRIVATE
-      /FS
-      $<$<CONFIG:Release>:/O2 /Oi /Ot /Gy /GL /fp:fast /DNDEBUG>
-      $<$<CONFIG:Debug>:/W4 /Zi /Od>
+      "$<$<COMPILE_LANGUAGE:CXX>:/FS>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:/O2;/Oi;/Ot;/Gy;/GL;/fp:fast;/DNDEBUG>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:/W4;/Zi;/Od>"
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   endif()
   if(MSVC)
-    target_compile_options(${_tgt} PRIVATE /FS)
+    target_compile_options(${_tgt} PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:/FS>")
   endif()
 endforeach()
 

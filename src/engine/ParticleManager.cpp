@@ -4,6 +4,7 @@
 #include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
 #include <engine/ThreadPool.h>
+#include <engine/SIMD.h>
 
 void engine::ParticleManager::ParticleSoA::clearAll() {
     posX.clear(); posY.clear(); posZ.clear();
@@ -76,64 +77,45 @@ engine::ParticleGPU engine::ParticleManager::makeGPU(size_t i) const {
     };
 }
 
-void engine::ParticleManager::updateOne(size_t i, float deltaTime) {
-    particles.age[i] += deltaTime;
-    if (particles.age[i] >= particles.lifetime[i]) { particles.dead[i] = 1; return; }
+void engine::ParticleManager::collideOne(size_t i, float deltaTime) {
+    if (particles.dead[i]) return;
     if (particles.type[i] == 1.0f) return;
+    if (particles.age[i] <= 0.15f) return;
 
-    particles.velY[i] -= kGravity * deltaTime;
+    const float vx = particles.velX[i];
+    const float vy = particles.velY[i];
+    const float vz = particles.velZ[i];
+    const float speedSq = vx * vx + vy * vy + vz * vz;
+    if (speedSq <= 1.0f) return;
 
-    const glm::vec3 currentPos(particles.posX[i], particles.posY[i], particles.posZ[i]);
-    particles.prevPrevPosX[i] = particles.prevPosX[i];
-    particles.prevPrevPosY[i] = particles.prevPosY[i];
-    particles.prevPrevPosZ[i] = particles.prevPosZ[i];
-    particles.prevPosX[i] = currentPos.x;
-    particles.prevPosY[i] = currentPos.y;
-    particles.prevPosZ[i] = currentPos.z;
+    const glm::vec3 currentPos(particles.prevPosX[i], particles.prevPosY[i], particles.prevPosZ[i]);
+    glm::vec3 newPos(particles.posX[i], particles.posY[i], particles.posZ[i]);
 
-    glm::vec3 velocity(particles.velX[i], particles.velY[i], particles.velZ[i]);
-    glm::vec3 newPos = currentPos + velocity * deltaTime;
-    float speedSq = glm::dot(velocity, velocity);
-<<<<<<< Updated upstream
-    if (speedSq < 0.01f) {
-        markForDeletion();
+    const float particleRadius = 0.05f;
+    const float stepLen = std::sqrt(speedSq) * deltaTime;
+    const float expand = particleRadius + stepLen;
+    engine::AABB sweepAABB = {
+        .min = glm::min(currentPos, newPos) - glm::vec3(expand),
+        .max = glm::max(currentPos, newPos) + glm::vec3(expand)
+    };
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    renderer->getEntityManager()->getSpatialGrid().query(sweepAABB, candidates, 0.0f);
+
+    Collider::Collision collision = narrowPhaseCollision(newPos, candidates);
+    if (!collision.other) return;
+
+    glm::vec3 velocity(vx, vy, vz);
+    glm::vec3 normal = glm::normalize(collision.mtv.normal);
+    velocity = velocity - 2.0f * glm::dot(velocity, normal) * normal;
+    velocity *= 0.5f;
+    particles.velX[i] = velocity.x;
+    particles.velY[i] = velocity.y;
+    particles.velZ[i] = velocity.z;
+
+    newPos = currentPos + velocity * deltaTime;
+    if (narrowPhaseCollision(newPos, candidates).other) {
+        particles.dead[i] = 1;
         return;
-    }
-    if (age > 0.15f && speedSq > 1.0f) {
-        const float particleRadius = 0.05f;
-        const float stepLen = std::sqrt(speedSq) * deltaTime;
-        const float expand = particleRadius + stepLen;
-        engine::AABB sweepAABB = {
-            .min = glm::min(currentPos, newPos) - glm::vec3(expand),
-            .max = glm::max(currentPos, newPos) + glm::vec3(expand)
-        };
-        static thread_local std::vector<engine::Collider*> candidates;
-        entityManager->getSpatialGrid().query(sweepAABB, candidates);
-        Collider::Collision collision = narrowPhaseCollision(newPos, candidates);
-=======
-    if (speedSq < 0.01f) { particles.dead[i] = 1; return; }
-
-    if (particles.age[i] > 0.15f && speedSq > 1.0f) {
-        Collider::Collision collision = checkCollision(newPos);
->>>>>>> Stashed changes
-        if (collision.other) {
-            glm::vec3 normal = glm::normalize(collision.mtv.normal);
-            velocity = velocity - 2.0f * glm::dot(velocity, normal) * normal;
-            velocity *= 0.5f;
-            particles.velX[i] = velocity.x;
-            particles.velY[i] = velocity.y;
-            particles.velZ[i] = velocity.z;
-            newPos = currentPos + velocity * deltaTime;
-<<<<<<< Updated upstream
-            if (narrowPhaseCollision(newPos, candidates).other) {
-                markForDeletion();
-=======
-            if (checkCollision(newPos).other) {
-                particles.dead[i] = 1;
->>>>>>> Stashed changes
-                return;
-            }
-        }
     }
 
     particles.posX[i] = newPos.x;
@@ -147,26 +129,30 @@ engine::Collider::Collision engine::ParticleManager::checkCollision(const glm::v
         .min = position - glm::vec3(particleRadius),
         .max = position + glm::vec3(particleRadius)
     };
-    static thread_local std::vector<engine::Collider*> candidates;
-<<<<<<< Updated upstream
-    entityManager->getSpatialGrid().query(particleAABB, candidates);
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    renderer->getEntityManager()->getSpatialGrid().query(particleAABB, candidates, 0.0f);
     return narrowPhaseCollision(position, candidates);
 }
 
-engine::Collider::Collision engine::Particle::narrowPhaseCollision(const glm::vec3& position, const std::vector<engine::Collider*>& candidates) {
+engine::Collider::Collision engine::ParticleManager::narrowPhaseCollision(const glm::vec3& position, const engine::SpatialGrid::Candidates& candidates) {
     const float particleRadius = 0.05f;
     engine::AABB particleAABB = {
         .min = position - glm::vec3(particleRadius),
         .max = position + glm::vec3(particleRadius)
     };
-=======
-    renderer->getEntityManager()->getSpatialGrid().query(particleAABB, candidates);
->>>>>>> Stashed changes
-    for (const auto& collider : candidates) {
-        engine::AABB otherAABB = collider->getWorldAABB();
-        if (!engine::Collider::aabbIntersects(particleAABB, otherAABB, 0.0f)) {
+    const size_t n = candidates.size();
+    for (size_t idx = 0; idx < n; ++idx) {
+        if (!candidates.intersects[idx]) continue;
+        if (particleAABB.min.x > candidates.maxX[idx] || particleAABB.max.x < candidates.minX[idx] ||
+            particleAABB.min.y > candidates.maxY[idx] || particleAABB.max.y < candidates.minY[idx] ||
+            particleAABB.min.z > candidates.maxZ[idx] || particleAABB.max.z < candidates.minZ[idx]) {
             continue;
         }
+        Collider* collider = candidates.colliders[idx];
+        const engine::AABB otherAABB = {
+            .min = glm::vec3(candidates.minX[idx], candidates.minY[idx], candidates.minZ[idx]),
+            .max = glm::vec3(candidates.maxX[idx], candidates.maxY[idx], candidates.maxZ[idx])
+        };
         Collider::ColliderType type = collider->getColliderType();
         bool collides = false;
         glm::vec3 normal(0.0f);
@@ -481,16 +467,34 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
 
 void engine::ParticleManager::updateAll(float deltaTime) {
     const size_t count = particles.count();
+
+    // SIMD kinematics for every particle
+    engine::simd::integrateParticleKinematics(
+        particles.posX.data(), particles.posY.data(), particles.posZ.data(),
+        particles.velX.data(), particles.velY.data(), particles.velZ.data(),
+        particles.prevPosX.data(), particles.prevPosY.data(), particles.prevPosZ.data(),
+        particles.prevPrevPosX.data(), particles.prevPrevPosY.data(), particles.prevPrevPosZ.data(),
+        particles.age.data(),
+        particles.lifetime.data(),
+        particles.type.data(),
+        particles.dead.data(),
+        count,
+        deltaTime,
+        kGravity
+    );
+
+    // scalar collision for the subset of particles that need it
     if (count > 64) {
         ThreadPool::global().parallel_for_chunks(0, count, 32, [&](size_t b, size_t e, size_t) {
             for (size_t i = b; i < e; ++i) {
-                updateOne(i, deltaTime);
+                collideOne(i, deltaTime);
             }
         });
     } else {
         for (size_t i = 0; i < count; ++i) {
-            updateOne(i, deltaTime);
+            collideOne(i, deltaTime);
         }
     }
+
     particles.compactDead();
 }

@@ -1,9 +1,9 @@
 #include <engine/TextureManager.h>
+#include <engine/ThreadPool.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
 #include <iostream>
-#include <functional>
 #include <cstring>
 #include <cmath>
 #include <algorithm>
@@ -55,42 +55,81 @@ void engine::TextureManager::registerEmbeddedTextures(const std::unordered_map<s
 }
 
 void engine::TextureManager::init() {
-    for (const auto& [textureName, asset] : embeddedAssets) {
-        if (textures.find(textureName) != textures.end()) {
-            std::cout << "Warning: Duplicate texture name detected: " << textureName << ". Skipping.\n";
+    stbi_set_flip_vertically_on_load(false);
+
+    struct DecodedTexture {
+        std::string name;
+        bool valid = false;
+        bool isHDR = false;
+        int texWidth = 0;
+        int texHeight = 0;
+        unsigned char* stbiPixels = nullptr;
+        std::vector<uint16_t> halfPixels;
+    };
+
+    struct AssetEntry { std::string name; const EmbeddedAsset* asset; };
+    std::vector<AssetEntry> assetList;
+    assetList.reserve(embeddedAssets.size());
+    for (const auto& [name, asset] : embeddedAssets) {
+        if (textures.find(name) != textures.end()) {
+            std::cout << "Warning: Duplicate texture name detected: " << name << ". Skipping.\n";
             continue;
         }
-        stbi_set_flip_vertically_on_load(false);
-        void* pixels = nullptr;
-        int texWidth = 0, texHeight = 0, texChannels = 0;
-        bool isHDR = false;
-        std::vector<uint16_t> float16Pixels;
+        assetList.push_back({name, &asset});
+    }
 
-        bool isHDRFile = (std::strcmp(asset.ext, ".hdr") == 0);
+    std::vector<DecodedTexture> decoded(assetList.size());
+    auto decodeOne = [&](size_t idx) {
+        const AssetEntry& entry = assetList[idx];
+        DecodedTexture& out = decoded[idx];
+        out.name = entry.name;
+        const EmbeddedAsset& asset = *entry.asset;
+        const bool isHDRFile = (std::strcmp(asset.ext, ".hdr") == 0);
+        int texChannels = 0;
         if (isHDRFile) {
             float* floatPixels = stbi_loadf_from_memory(asset.data, static_cast<int>(asset.size),
-                &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                &out.texWidth, &out.texHeight, &texChannels, STBI_rgb_alpha);
             if (!floatPixels) {
-                std::cerr << "Failed to load HDR texture: " << textureName << std::endl;
-                continue;
+                std::cerr << "Failed to load HDR texture: " << entry.name << std::endl;
+                return;
             }
-            size_t numPixels = static_cast<size_t>(texWidth) * static_cast<size_t>(texHeight);
-            float16Pixels.resize(numPixels * 4);
-            for (size_t i = 0; i < numPixels * 4; ++i) {
-                float16Pixels[i] = floatToHalf(floatPixels[i]);
+            const size_t numFloats = static_cast<size_t>(out.texWidth) * static_cast<size_t>(out.texHeight) * 4;
+            out.halfPixels.resize(numFloats);
+            for (size_t i = 0; i < numFloats; ++i) {
+                out.halfPixels[i] = floatToHalf(floatPixels[i]);
             }
             stbi_image_free(floatPixels);
-            pixels = float16Pixels.data();
-            isHDR = true;
+            out.isHDR = true;
         } else {
-            pixels = stbi_load_from_memory(asset.data, static_cast<int>(asset.size),
-                &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-            if (!pixels) {
-                std::cerr << "Failed to load texture: " << textureName << std::endl;
-                continue;
+            out.stbiPixels = stbi_load_from_memory(asset.data, static_cast<int>(asset.size),
+                &out.texWidth, &out.texHeight, &texChannels, STBI_rgb_alpha);
+            if (!out.stbiPixels) {
+                std::cerr << "Failed to load texture: " << entry.name << std::endl;
+                return;
             }
-            isHDR = false;
+            out.isHDR = false;
         }
+        out.valid = true;
+    };
+
+    // parallel decode
+    if (assetList.size() > 1) {
+        engine::ThreadPool::global().parallel_for_chunks(0, assetList.size(), 1,
+            [&](size_t b, size_t e, size_t) {
+                for (size_t i = b; i < e; ++i) decodeOne(i);
+            });
+    } else if (assetList.size() == 1) {
+        decodeOne(0);
+    }
+
+    // serial Vulkan upload
+    for (DecodedTexture& dec : decoded) {
+        if (!dec.valid) continue;
+        const std::string& textureName = dec.name;
+        const int texWidth = dec.texWidth;
+        const int texHeight = dec.texHeight;
+        const bool isHDR = dec.isHDR;
+        void* pixels = isHDR ? static_cast<void*>(dec.halfPixels.data()) : static_cast<void*>(dec.stbiPixels);
         VkFormat format;
         VkDeviceSize pixelSize;
         if (isHDR) {
@@ -129,7 +168,8 @@ void engine::TextureManager::init() {
             0
         );
         if (!isHDR) {
-            stbi_image_free(pixels);
+            stbi_image_free(dec.stbiPixels);
+            dec.stbiPixels = nullptr;
         }
         if (mipLevels > 1) {
             renderer->generateMipmaps(textureImage, format, texWidth, texHeight, mipLevels, 1);

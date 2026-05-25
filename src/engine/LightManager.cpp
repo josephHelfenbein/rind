@@ -8,10 +8,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-constexpr float kShadowCullFovDegrees = 100.0f;
-constexpr float kShadowCullNear = 0.05f;
-constexpr float kShadowCullFarScale = 1.01f;
-
 engine::Light::Light(
     LightManager* lightManager,
     LightHandle handle,
@@ -62,23 +58,6 @@ void engine::Light::updateShadowMatrices() {
     for (int i = 0; i < 6; ++i) {
         glm::mat4 faceView = glm::lookAt(lightPos, lightPos + faces[i].dir, faces[i].up);
         viewProjs[i] = shadowProj * faceView;
-        glm::mat4 cullProj = glm::perspective(
-            glm::radians(kShadowCullFovDegrees),
-            1.0f,
-            kShadowCullNear,
-            radius * kShadowCullFarScale
-        );
-        glm::mat4 viewProj = glm::transpose(cullProj * faceView);
-        frustumPlanes[i][0] = viewProj[3] + viewProj[0];
-        frustumPlanes[i][1] = viewProj[3] - viewProj[0];
-        frustumPlanes[i][2] = viewProj[3] + viewProj[1];
-        frustumPlanes[i][3] = viewProj[3] - viewProj[1];
-        frustumPlanes[i][4] = viewProj[3] + viewProj[2];
-        frustumPlanes[i][5] = viewProj[3] - viewProj[2];
-        for (auto& plane : frustumPlanes[i]) {
-            float length = glm::length(glm::vec3(plane));
-            plane /= length;
-        }
     }
 }
 

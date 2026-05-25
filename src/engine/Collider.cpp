@@ -1,6 +1,7 @@
 #include <engine/Collider.h>
 #include <engine/SpatialGrid.h>
 #include <engine/ThreadPool.h>
+#include <engine/SIMD.h>
 #include <algorithm>
 
 engine::Collider::Collider(
@@ -28,17 +29,15 @@ engine::Collider::Collision engine::Collider::testRayCollision(Collider* collide
     }
     switch (collider->getColliderType()) {
         case ColliderType::AABB: {
-            AABBCollider* aabbCollider = static_cast<AABBCollider*>(collider);
-            glm::vec3 invDir = 1.0f / rayDir;
-            glm::vec3 t1 = (aabb.min - rayOrigin) * invDir;
-            glm::vec3 t2 = (aabb.max - rayOrigin) * invDir;
-            glm::vec3 tmin = glm::min(t1, t2);
-            glm::vec3 tmax = glm::max(t1, t2);
-            float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
-            float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
+            const glm::vec3 invDir = 1.0f / rayDir;
+            const glm::vec3 t1 = (aabb.min - rayOrigin) * invDir;
+            const glm::vec3 t2 = (aabb.max - rayOrigin) * invDir;
+            const glm::vec3 tmin = glm::min(t1, t2);
+            const glm::vec3 tmax = glm::max(t1, t2);
+            const float tNear = glm::max(glm::max(tmin.x, tmin.y), tmin.z);
+            const float tFar = glm::min(glm::min(tmax.x, tmax.y), tmax.z);
             if (tNear <= tFar && tFar >= 0.0f && tNear <= maxDistance) {
-                float tHit = tNear >= 0.0f ? tNear : tFar;
-                glm::vec3 hitPoint = rayOrigin + rayDir * tHit;
+                const float tHit = tNear >= 0.0f ? tNear : tFar;
                 glm::vec3 normal(0.0f);
                 if (tNear >= 0.0f) {
                     if (tmin.x == tNear) normal = glm::vec3(rayDir.x > 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
@@ -48,7 +47,7 @@ engine::Collider::Collision engine::Collider::testRayCollision(Collider* collide
                 Collision collision = {
                     .other = collider,
                     .mtv = { .normal = normal },
-                    .worldHitPoint = hitPoint
+                    .worldHitPoint = rayOrigin + rayDir * tHit
                 };
                 return collision;
             }
@@ -154,36 +153,53 @@ engine::Collider::Collision engine::Collider::testRayCollision(Collider* collide
     return {};
 }
 
+inline void filterCandidatesByRay(
+    const engine::SpatialGrid::Candidates& candidates,
+    const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance,
+    std::vector<uint8_t>& rayHit, std::vector<float>& rayTHit
+) {
+    const size_t n = candidates.size();
+    rayHit.assign(n, 0);
+    rayTHit.assign(n, 0.0f);
+    if (n == 0) return;
+    const float origin[3] = { rayOrigin.x, rayOrigin.y, rayOrigin.z };
+    const float dir[3] = { rayDir.x, rayDir.y, rayDir.z };
+    engine::simd::rayVsManyAABBs(
+        origin, dir,
+        candidates.minX.data(), candidates.minY.data(), candidates.minZ.data(),
+        candidates.maxX.data(), candidates.maxY.data(), candidates.maxZ.data(),
+        n, maxDistance,
+        rayHit.data(), rayTHit.data()
+    );
+}
+
 engine::Collider::Collision engine::Collider::raycastFirst(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin) {
-    static thread_local std::vector<engine::Collider::Collision> hits;
-    hits.clear();
     glm::vec3 rayEnd = rayOrigin + rayDir * maxDistance;
     AABB rayAABB = {
         .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
-    static thread_local std::vector<engine::Collider*> candidates;
-    entityManager->getSpatialGrid().query(rayAABB, candidates);
-    
-    for (Collider* collider : candidates) {
-        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
-        if (collision.other) {
-            hits.push_back(collision);
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    static thread_local std::vector<uint8_t> rayHit;
+    static thread_local std::vector<float> rayTHit;
+    entityManager->getSpatialGrid().query(rayAABB, candidates, 0.0f);
+    filterCandidatesByRay(candidates, rayOrigin, rayDir, maxDistance, rayHit, rayTHit);
+
+    Collision closest{};
+    float closestDistSq = std::numeric_limits<float>::max();
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!rayHit[i]) continue;
+        engine::Collider::Collision collision = testRayCollision(candidates.colliders[i], rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+        if (!collision.other) continue;
+        const glm::vec3 d = collision.worldHitPoint - rayOrigin;
+        const float distSq = glm::dot(d, d);
+        if (distSq < closestDistSq) {
+            closest = collision;
+            closestDistSq = distSq;
         }
     }
-    if (!hits.empty()) {
-        Collision closest = hits[0];
-        float closestDist = glm::length(closest.worldHitPoint - rayOrigin);
-        for (const Collision& collision : hits) {
-            float dist = glm::length(collision.worldHitPoint - rayOrigin);
-            if (dist < closestDist) {
-                closest = collision;
-                closestDist = dist;
-            }
-        }
-        return closest;
-    }
-    return {};
+    return closest;
 }
 
 bool engine::Collider::raycastAny(EntityManager* entityManager, const glm::vec3& rayOrigin, const glm::vec3& rayDir, float maxDistance, Collider* ignoreCollider, float margin) {
@@ -192,14 +208,17 @@ bool engine::Collider::raycastAny(EntityManager* entityManager, const glm::vec3&
         .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
-    static thread_local std::vector<engine::Collider*> candidates;
-    entityManager->getSpatialGrid().query(rayAABB, candidates);
-    
-    for (Collider* collider : candidates) {
-        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
-        if (collision.other) {
-            return true;
-        }
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    static thread_local std::vector<uint8_t> rayHit;
+    static thread_local std::vector<float> rayTHit;
+    entityManager->getSpatialGrid().query(rayAABB, candidates, 0.0f);
+    filterCandidatesByRay(candidates, rayOrigin, rayDir, maxDistance, rayHit, rayTHit);
+
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!rayHit[i]) continue;
+        engine::Collider::Collision collision = testRayCollision(candidates.colliders[i], rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+        if (collision.other) return true;
     }
     return false;
 }
@@ -210,11 +229,16 @@ void engine::Collider::raycast(EntityManager* entityManager, std::vector<engine:
         .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
-    static thread_local std::vector<engine::Collider*> candidates;
-    entityManager->getSpatialGrid().query(rayAABB, candidates);
-    
-    for (Collider* collider : candidates) {
-        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    static thread_local std::vector<uint8_t> rayHit;
+    static thread_local std::vector<float> rayTHit;
+    entityManager->getSpatialGrid().query(rayAABB, candidates, 0.0f);
+    filterCandidatesByRay(candidates, rayOrigin, rayDir, maxDistance, rayHit, rayTHit);
+
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!rayHit[i]) continue;
+        engine::Collider::Collision collision = testRayCollision(candidates.colliders[i], rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
         if (collision.other) {
             outColliders.push_back(collision);
         }
@@ -228,11 +252,16 @@ size_t engine::Collider::raycast(EntityManager* entityManager, const glm::vec3& 
         .min = glm::min(rayOrigin, rayEnd) - glm::vec3(margin),
         .max = glm::max(rayOrigin, rayEnd) + glm::vec3(margin)
     };
-    static thread_local std::vector<engine::Collider*> candidates;
-    entityManager->getSpatialGrid().query(rayAABB, candidates);
-    
-    for (Collider* collider : candidates) {
-        engine::Collider::Collision collision = testRayCollision(collider, rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
+    static thread_local engine::SpatialGrid::Candidates candidates;
+    static thread_local std::vector<uint8_t> rayHit;
+    static thread_local std::vector<float> rayTHit;
+    entityManager->getSpatialGrid().query(rayAABB, candidates, 0.0f);
+    filterCandidatesByRay(candidates, rayOrigin, rayDir, maxDistance, rayHit, rayTHit);
+
+    const size_t n = candidates.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!rayHit[i]) continue;
+        engine::Collider::Collision collision = testRayCollision(candidates.colliders[i], rayAABB, rayOrigin, rayDir, maxDistance, ignoreCollider);
         if (collision.other) {
             hitCount++;
         }
@@ -353,7 +382,7 @@ std::pair<float, float> engine::Collider::projectVertsOntoAxis(std::span<const g
     return { min, max };
 }
 
-bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB, std::span<const glm::vec2> aSelfProjOnAxesA, std::span<const glm::vec2> bSelfProjOnAxesB) {
+bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const glm::vec3> vertsB, std::span<const glm::vec3> edgesA, std::span<const glm::vec3> edgesB, std::span<const glm::vec3> axesA, std::span<const glm::vec3> axesB, CollisionMTV& out, const glm::vec3 centerDelta, const glm::vec3& offsetA, const glm::vec3& offsetB, std::span<const glm::vec2> aSelfProjOnAxesA, std::span<const glm::vec2> bSelfProjOnAxesB, ColliderVertSoA aSoa, ColliderVertSoA bSoa) {
     static thread_local std::vector<glm::vec3> axes;
     axes.clear();
     axes.reserve(axesA.size() + axesB.size() + 36);
@@ -376,7 +405,6 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
     float minPenetration = std::numeric_limits<float>::max();
     glm::vec3 bestAxis(0.0f);
 
-<<<<<<< Updated upstream
     const bool haveACache = aSelfProjOnAxesA.size() == naxA;
     const bool haveBCache = bSelfProjOnAxesB.size() == naxB;
 
@@ -385,6 +413,14 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
             float shift = glm::dot(offsetA, axis);
             aMin = aSelfProjOnAxesA[i].x + shift;
             aMax = aSelfProjOnAxesA[i].y + shift;
+        } else if (aSoa.x && aSoa.paddedCount >= engine::simd::kPad) {
+            const float offProj = glm::dot(offsetA, axis);
+            auto r = engine::simd::projectVertsSoA(
+                aSoa.x, aSoa.y, aSoa.z, aSoa.paddedCount,
+                axis.x, axis.y, axis.z, offProj
+            );
+            aMin = r.min;
+            aMax = r.max;
         } else {
             std::tie(aMin, aMax) = projectVertsOntoAxis(vertsA, axis, offsetA);
         }
@@ -394,72 +430,21 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
             float shift = glm::dot(offsetB, axis);
             bMin = bSelfProjOnAxesB[i - naxA].x + shift;
             bMax = bSelfProjOnAxesB[i - naxA].y + shift;
+        } else if (bSoa.x && bSoa.paddedCount >= engine::simd::kPad) {
+            const float offProj = glm::dot(offsetB, axis);
+            auto r = engine::simd::projectVertsSoA(
+                bSoa.x, bSoa.y, bSoa.z, bSoa.paddedCount,
+                axis.x, axis.y, axis.z, offProj
+            );
+            bMin = r.min;
+            bMax = r.max;
         } else {
             std::tie(bMin, bMax) = projectVertsOntoAxis(vertsB, axis, offsetB);
         }
     };
 
-#if defined(USE_OPENMP)
-    const int m = static_cast<int>(axes.size());
-    if (m == 0) return false;
-    const int totalWork = m * (static_cast<int>(vertsA.size()) + static_cast<int>(vertsB.size()));
-    if (totalWork < 8000) {
-        for (size_t i = 0; i < axes.size(); ++i) {
-            const glm::vec3& axis = axes[i];
-            float aMin, aMax, bMin, bMax;
-            projectA(i, axis, aMin, aMax);
-            projectB(i, axis, bMin, bMax);
-            float overlap = glm::min(aMax, bMax) - glm::max(aMin, bMin);
-            if (overlap <= 1e-6f) {
-                return false;
-            }
-            if (overlap < minPenetration) {
-                minPenetration = overlap;
-                bestAxis = axis;
-            }
-        }
-        if (minPenetration <= 1e-6f) {
-            return false;
-        }
-    } else {
-        std::atomic<bool> separated{false};
-        const glm::vec3* axesPtr = axes.data();
-        #pragma omp parallel
-        {
-            float localMin = std::numeric_limits<float>::max();
-            int localIdx = -1;
-
-            #pragma omp for schedule(static) nowait
-            for (int i = 0; i < m; ++i) {
-                if (separated.load(std::memory_order_relaxed)) continue;
-                const glm::vec3& axis = axesPtr[static_cast<size_t>(i)];
-                float aMin, aMax, bMin, bMax;
-                projectA(static_cast<size_t>(i), axis, aMin, aMax);
-                projectB(static_cast<size_t>(i), axis, bMin, bMax);
-                float overlap = glm::min(aMax, bMax) - glm::max(aMin, bMin);
-                if (overlap <= 1e-6f) {
-                    separated.store(true, std::memory_order_relaxed);
-                } else if (overlap < localMin) {
-                    localMin = overlap;
-                    localIdx = i;
-                }
-            }
-            #pragma omp critical
-            {
-                if (localIdx >= 0 && localMin < minPenetration) {
-                    minPenetration = localMin;
-                    bestAxis = axesPtr[static_cast<size_t>(localIdx)];
-                }
-            }
-        }
-        if (separated.load() || minPenetration <= 1e-6f) return false;
-    }
-#else
     for (size_t i = 0; i < axes.size(); ++i) {
         const glm::vec3& axis = axes[i];
-=======
-    for (const auto& axis : axes) {
->>>>>>> Stashed changes
         float aMin, aMax, bMin, bMax;
         projectA(i, axis, aMin, aMax);
         projectB(i, axis, bMin, bMax);
@@ -652,6 +637,7 @@ bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, con
     std::span<const glm::vec3> faceAxesB;
     std::span<const glm::vec3> edgeAxesB;
     std::span<const glm::vec2> bSelfProj;
+    ColliderVertSoA bSoa{};
     glm::vec3 centerB(0.0f);
     switch (other.getColliderType()) {
         case ColliderType::OBB: {
@@ -676,6 +662,8 @@ bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, con
                 faceAxesB = cvx.getFaceAxesCached();
                 edgeAxesB = cvx.getEdgeAxesCached();
                 bSelfProj = cvx.getFaceAxisSelfProjCached();
+                bSoa = { cvx.getWorldVertsX().data(), cvx.getWorldVertsY().data(),
+                         cvx.getWorldVertsZ().data(), cvx.getWorldVertsX().size() };
                 centerB = cvx.getWorldCenter();
             } else {
                 cornersB = getCornersFromAABB(otherAABB);
@@ -689,7 +677,7 @@ bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, con
         default:
             return false;
     }
-    return Collider::satMTV(cornersA, vertsB, faceAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj);
+    return Collider::satMTV(cornersA, vertsB, faceAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj, {}, bSoa);
 }
 
 bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
@@ -734,6 +722,7 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
     std::span<const glm::vec3> faceAxesB;
     std::span<const glm::vec3> edgeAxesB;
     std::span<const glm::vec2> bSelfProj;
+    ColliderVertSoA bSoa{};
     glm::vec3 centerB(0.0f);
 
     switch (other.getColliderType()) {
@@ -762,6 +751,8 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
                 faceAxesB = cvx.getFaceAxesCached();
                 edgeAxesB = cvx.getEdgeAxesCached();
                 bSelfProj = cvx.getFaceAxisSelfProjCached();
+                bSoa = { cvx.getWorldVertsX().data(), cvx.getWorldVertsY().data(),
+                         cvx.getWorldVertsZ().data(), cvx.getWorldVertsX().size() };
                 centerB = cvx.getWorldCenter();
             } else {
                 cornersB = getCornersFromAABB(otherAABB);
@@ -773,7 +764,7 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
             break;
         }
     }
-    return Collider::satMTV(*cornersAPtr, vertsB, *axesAPtr, edgeAxesB, *axesAPtr, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj);
+    return Collider::satMTV(*cornersAPtr, vertsB, *axesAPtr, edgeAxesB, *axesAPtr, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj, {}, bSoa);
 }
 
 bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
@@ -793,6 +784,7 @@ bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& ou
     std::span<const glm::vec3> faceAxesB;
     std::span<const glm::vec3> edgeAxesB;
     std::span<const glm::vec2> bSelfProj;
+    ColliderVertSoA bSoa{};
     glm::vec3 centerB(0.0f);
     const glm::mat4& otherTransform = other.getWorldTransform();
     switch (other.getColliderType()) {
@@ -823,6 +815,8 @@ bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& ou
                 faceAxesB = cvx.faceAxesCached;
                 edgeAxesB = cvx.edgeAxesCached;
                 bSelfProj = cvx.faceAxisSelfProjCached;
+                bSoa = { cvx.worldVertsX.data(), cvx.worldVertsY.data(),
+                         cvx.worldVertsZ.data(), cvx.worldVertsX.size() };
                 centerB = cvx.worldCenter;
             } else {
                 cornersB = getCornersFromAABB(otherAABB);
@@ -833,7 +827,9 @@ bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& ou
             break;
         }
     }
-    return Collider::satMTV(worldVerts, vertsB, edgeAxesCached, edgeAxesB, faceAxesCached, faceAxesB, out, centerA - centerB, glm::vec3(deltaTransform[3]), glm::vec3(otherTransform[3]), faceAxisSelfProjCached, bSelfProj);
+    ColliderVertSoA aSoa{ worldVertsX.data(), worldVertsY.data(),
+                          worldVertsZ.data(), worldVertsX.size() };
+    return Collider::satMTV(worldVerts, vertsB, edgeAxesCached, edgeAxesB, faceAxesCached, faceAxesB, out, centerA - centerB, glm::vec3(deltaTransform[3]), glm::vec3(otherTransform[3]), faceAxisSelfProjCached, bSelfProj, aSoa, bSoa);
 }
 
 void engine::ConvexHullCollider::ensureCached() {
@@ -847,10 +843,10 @@ void engine::ConvexHullCollider::ensureCached() {
     if (worldVerts.empty()) {
         glm::vec3 p = glm::vec3(worldTransform[3]);
         cachedAABB = AABB{p - glm::vec3(0.001f), p + glm::vec3(0.001f)};
-<<<<<<< Updated upstream
         faceAxisSelfProjCached.clear();
-=======
->>>>>>> Stashed changes
+        worldVertsX.clear();
+        worldVertsY.clear();
+        worldVertsZ.clear();
     } else {
         glm::vec3 minW(std::numeric_limits<float>::max());
         glm::vec3 maxW(std::numeric_limits<float>::lowest());
@@ -859,7 +855,6 @@ void engine::ConvexHullCollider::ensureCached() {
             maxW = glm::max(maxW, w);
         }
         cachedAABB = AABB{minW, maxW};
-<<<<<<< Updated upstream
 
         faceAxisSelfProjCached.resize(faceAxesCached.size());
         for (size_t a = 0; a < faceAxesCached.size(); ++a) {
@@ -872,15 +867,9 @@ void engine::ConvexHullCollider::ensureCached() {
                 if (p > pMax) pMax = p;
             }
             faceAxisSelfProjCached[a] = glm::vec2(pMin, pMax);
-=======
-    }
+        }
 
-    const size_t nReal = worldVerts.size();
-    if (nReal == 0) {
-        worldVertsX.clear();
-        worldVertsY.clear();
-        worldVertsZ.clear();
-    } else {
+        const size_t nReal = worldVerts.size();
         const size_t nPad = ((nReal + kSoAPad - 1) / kSoAPad) * kSoAPad;
         worldVertsX.resize(nPad);
         worldVertsY.resize(nPad);
@@ -897,7 +886,6 @@ void engine::ConvexHullCollider::ensureCached() {
             worldVertsX[i] = padX;
             worldVertsY[i] = padY;
             worldVertsZ[i] = padZ;
->>>>>>> Stashed changes
         }
     }
 
