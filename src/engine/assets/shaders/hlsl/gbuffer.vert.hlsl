@@ -1,28 +1,5 @@
 #pragma pack_matrix(row_major)
 
-float3x3 inverse3x3(float3x3 m) {
-    float3 c0 = m[0];
-    float3 c1 = m[1];
-    float3 c2 = m[2];
-    
-    float3 t0 = float3(c1.x, c2.x, c0.x);
-    float3 t1 = float3(c1.y, c2.y, c0.y);
-    float3 t2 = float3(c1.z, c2.z, c0.z);
-    
-    float3 m0 = t1 * c2.zxy - t2 * c1.zxy;
-    float3 m1 = t2 * c0.zxy - t0 * c2.zxy;
-    float3 m2 = t0 * c1.zxy - t1 * c0.zxy;
-    
-    float det = dot(c0, m0);
-    float invDet = 1.0 / det;
-    
-    return float3x3(
-        m0 * invDet,
-        m1 * invDet,
-        m2 * invDet
-    );
-}
-
 struct VSOutput {
     float4 gl_Position : SV_Position;
     [[vk::location(0)]] float3 fragPosition : TEXCOORD0;

@@ -73,7 +73,8 @@ StructuredBuffer<ProbeSHData> irradianceProbeSH;
 struct PushConstants {
     float4x4 invView;
     float4x4 invProj;
-    float4 camPos; // w = bit 0, 1 = 3x3 bilateral, 0 = single bilinear
+    float4 camPos; // w = flag bits: bit 0 = 3x3 bilateral volumetric upsample, bit 1 = AO enabled, bit 2 = particles present, bit 3 = volumetrics present
+    float4 indirectCutoffs; // x = metallic cutoff, y = roughness cutoff
 };
 [[vk::push_constant]] PushConstants pc;
 
@@ -93,8 +94,12 @@ float linearViewZ(float ndcZ) {
 }
 
 float4 sampleVolumetricUpsampled(float2 uv, float refNdcDepth) {
+    float4 cheap = volumetricTexture.SampleLevel(sampleSampler, uv, 0);
     if ((uint(pc.camPos.w) & 1u) == 0u) {
-        return volumetricTexture.SampleLevel(sampleSampler, uv, 0);
+        return cheap;
+    }
+    if (max(cheap.a, max(cheap.r, max(cheap.g, cheap.b))) < 1e-9) {
+        return cheap;
     }
     uint2 vDim;
     volumetricTexture.GetDimensions(vDim.x, vDim.y);
@@ -130,7 +135,10 @@ float4 sampleVolumetricUpsampled(float2 uv, float refNdcDepth) {
 float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness) {
     cosTheta = clamp(cosTheta, 0.0, 1.0);
     float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
-    return F0 + (max(oneMinusR, F0) - F0) * pow(1.0 - cosTheta, 5.0);
+    float y = 1.0 - cosTheta;
+    float y2 = y * y;
+    float y5 = y2 * y2 * y;
+    return F0 + (max(oneMinusR, F0) - F0) * y5;
 }
 
 float distributionGGX(float3 N, float3 H, float roughness) {
@@ -159,33 +167,26 @@ float geometrySmith(float NdotV, float NdotL, float roughness) {
     return ggx1 * ggx2;
 }
 
-float specularAntiAliasing(float3 N, float roughness) {
-    float3 dndu = ddx(N);
-    float3 dndv = ddy(N);
-    float variance = dot(dndu, dndu) + dot(dndv, dndv);
-    float kernelRoughness = min(2.0 * variance, 1.0);
-    return clamp(roughness + kernelRoughness, 0.0, 1.0);
-}
-
-void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, out float3 diffuseIrr, out float3 specularIrr) {
+void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, bool doDiffuse, bool doSpecular, out float3 diffuseIrr, out float3 specularIrr) {
     diffuseIrr = float3(0.0, 0.0, 0.0);
     specularIrr = float3(0.0, 0.0, 0.0);
+    if (!doDiffuse && !doSpecular) return;
     uint numProbes = irradianceProbesUBO.numProbes.x;
     float totalWeightDiffuse = 0.0001;
     float totalWeightSpecular = 0.0001;
-    
+
     float3 diffuseN = float3(diffuseDir.z, diffuseDir.x, diffuseDir.y);
     float3 specularN = float3(specularDir.z, specularDir.x, specularDir.y);
-    
+
     for (uint i = 0; i < numProbes; ++i) {
         float3 probePos = irradianceProbesUBO.probes[i].position.xyz;
         float probeRadius = irradianceProbesUBO.probes[i].position.w;
         float dist = length(fragPos - probePos);
-        
+
         if (dist <= probeRadius) {
             float t = saturate(1.0 - dist / probeRadius);
             float weight = t * t;
-            
+
             float3 L00 = irradianceProbeSH[i].coeffs[0].xyz;
             float3 L1m1 = irradianceProbeSH[i].coeffs[1].xyz;
             float3 L10 = irradianceProbeSH[i].coeffs[2].xyz;
@@ -195,75 +196,85 @@ void evaluateIrradiance(float3 diffuseDir, float3 specularDir, float3 fragPos, o
             float3 L20 = irradianceProbeSH[i].coeffs[6].xyz;
             float3 L21 = irradianceProbeSH[i].coeffs[7].xyz;
             float3 L22 = irradianceProbeSH[i].coeffs[8].xyz;
-            
+
             const float c1 = 0.429043;
             const float c2 = 0.511664;
             const float c3 = 0.743125;
             const float c4 = 0.886227;
             const float c5 = 0.247708;
-            
-            float3 shSumDiffuse = c4 * L00
-                         + 2.0 * c2 * (L11 * diffuseN.x + L1m1 * diffuseN.y + L10 * diffuseN.z)
-                         + 2.0 * c1 * (L2m2 * diffuseN.x * diffuseN.y + L21 * diffuseN.x * diffuseN.z + L2m1 * diffuseN.y * diffuseN.z)
-                         + c3 * L20 * diffuseN.z * diffuseN.z
-                         + c1 * L22 * (diffuseN.x * diffuseN.x - diffuseN.y * diffuseN.y)
-                         - c5 * L20;
-            diffuseIrr += shSumDiffuse * weight;
-            totalWeightDiffuse += weight;
 
-            float3 shSumSpecular = c4 * L00
-                         + 2.0 * c2 * (L11 * specularN.x + L1m1 * specularN.y + L10 * specularN.z)
-                         + 2.0 * c1 * (L2m2 * specularN.x * specularN.y + L21 * specularN.x * specularN.z + L2m1 * specularN.y * specularN.z)
-                         + c3 * L20 * specularN.z * specularN.z
-                         + c1 * L22 * (specularN.x * specularN.x - specularN.y * specularN.y)
-                         - c5 * L20;
-            specularIrr += shSumSpecular * weight;
-            totalWeightSpecular += weight;
+            if (doDiffuse) {
+                float3 shSumDiffuse = c4 * L00
+                             + 2.0 * c2 * (L11 * diffuseN.x + L1m1 * diffuseN.y + L10 * diffuseN.z)
+                             + 2.0 * c1 * (L2m2 * diffuseN.x * diffuseN.y + L21 * diffuseN.x * diffuseN.z + L2m1 * diffuseN.y * diffuseN.z)
+                             + c3 * L20 * diffuseN.z * diffuseN.z
+                             + c1 * L22 * (diffuseN.x * diffuseN.x - diffuseN.y * diffuseN.y)
+                             - c5 * L20;
+                diffuseIrr += shSumDiffuse * weight;
+                totalWeightDiffuse += weight;
+            }
+
+            if (doSpecular) {
+                float3 shSumSpecular = c4 * L00
+                             + 2.0 * c2 * (L11 * specularN.x + L1m1 * specularN.y + L10 * specularN.z)
+                             + 2.0 * c1 * (L2m2 * specularN.x * specularN.y + L21 * specularN.x * specularN.z + L2m1 * specularN.y * specularN.z)
+                             + c3 * L20 * specularN.z * specularN.z
+                             + c1 * L22 * (specularN.x * specularN.x - specularN.y * specularN.y)
+                             - c5 * L20;
+                specularIrr += shSumSpecular * weight;
+                totalWeightSpecular += weight;
+            }
         }
     }
-    diffuseIrr /= totalWeightDiffuse;
-    specularIrr /= totalWeightSpecular;
-    diffuseIrr = max(diffuseIrr, float3(0.0, 0.0, 0.0));
-    specularIrr = max(specularIrr, float3(0.0, 0.0, 0.0));
+    if (doDiffuse) {
+        diffuseIrr = max(diffuseIrr / totalWeightDiffuse, float3(0.0, 0.0, 0.0));
+    }
+    if (doSpecular) {
+        specularIrr = max(specularIrr / totalWeightSpecular, float3(0.0, 0.0, 0.0));
+    }
 }
 
 float4 main(VSOutput input) : SV_Target {
+    float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
     float4 albedoSample = gBufferAlbedo.Sample(sampleSampler, input.fragTexCoord);
+    uint flags = uint(pc.camPos.w);
+    bool aoEnabled = (flags & 2u) != 0u;
+    bool hasParticles = (flags & 4u) != 0u;
+    bool hasVolumetrics = (flags & 8u) != 0u;
+    float ao = aoEnabled ? aoTexture.Sample(sampleSampler, input.fragTexCoord) : 1.0;
+
+    if (depth >= 0.9999) {
+        float4 particleColor = hasParticles ? particleTexture.Sample(sampleSampler, input.fragTexCoord) : float4(0.0, 0.0, 0.0, 0.0);
+        float4 volumetricColor = hasVolumetrics ? sampleVolumetricUpsampled(input.fragTexCoord, depth) : float4(0.0, 0.0, 0.0, 0.0);
+        float3 result = albedoSample.rgb * ao + particleColor.rgb * particleColor.a + volumetricColor.rgb;
+        return float4(result, particleColor.a + volumetricColor.a);
+    }
+
     float3 rawNormal = gBufferNormal.Sample(sampleSampler, input.fragTexCoord).xyz * 2.0 - 1.0;
     float normalLen = length(rawNormal);
     float3 N = (normalLen > 0.001) ? (rawNormal / normalLen) : float3(0.0, 1.0, 0.0);
     float3 materialSample = gBufferMaterial.Sample(sampleSampler, input.fragTexCoord).rgb;
     float metallic = materialSample.r;
     float baseRoughness = materialSample.g;
-    float depth = gBufferDepth.Sample(sampleSampler, input.fragTexCoord);
-    float ao = aoTexture.Sample(sampleSampler, input.fragTexCoord);
-    if (depth >= 0.9999) {
-        float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
-        float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
-        float3 result = albedoSample.rgb * ao + particleColor.rgb * particleColor.a + volumetricColor.rgb;
-        return float4(result, particleColor.a + volumetricColor.a);
-    }
+
     float3 fragPos = reconstructPosition(input.fragTexCoord, depth);
     float3 toCamera = pc.camPos.xyz - fragPos;
     float camDist = length(toCamera);
     float3 V = (camDist > 0.001) ? (toCamera / camDist) : float3(0.0, 1.0, 0.0);
-    float3 geomNormal = cross(ddx(fragPos), ddy(fragPos));
-    if (dot(geomNormal, geomNormal) > 1e-10) {
-        geomNormal = normalize(geomNormal);
-    } else {
-        geomNormal = N;
-    }
-    if (dot(geomNormal, N) < 0.0) {
-        geomNormal = -geomNormal;
-    }
-    float roughness = specularAntiAliasing(N, baseRoughness);
-    roughness = clamp(roughness, 0.05, 1.0);
-    float dNdx = length(ddx(N));
-    float dNdy = length(ddy(N));
+
+    float3 dndx = ddx(N);
+    float3 dndy = ddy(N);
+    float variance = dot(dndx, dndx) + dot(dndy, dndy);
+    float kernelRoughness = min(2.0 * variance, 1.0);
+    float roughness = clamp(baseRoughness + kernelRoughness, 0.05, 1.0);
+    float dNdx = length(dndx);
+    float dNdy = length(dndy);
     float dVdx = length(ddx(V));
     float dVdy = length(ddy(V));
     float sigma = max(max(dNdx, dNdy), max(dVdx, dVdy));
     roughness = max(roughness, sigma);
+
+    float NdotV = max(dot(N, V), 0.0);
     uint numLights = lightsUBO.numPointLights.x;
     float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedoSample.rgb, metallic);
     float3 Lo = float3(0.0, 0.0, 0.0);
@@ -285,16 +296,21 @@ float4 main(VSOutput input) : SV_Target {
         if (hLen < 0.001) {
             continue;
         }
-        H = H / hLen;        
+        H = H / hLen;
         float d2 = distance * distance;
         float r0 = lightRadius * 0.1;
         float r02 = r0 * r0;
-        float windowFalloff = saturate(1.0 - pow(distance / lightRadius, 4.0));
+        float ratio = distance / lightRadius;
+        float ratio2 = ratio * ratio;
+        float ratio4 = ratio2 * ratio2;
+        float windowFalloff = saturate(1.0 - ratio4);
         float attenuation = (r02 / (d2 + r02)) * windowFalloff * windowFalloff;
-        
+        if (attenuation * intensity < 1e-5) {
+            continue;
+        }
+
         float3 radiance = lightColor * intensity * attenuation;
         float NdotL = max(dot(N, L), 0.0);
-        float NdotV = max(dot(N, V), 0.0);
 
         float3 F = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, roughness);
         float D = distributionGGX(N, H, roughness);
@@ -308,43 +324,51 @@ float4 main(VSOutput input) : SV_Target {
 
         bool hasShadow = (shadowIndex != INVALID_SHADOW_INDEX && light.shadowData.y != 0 && shadowIndex < 64u);
         float shadow = hasShadow
-            ? shadowTexture.Sample(sampleSampler, float3(input.fragTexCoord, float(shadowIndex)))
+            ? shadowTexture.SampleLevel(sampleSampler, float3(input.fragTexCoord, float(shadowIndex)), 0)
             : 1.0;
 
         float3 contribution = (diffuse + specular) * radiance * NdotL * shadow;
         contribution = clamp(contribution, float3(0.0, 0.0, 0.0), float3(100.0, 100.0, 100.0));
         Lo += contribution;
     }
-    float NdotV = max(dot(N, V), 0.0);
-    float3 FIndirect = fresnelSchlickRoughness(NdotV, F0, roughness);
-    float3 kDIndirect = (1.0 - FIndirect) * (1.0 - metallic);
-    
-    float3 R = reflect(-V, N);
-    
-    float3 dominantDir = lerp(R, N, roughness * roughness);
-    float3 irradiance = float3(0.0, 0.0, 0.0);
-    float3 specularIrradiance = float3(0.0, 0.0, 0.0);
+    bool doIndirectDiffuse = metallic < pc.indirectCutoffs.x;
+    bool doIndirectSpecular = roughness < pc.indirectCutoffs.y;
+    if (doIndirectDiffuse || doIndirectSpecular) {
+        float3 FIndirect = fresnelSchlickRoughness(NdotV, F0, roughness);
+        float3 R = reflect(-V, N);
+        float3 dominantDir = lerp(R, N, roughness * roughness);
+        float3 irradiance = float3(0.0, 0.0, 0.0);
+        float3 specularIrradiance = float3(0.0, 0.0, 0.0);
 
-    evaluateIrradiance(N, dominantDir, fragPos, irradiance, specularIrradiance);
-    
-    float3 indirectDiffuse = kDIndirect * irradiance * albedoSample.rgb;
-    float shSpecularValidity = roughness * roughness;
-    
-    float2 envBRDF = float2(1.0 - roughness, roughness) * FIndirect.r;
-    float3 specularScale = FIndirect * envBRDF.x + envBRDF.y;
-    
-    float specularAttenuation = lerp(shSpecularValidity, 1.0, roughness);
-    float3 indirectSpecular = specularScale * specularIrradiance * specularAttenuation;
-    
-    Lo += indirectDiffuse + indirectSpecular;
+        evaluateIrradiance(N, dominantDir, fragPos, doIndirectDiffuse, doIndirectSpecular, irradiance, specularIrradiance);
+
+        if (doIndirectDiffuse) {
+            float3 kDIndirect = (1.0 - FIndirect) * (1.0 - metallic);
+            Lo += kDIndirect * irradiance * albedoSample.rgb;
+        }
+        if (doIndirectSpecular) {
+            float shSpecularValidity = roughness * roughness;
+            float2 envBRDF = float2(1.0 - roughness, roughness) * FIndirect.r;
+            float3 specularScale = FIndirect * envBRDF.x + envBRDF.y;
+            float specularAttenuation = lerp(shSpecularValidity, 1.0, roughness);
+            Lo += specularScale * specularIrradiance * specularAttenuation;
+        }
+    }
 
     if (any(isnan(Lo)) || any(isinf(Lo))) {
         Lo = albedoSample.rgb * 0.1;
     }
-    Lo *= ao;
-    float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
-    float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
-    Lo += particleColor.rgb * particleColor.a + volumetricColor.rgb;
+    if (aoEnabled) {
+        Lo *= ao;
+    }
+    if (hasParticles) {
+        float4 particleColor = particleTexture.Sample(sampleSampler, input.fragTexCoord);
+        Lo += particleColor.rgb * particleColor.a;
+    }
+    if (hasVolumetrics) {
+        float4 volumetricColor = sampleVolumetricUpsampled(input.fragTexCoord, depth);
+        Lo += volumetricColor.rgb;
+    }
     float alphaOut = max(max(Lo.r, Lo.g), max(Lo.b, albedoSample.a));
     return float4(Lo, alphaOut);
 }

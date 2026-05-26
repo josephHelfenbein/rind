@@ -4,7 +4,8 @@ struct VSOutput {
 
 struct PushConstants {
     float exposure;
-    uint pad[3];
+    uint flags; // bit 0 = SSR enabled
+    uint pad[2];
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -88,9 +89,9 @@ float3 triangularDither(float2 pixel) {
     return float3(r, g, b);
 }
 
-float4 main(VSOutput input) : SV_Target {
+float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 scene = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
-    float4 ssr = ssrTexture.Sample(sampleSampler, input.fragTexCoord);
+    float4 ssr = ((pc.flags & 1u) != 0u) ? ssrTexture.Sample(sampleSampler, input.fragTexCoord) : float4(0.0, 0.0, 0.0, 0.0);
     float3 bloom = bloomTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     float3 flare = flareTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
 
@@ -103,10 +104,7 @@ float4 main(VSOutput input) : SV_Target {
     combined = agxEotf(agxLookPunchy(agx(combined)));
     combined = min((combined - 0.5) * 1.05 + 0.5, 1.0); // monitor used during testing had high contrast
 
-    uint texW, texH;
-    sceneTexture.GetDimensions(texW, texH);
-    float2 pixel = input.fragTexCoord * float2(texW, texH);
-    combined += triangularDither(pixel) * (1.0 / 255.0);
+    combined += triangularDither(fragCoord.xy) * (1.0 / 255.0);
 
     return float4(combined, 1.0);
 }

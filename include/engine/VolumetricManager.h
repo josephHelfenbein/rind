@@ -88,6 +88,8 @@ namespace engine {
         void updateAll(float deltaTime);
         void renderVolumetrics(VkCommandBuffer commandBuffer, uint32_t currentFrame);
 
+        uint32_t getVisibleVolumetrics() const { return visibleVolumetrics; }
+
     private:
         engine::Renderer* renderer;
 

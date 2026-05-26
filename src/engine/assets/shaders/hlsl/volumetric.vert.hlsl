@@ -60,7 +60,7 @@ VSOutput main(float3 localPos : POSITION, uint instanceID : SV_InstanceID) {
     output.maxSteps = (uint) lerp(maxMaxSteps, minMaxSteps, lodT);
     output.baseDivs = lerp(maxBaseDivs, minBaseDivs, lodT);
     output.fbmOctaves = (uint) lerp(maxFbmOctaves, 1.0, lodT);
-    output.doRefinement = lodT < 0.5 ? 1u : 0u;
+    output.doRefinement = (quality >= 0.5 && lodT < 0.5) ? 1u : 0u;
     output.ageFade = x * x * (1.0 + 0.2 * x);
     output.earlyExitAlpha = lerp(0.95, 0.99, quality);
     output.doRejitter = quality >= 0.5 ? 1u : 0u;

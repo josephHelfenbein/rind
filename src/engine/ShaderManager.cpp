@@ -1609,11 +1609,23 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     engine::Camera* camera = renderer->getEntityManager()->getCamera();
                     if (camera) {
-                        float volumetricQuality = renderer->getSettingsManager()->getSettings()->volumetricQuality;
+                        const auto* settings = renderer->getSettingsManager()->getSettings();
+                        float volumetricQuality = settings->volumetricQuality;
+                        float ssrQuality = settings->ssrQuality;
+                        float ssrT = glm::clamp(ssrQuality / 3.0f, 0.0f, 1.0f);
+                        float cutoff = glm::mix(0.75f, 1.0f, ssrT);
+                        uint32_t flags = 0u;
+                        if (volumetricQuality >= 2.0f) flags |= 1u;
+                        if (settings->aoMode != 0u) flags |= 2u;
+                        ParticleManager* particleManager = renderer->getParticleManager();
+                        if (particleManager && particleManager->getParticleCount() > 0u) flags |= 4u;
+                        VolumetricManager* volumetricManager = renderer->getVolumetricManager();
+                        if (volumetricManager && volumetricManager->getVisibleVolumetrics() > 0u) flags |= 8u;
                         LightingPC pc = {
                             .invView = camera->getInvViewMatrix(),
                             .invProj = camera->getInvProjectionMatrix(),
-                            .camPos = glm::vec4(camera->getWorldPosition(), (volumetricQuality >= 2.0f) ? 1u : 0u)
+                            .camPos = glm::vec4(camera->getWorldPosition(), static_cast<float>(flags)),
+                            .indirectCutoffs = glm::vec4(cutoff, cutoff, 0.0f, 0.0f)
                         };
                         vkCmdPushConstants(
                             cmd,
@@ -1786,7 +1798,7 @@ void engine::ShaderManager::createDefaultShaders() {
     }
 
     // Bloom downsample chain
-    auto addBloomDownShader = [&](const char* name, std::shared_ptr<PassInfo> pass, const char* srcShader, const char* srcAttachment) {
+    auto addBloomDownShader = [&](const char* name, std::shared_ptr<PassInfo> pass, const char* srcShader, const char* srcAttachment, uint32_t srcDivider) {
         GraphicsShader shader = {
             .name = name,
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
@@ -1804,22 +1816,33 @@ void engine::ShaderManager::createDefaultShaders() {
                 .enableDepth = false,
                 .passInfo = pass,
                 .colorAttachmentCount = 1,
+                .fillPushConstants = [srcDivider](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    VkExtent2D ext = renderer->getSwapChainExtent();
+                    BloomPC pc = {
+                        .halfPixel = glm::vec2(
+                            static_cast<float>(srcDivider) / static_cast<float>(ext.width),
+                            static_cast<float>(srcDivider) / static_cast<float>(ext.height))
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(BloomPC), &pc);
+                },
                 .inputBindings = {
                     { 0, srcShader, srcAttachment }
                 }
             }
         };
+        shader.config.setPushConstant<BloomPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     };
-    addBloomDownShader("bloomdown1", bloomDown1Pass, "bloom", "BloomColor");
-    addBloomDownShader("bloomdown2", bloomDown2Pass, "bloomdown1", "BloomDown1Color");
-    addBloomDownShader("bloomdown3", bloomDown3Pass, "bloomdown2", "BloomDown2Color");
+    addBloomDownShader("bloomdown1", bloomDown1Pass, "bloom", "BloomColor", 2);
+    addBloomDownShader("bloomdown2", bloomDown2Pass, "bloomdown1", "BloomDown1Color", 4);
+    addBloomDownShader("bloomdown3", bloomDown3Pass, "bloomdown2", "BloomDown2Color", 8);
 
     // Bloom upsample chain
     auto addBloomUpShader = [&](const char* name, std::shared_ptr<PassInfo> pass,
                                 const char* smallerShader, const char* smallerAttachment,
-                                const char* sameSizeShader, const char* sameSizeAttachment) {
+                                const char* sameSizeShader, const char* sameSizeAttachment,
+                                uint32_t smallerDivider) {
         GraphicsShader shader = {
             .name = name,
             .vertex = { shaderPath("rect.vert"), VK_SHADER_STAGE_VERTEX_BIT },
@@ -1838,17 +1861,27 @@ void engine::ShaderManager::createDefaultShaders() {
                 .enableDepth = false,
                 .passInfo = pass,
                 .colorAttachmentCount = 1,
+                .fillPushConstants = [smallerDivider](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    VkExtent2D ext = renderer->getSwapChainExtent();
+                    BloomPC pc = {
+                        .halfPixel = glm::vec2(
+                            static_cast<float>(smallerDivider) / static_cast<float>(ext.width),
+                            static_cast<float>(smallerDivider) / static_cast<float>(ext.height))
+                    };
+                    vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(BloomPC), &pc);
+                },
                 .inputBindings = {
                     { 0, smallerShader,  smallerAttachment },
                     { 1, sameSizeShader, sameSizeAttachment }
                 }
             }
         };
+        shader.config.setPushConstant<BloomPC>(VK_SHADER_STAGE_FRAGMENT_BIT);
         shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     };
-    addBloomUpShader("bloomup2", bloomUp2Pass, "bloomdown3", "BloomDown3Color", "bloomdown2", "BloomDown2Color");
-    addBloomUpShader("bloomup1", bloomUp1Pass, "bloomup2", "BloomUp2Color", "bloomdown1", "BloomDown1Color");
+    addBloomUpShader("bloomup2", bloomUp2Pass, "bloomdown3", "BloomDown3Color", "bloomdown2", "BloomDown2Color", 16);
+    addBloomUpShader("bloomup1", bloomUp1Pass, "bloomup2", "BloomUp2Color", "bloomdown1", "BloomDown1Color", 8);
 
     // Lens Flare
     {
@@ -1981,8 +2014,11 @@ void engine::ShaderManager::createDefaultShaders() {
                 .passInfo = combinePass,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
+                    uint32_t flags = 0u;
+                    if (renderer->getSettingsManager()->getSettings()->ssrQuality >= 0.5f) flags |= 1u;
                     CombinePC pc = {
-                        .exposure = 1.5f
+                        .exposure = 1.5f,
+                        .flags = flags
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CombinePC), &pc);
                 },

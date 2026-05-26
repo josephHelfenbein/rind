@@ -25,8 +25,7 @@ struct PSOutput {
 
 PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     PSOutput o;
-    float2 screenUV = fragCoord.xy / pc.screenSize;
-    float sceneDepth = gbufferDepth.Sample(gbufferSampler, screenUV);
+    float sceneDepth = gbufferDepth.Load(int3(int2(fragCoord.xy), 0));
     if (sceneDepth < 1.0 && fragCoord.z > sceneDepth) {
         discard;
     }
@@ -35,7 +34,7 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
 
     if (fragColor.a < 0.0) { // trail particle
         float edgeFade = 1.0 - abs(input.uv.x * 2.0 - 1.0);
-        edgeFade = pow(edgeFade, 0.5);
+        edgeFade = sqrt(edgeFade);
         float ageFade = 1.0 - input.age;
         float coreness = pow(edgeFade, lerp(4.0, 8.0, input.age));
         fragColor.rgb = lerp(fragColor.rgb, float3(1.0, 1.0, 1.0), coreness);
@@ -53,10 +52,10 @@ PSOutput main(VSOutput input, float4 fragCoord : SV_Position) {
     float coreFalloff = saturate(1.0 - dist * 1.5);
     float glowFalloff = saturate(1.0 - dist * 0.8);
     float falloff = coreFalloff * 0.35 + glowFalloff * 0.5;
-    falloff = pow(falloff, 1.5);
-    float ageFade = 1.0 - input.age;
-    ageFade = pow(ageFade, 0.5);
-    float coreness = pow(coreFalloff, 4.0);
+    falloff = falloff * sqrt(falloff);
+    float ageFade = sqrt(1.0 - input.age);
+    float coreSq = coreFalloff * coreFalloff;
+    float coreness = coreSq * coreSq;
     fragColor.rgb = lerp(fragColor.rgb, float3(1.0, 1.0, 1.0), coreness);
     fragColor.rgb *= 1.0 + coreFalloff * 2.0;
     fragColor.a *= falloff * ageFade;

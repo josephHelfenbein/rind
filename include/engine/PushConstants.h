@@ -15,7 +15,8 @@ namespace engine {
     struct LightingPC {
         alignas(16) glm::mat4 invView;
         alignas(16) glm::mat4 invProj;
-        alignas(16) glm::vec4 camPos; // w = bit 0, 1 = 3x3 bilateral, 0 = single bilinear
+        alignas(16) glm::vec4 camPos; // w = flag bits: bit 0 = 3x3 bilateral volumetric upsample, bit 1 = AO enabled, bit 2 = particles present, bit 3 = volumetrics present
+        alignas(16) glm::vec4 indirectCutoffs; // x = metallic cutoff, y = roughness cutoff
     };
 
     struct ShadowImagePC {
@@ -128,7 +129,13 @@ namespace engine {
 
     struct CombinePC {
         alignas(4) float exposure;
-        alignas(4) uint32_t pad[3]{0, 0, 0};
+        alignas(4) uint32_t flags; // bit 0 = SSR enabled
+        alignas(4) uint32_t pad[2]{0, 0};
+    };
+
+    struct BloomPC {
+        alignas(8) glm::vec2 halfPixel; // 1 / sourceTextureSize
+        alignas(4) uint32_t pad[2]{0, 0};
     };
 
     struct BlurPC {
