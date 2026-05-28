@@ -18,8 +18,9 @@ export uniform ProjectionRange projectVertsSoA(
         return zero;
     }
 
-    float pmin = 1e30f;
-    float pmax = -1e30f;
+    uniform float p0 = vx[0] * ax + vy[0] * ay + vz[0] * az + off;
+    float pmin = p0;
+    float pmax = p0;
 
     foreach (i = 0 ... n) {
         float p = vx[i] * ax + vy[i] * ay + vz[i] * az + off;
