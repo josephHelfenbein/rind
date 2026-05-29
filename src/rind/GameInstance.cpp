@@ -72,13 +72,18 @@ rind::GameInstance::GameInstance() {
         );
         std::function<void()> settingsCallback = [renderer, logoObject, startButton, quitButton]() {
             renderer->getSettingsManager()->showSettingsUI();
-            renderer->getUIManager()->removeObject(logoObject->getName());
-            renderer->getUIManager()->removeObject(startButton->getName());
-            renderer->getUIManager()->removeObjectDeferred("SettingsButton");
-            renderer->getUIManager()->removeObject(quitButton->getName());
+            auto setTitleButtonsVisible = [renderer, logoObject, startButton, quitButton](bool visible) {
+                logoObject->setEnabled(visible);
+                startButton->setEnabled(visible);
+                quitButton->setEnabled(visible);
+                if (engine::UIObject* settingsBtn = renderer->getUIManager()->getObject("SettingsButton")) {
+                    settingsBtn->setEnabled(visible);
+                }
+            };
+            setTitleButtonsVisible(false);
             renderer->getSettingsManager()->setUIOnClose(
-                [renderer](){
-                    renderer->getSceneManager()->setActiveSceneDeferred(0);
+                [setTitleButtonsVisible](){
+                    setTitleButtonsVisible(true);
                 }
             );
         };
@@ -160,14 +165,14 @@ rind::GameInstance::GameInstance() {
             "titleLight",
             glm::translate(glm::mat4(1.0f), glm::vec3(-3.0f, 3.5f, -4.0f)),
             glm::vec3(1.0f, 0.0f, 0.0f),
-            0.5f,
+            0.7f,
             200.0f
         );
         lightManager->addLight(
             "titleLight2",
             glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 1.0f, 1.0f)),
-            glm::vec3(0.5f, 0.5f, 1.0f),
-            0.85f,
+            glm::vec3(0.25f, 0.25f, 1.0f),
+            0.95f,
             30.0f
         );
         lightManager->addLight(
@@ -175,28 +180,28 @@ rind::GameInstance::GameInstance() {
             glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 9.0f, -30.0f)),
             glm::vec3(1.0f),
             3.5f,
-            70.0f
+            80.0f
         );
         lightManager->addLight(
             "titleLight4",
             glm::translate(glm::mat4(1.0f), glm::vec3(-15.0f, 12.0f, -50.0f)),
             glm::vec3(1.0f),
-            4.0f,
-            100.0f
+            3.0f,
+            80.0f
         );
         lightManager->addLight(
             "titleLight5",
             glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 4.0f, -50.0f)),
             glm::vec3(1.0f),
-            2.0f,
+            1.5f,
             70.0f
         );
         lightManager->addLight(
             "titleLight5",
             glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 2.0f, 0.5f)),
             glm::vec3(1.0f),
-            5.5f,
-            6.0f
+            3.5f,
+            12.0f
         );
         for (int i = -2; i <= 2; i++) {
             for (int j = -2; j <= 2; j++) {

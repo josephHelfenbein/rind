@@ -5,7 +5,7 @@ struct VSOutput {
 struct PushConstants {
     float2 invScreenSize;
     uint flag; // 0 = none, 1 = fxaa, 2 = smaa
-    uint pad;
+    float fadeAmount; // 0 = no fade, 1 = fully black
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -35,13 +35,13 @@ float3 FXAA(float2 uv) {
     float3 rgbNE = sceneTexture.Sample(sampleSampler, saturate(uv + float2(texelSize.x, -texelSize.y))).rgb;
     float3 rgbSW = sceneTexture.Sample(sampleSampler, saturate(uv + float2(-texelSize.x, texelSize.y))).rgb;
     float3 rgbSE = sceneTexture.Sample(sampleSampler, saturate(uv + float2(texelSize.x, texelSize.y))).rgb;
-    float3 rgbM  = sceneTexture.Sample(sampleSampler, uv).rgb;
+    float3 rgbM = sceneTexture.Sample(sampleSampler, uv).rgb;
 
     float lumaNW = dot(rgbNW, luma);
     float lumaNE = dot(rgbNE, luma);
     float lumaSW = dot(rgbSW, luma);
     float lumaSE = dot(rgbSE, luma);
-    float lumaM  = dot(rgbM,  luma);
+    float lumaM = dot(rgbM, luma);
 
     float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
     float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
@@ -53,20 +53,20 @@ float3 FXAA(float2 uv) {
 
     float2 dir;
     dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
-    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+    dir.y = ((lumaNW + lumaSW) - (lumaNE + lumaSE));
 
     float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
     dir = clamp(dir * rcpDirMin,
                 float2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),
-                float2( FXAA_SPAN_MAX,  FXAA_SPAN_MAX)) * texelSize;
+                float2( FXAA_SPAN_MAX, FXAA_SPAN_MAX)) * texelSize;
 
     float3 rgbA = 0.5 * (
         sceneTexture.Sample(sampleSampler, saturate(uv + dir * (1.0 / 3.0 - 0.5))).rgb +
         sceneTexture.Sample(sampleSampler, saturate(uv + dir * (2.0 / 3.0 - 0.5))).rgb);
     float3 rgbB = rgbA * 0.5 + 0.25 * (
         sceneTexture.Sample(sampleSampler, saturate(uv + dir * -0.5)).rgb +
-        sceneTexture.Sample(sampleSampler, saturate(uv + dir *  0.5)).rgb);
+        sceneTexture.Sample(sampleSampler, saturate(uv + dir * 0.5)).rgb);
 
     float lumaB = dot(rgbB, luma);
     if (lumaB < lumaMin || lumaB > lumaMax) {
@@ -87,5 +87,7 @@ float4 main(VSOutput input) : SV_Target {
         sceneColor = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     }
 
-    return lerp(float4(sceneColor, 1.0), uiColor, uiColor.a);
+    float4 composited = lerp(float4(sceneColor, 1.0), uiColor, uiColor.a);
+    composited = float4((composited.rgb - 0.5) * (saturate(pc.fadeAmount) * 2.0 + 1.0) + 0.5, 1.0);
+    return composited;
 }

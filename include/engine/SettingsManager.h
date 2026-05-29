@@ -172,6 +172,46 @@ namespace engine {
             file.close();
         }
 
+        void applySettings(Settings* newSettings) {
+            for (const auto& enumState : this->enumStates) {
+                for (uint32_t i = 0; i < enumState.flags.size(); ++i) {
+                    if (*enumState.flags[i]) {
+                        if (enumState.memberField) tempSettings->*(enumState.memberField) = i;
+                        else if (enumState.extField) *(enumState.extField) = i;
+                        break;
+                    }
+                }
+            }
+            for (const auto& def : defs) {
+                if (def.type == SettingsDefinition::Slider) {
+                    if (def.floatPtr) {
+                        float& value = tempSettings->*(def.floatPtr);
+                        if (def.clampMax > def.clampMin) value = std::clamp(value, def.clampMin, def.clampMax);
+                        if (def.roundOnApply) value = float(static_cast<int>(value + 0.5f));
+                    } else if (def.extFloat && tempExtFloats.count(def.key)) {
+                        float& value = *tempExtFloats[def.key];
+                        if (def.clampMax > def.clampMin) value = std::clamp(value, def.clampMin, def.clampMax);
+                        if (def.roundOnApply) value = float(static_cast<int>(value + 0.5f));
+                        *(def.extFloat) = value;
+                    }
+                } else if (def.type == SettingsDefinition::Bool && def.extBool && tempExtBools.count(def.key)) {
+                    *(def.extBool) = *tempExtBools[def.key];
+                }
+            }
+            Settings prev = *currentSettings;
+            *currentSettings = *newSettings;
+            for (const auto& def : defs) {
+                if (def.onChange) {
+                    def.onChange(&prev, currentSettings, renderer);
+                }
+            }
+            saveSettings();
+            this->hideSettingsUI();
+            if (this->onCloseCallback) {
+                this->onCloseCallback();
+            }
+        }
+
         Settings* getSettings() { return currentSettings; }
 
         void showSettingsUI() {
@@ -331,43 +371,7 @@ namespace engine {
                 "Apply",
                 "",
                 [this]() {
-                    for (const auto& enumState : this->enumStates) {
-                        for (uint32_t i = 0; i < enumState.flags.size(); ++i) {
-                            if (*enumState.flags[i]) {
-                                if (enumState.memberField) tempSettings->*(enumState.memberField) = i;
-                                else if (enumState.extField) *(enumState.extField) = i;
-                                break;
-                            }
-                        }
-                    }
-                    for (const auto& def : defs) {
-                        if (def.type == SettingsDefinition::Slider) {
-                            if (def.floatPtr) {
-                                float& value = tempSettings->*(def.floatPtr);
-                                if (def.clampMax > def.clampMin) value = std::clamp(value, def.clampMin, def.clampMax);
-                                if (def.roundOnApply) value = float(static_cast<int>(value + 0.5f));
-                            } else if (def.extFloat && tempExtFloats.count(def.key)) {
-                                float& value = *tempExtFloats[def.key];
-                                if (def.clampMax > def.clampMin) value = std::clamp(value, def.clampMin, def.clampMax);
-                                if (def.roundOnApply) value = float(static_cast<int>(value + 0.5f));
-                                *(def.extFloat) = value;
-                            }
-                        } else if (def.type == SettingsDefinition::Bool && def.extBool && tempExtBools.count(def.key)) {
-                            *(def.extBool) = *tempExtBools[def.key];
-                        }
-                    }
-                    Settings prev = *currentSettings;
-                    *currentSettings = *tempSettings;
-                    for (const auto& def : defs) {
-                        if (def.onChange) {
-                            def.onChange(&prev, currentSettings, renderer);
-                        }
-                    }
-                    saveSettings();
-                    this->hideSettingsUI();
-                    if (this->onCloseCallback) {
-                        this->onCloseCallback();
-                    }
+                    this->applySettings(this->tempSettings);
                 },
                 Corner::Bottom
             ));
@@ -385,6 +389,44 @@ namespace engine {
 
         void setUIOnClose(std::function<void()> callback) {
             onCloseCallback = callback;
+        }
+
+        void editSingleValue(const std::string& key, uint32_t value) {
+            Settings* singleChangeSettings = new Settings(*currentSettings);
+            for (const auto& def : defs) {
+                if (def.key != key) continue;
+                if (def.type != SettingsDefinition::Enum) return;
+                uint32_t maxIndex = def.enumOptions.empty()
+                    ? 0u
+                    : static_cast<uint32_t>(def.enumOptions.size() - 1);
+                value = std::min(value, maxIndex);
+                uint32_t prev = def.enumPtr
+                    ? (singleChangeSettings->*(def.enumPtr))
+                    : (def.extEnum ? *(def.extEnum) : 0u);
+                if (def.enumPtr) singleChangeSettings->*(def.enumPtr) = value;
+                else if (def.extEnum) *(def.extEnum) = value;
+                if (prev == value) return;
+                for (auto& state : enumStates) {
+                    bool match = (def.enumPtr && state.memberField == def.enumPtr)
+                              || (def.extEnum && state.extField == def.extEnum);
+                    if (!match) continue;
+                    if (value >= state.flags.size()) break;
+                    std::string cbName = def.key + "Option" + std::to_string(value);
+                    UIObject* obj = renderer->getUIManager()->getObject(cbName);
+                    if (obj && obj->getType() == UIType::Checkbox) {
+                        CheckboxObject* cb = static_cast<CheckboxObject*>(obj);
+                        if (!cb->isChecked()) cb->toggle();
+                    } else {
+                        for (size_t i = 0; i < state.flags.size(); ++i) {
+                            *state.flags[i] = (i == value);
+                        }
+                    }
+                    break;
+                }
+                return;
+            }
+            applySettings(singleChangeSettings);
+            delete singleChangeSettings;
         }
 
     private:

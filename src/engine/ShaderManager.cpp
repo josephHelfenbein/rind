@@ -2061,7 +2061,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
-                        .flags = renderer->getSettingsManager()->getSettings()->aaMode
+                        .flags = renderer->getSettingsManager()->getSettings()->aaMode,
+                        .fadeAmount = renderer->getFadeAmount()
                     };
                     vkCmdPushConstants(
                         cmd,
@@ -2110,7 +2111,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
-                        .flags = renderer->getSettingsManager()->getSettings()->aaMode
+                        .flags = renderer->getSettingsManager()->getSettings()->aaMode,
+                        .fadeAmount = renderer->getFadeAmount()
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CompositePC), &pc);
                 },
@@ -2161,7 +2163,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
-                        .flags = renderer->getSettingsManager()->getSettings()->aaMode
+                        .flags = renderer->getSettingsManager()->getSettings()->aaMode,
+                        .fadeAmount = renderer->getFadeAmount()
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CompositePC), &pc);
                 },
@@ -2203,7 +2206,8 @@ void engine::ShaderManager::createDefaultShaders() {
                     VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
-                        .flags = renderer->getSettingsManager()->getSettings()->aaMode
+                        .flags = renderer->getSettingsManager()->getSettings()->aaMode,
+                        .fadeAmount = renderer->getFadeAmount()
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CompositePC), &pc);
                 },

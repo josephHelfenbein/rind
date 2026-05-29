@@ -95,14 +95,14 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 bloom = bloomTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     float3 flare = flareTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
 
-    bloom = bloom * bloom * 0.5;
+    bloom = bloom * bloom * 0.4;
 
     float3 combined = scene + ssr.rgb * ssr.a;
     combined *= pc.exposure;
     combined += bloom;
     combined += flare;
     combined = agxEotf(agxLookPunchy(agx(combined)));
-    combined = min((combined - 0.5) * 1.05 + 0.5, 1.0); // monitor used during testing had high contrast
+    combined = saturate((combined - 0.5) * 1.05 + 0.5); // monitor used during testing had high contrast
 
     combined += triangularDither(fragCoord.xy) * (1.0 / 255.0);
 

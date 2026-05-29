@@ -823,6 +823,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
         
         if (std::holds_alternative<UIObject*>(node)) {
             UIObject* obj = std::get<UIObject*>(node);
+            if (!obj->isEnabled()) return;
             LayoutRect designRect = resolveDesignRect(obj, anchorRect);
             LayoutRect pixelRect = toPixelRect(designRect, glm::vec2(0.0f), layoutScale);
             drawUIObject(obj, pixelRect);

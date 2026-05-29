@@ -202,7 +202,51 @@ void engine::Renderer::initVulkan() {
     createQuadResources();
 }
 
+void engine::Renderer::toggleFullscreen() {
+    if (!settingsManager) return;
+    SettingsManager::Settings* s = settingsManager->getSettings();
+    if (s->screenMode == 2) {
+        s->screenMode = lastNonFullscreenMode;
+    } else {
+        lastNonFullscreenMode = s->screenMode;
+        s->screenMode = 2;
+    }
+    settingsManager->editSingleValue("screenMode", s->screenMode);
+    pendingScreenModeApply = true;
+}
+
+void engine::Renderer::updateFade() {
+    float now = static_cast<float>(glfwGetTime());
+    float dt = now - fadeLastTime;
+    fadeLastTime = now;
+    if (dt > fadeDurationSeconds) dt = fadeDurationSeconds;
+    float step = dt / fadeDurationSeconds;
+    if (fadeState == FadeState::FadingOut) {
+        fadeAmount += step;
+        if (fadeAmount > 1.0f) fadeAmount = 1.0f;
+    } else if (fadeState == FadeState::FadingIn) {
+        fadeAmount -= step;
+        if (fadeAmount <= 0.0f) {
+            fadeAmount = 0.0f;
+            fadeState = FadeState::Idle;
+        }
+    }
+}
+
 void engine::Renderer::mainLoop() {
+    fadeLastTime = static_cast<float>(glfwGetTime());
+    inputManager->registerCallback("engineFullscreenToggle",
+        [this](const std::vector<InputEvent>& events) {
+            for (const auto& e : events) {
+                if (e.type != InputEvent::Type::KeyPress) continue;
+                if (e.keyEvent.key == GLFW_KEY_F11) {
+                    toggleFullscreen();
+                } else if (e.keyEvent.key == GLFW_KEY_ENTER
+                        && inputManager->isAltDown()) {
+                    toggleFullscreen();
+                }
+            }
+        });
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (pendingScreenModeApply) {
@@ -211,7 +255,17 @@ void engine::Renderer::mainLoop() {
             recreateSwapChain();
         }
         processInput(window);
-        sceneManager->processPendingSceneChange();
+        updateFade();
+        if (sceneManager->hasPendingSceneChange()) {
+            if (fadeState == FadeState::Idle || fadeState == FadeState::FadingIn) {
+                fadeState = FadeState::FadingOut;
+            }
+            if (fadeState == FadeState::FadingOut && fadeAmount >= 1.0f) {
+                sceneManager->processPendingSceneChange();
+                fadeState = FadeState::FadingIn;
+                fadeLastTime = static_cast<float>(glfwGetTime());
+            }
+        }
         uiManager->processPendingRemovals();
         drawFrame();
     }
@@ -3959,7 +4013,7 @@ void engine::Renderer::processInput(GLFWwindow* window) {
         renderer->clicking = false;
     } else if (pressing) {
         UIObject* hovered = renderer->getHoveredObject();
-        if (!hovered) {
+        if (!hovered || !hovered->isEnabled()) {
             return;
         }
         if (!renderer->clicking) {

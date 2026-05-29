@@ -124,7 +124,7 @@ namespace engine {
     struct CompositePC {
         alignas(8) glm::vec2 inverseScreenSize;
         alignas(4) uint32_t flags; // bit 0-1 = AA mode (0=none, 1=FXAA, 2=SMAA)
-        alignas(4) uint32_t pad{0};
+        alignas(4) float fadeAmount; // 0 = no fade, 1 = fully black
     };
 
     struct CombinePC {

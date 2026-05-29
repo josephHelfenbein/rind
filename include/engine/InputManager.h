@@ -81,6 +81,10 @@ namespace engine {
         }
         bool isControllerMode() const { return controllerMode; }
         bool isFakeCursorPressing() const { return fakeCursorPressing; }
+        bool isAltDown() const {
+            return keyStates[GLFW_KEY_LEFT_ALT] == GLFW_PRESS
+                || keyStates[GLFW_KEY_RIGHT_ALT] == GLFW_PRESS;
+        }
         const glm::dvec2& getFakeControllerCursor() const { return fakeControllerCursor; }
 
         void resetMouseDelta() {

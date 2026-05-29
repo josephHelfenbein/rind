@@ -203,7 +203,16 @@ namespace engine {
         void recreateSwapChain();
         void requestScreenModeApply() { pendingScreenModeApply = true; }
 
+        float getFadeAmount() const { return fadeAmount; }
+
     private:
+        enum class FadeState { Idle, FadingOut, FadingIn };
+        FadeState fadeState = FadeState::FadingIn;
+        float fadeAmount = 1.0f;
+        float fadeLastTime = 0.0f;
+        static constexpr float fadeDurationSeconds = 0.08f;
+        void updateFade();
+
         const int MAX_FRAMES_IN_FLIGHT = 2;
         uint32_t currentFrame = 0;
         const std::vector<const char*> validationLayers = {
@@ -242,6 +251,8 @@ namespace engine {
         int windowedWidth = 800, windowedHeight = 600;
         uint32_t currentScreenMode = 0;
         bool pendingScreenModeApply = false;
+        uint32_t lastNonFullscreenMode = 0;
+        void toggleFullscreen();
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
         PFN_vkCmdEndRendering fpCmdEndRendering = nullptr;

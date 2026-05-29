@@ -27,6 +27,7 @@ namespace engine {
         void setActiveScene(int index);
         void setActiveSceneDeferred(int index);
         void processPendingSceneChange();
+        bool hasPendingSceneChange() const { return pendingSceneIndex != -1; }
 
     private:
         Renderer* renderer;

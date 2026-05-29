@@ -200,11 +200,17 @@ void engine::InputManager::unregisterCallback(const std::string& name) {
 }
 
 void engine::InputManager::resetKeyStates() {
-    for (int& state : keyStates) {
-        state = GLFW_RELEASE;
-    }
-    for (int& state : mouseButtonStates) {
-        state = GLFW_RELEASE;
+    GLFWwindow* window = renderer ? renderer->getWindow() : nullptr;
+    if (window) {
+        for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
+            keyStates[key] = glfwGetKey(window, key);
+        }
+        for (int button = GLFW_MOUSE_BUTTON_1; button <= GLFW_MOUSE_BUTTON_LAST; ++button) {
+            mouseButtonStates[button] = glfwGetMouseButton(window, button);
+        }
+    } else {
+        for (int& state : keyStates) state = GLFW_RELEASE;
+        for (int& state : mouseButtonStates) state = GLFW_RELEASE;
     }
     for (int& state : gamepadButtonStates) {
         state = 0;
