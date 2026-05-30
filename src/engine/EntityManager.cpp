@@ -6,6 +6,7 @@
 #include <engine/LightManager.h>
 #include <engine/SIMD.h>
 #include <engine/ThreadPool.h>
+#include <cstring>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
@@ -99,7 +100,7 @@ engine::Model* engine::Entity::getModel() const {
 
 void engine::Entity::updateWorldTransform(const glm::mat4& parentWorld) {
     glm::mat4 newWorldTransform = parentWorld * transform;
-    if (newWorldTransform != worldTransform) {
+    if (std::memcmp(&newWorldTransform, &worldTransform, sizeof(glm::mat4)) != 0) {
         worldTransform = newWorldTransform;
         ++transformGeneration;
     }

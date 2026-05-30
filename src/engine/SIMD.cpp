@@ -10,9 +10,10 @@ namespace engine::simd {
         float off
     ) {
         if (n == 0) return {0.0f, 0.0f};
-        const ispc::ProjectionRange r = ispc::projectVertsSoA(
+        ispc::ProjectionRange r;
+        ispc::projectVertsSoA(
             vx, vy, vz, static_cast<int32_t>(n),
-            ax, ay, az, off
+            ax, ay, az, off, &r
         );
         return {r.min, r.max};
     }

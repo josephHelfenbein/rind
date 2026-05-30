@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Rind LANGUAGES C CXX ISPC)
+if(APPLE)
+  project(Rind LANGUAGES C CXX OBJCXX ISPC)
+else()
+  project(Rind LANGUAGES C CXX ISPC)
+endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -9,6 +13,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
   set(CMAKE_ISPC_INSTRUCTION_SETS "neon-i32x4" CACHE STRING "ISPC target ISAs")
 else()
   set(CMAKE_ISPC_INSTRUCTION_SETS "sse2-i32x4;sse4-i32x4;avx2-i32x8" CACHE STRING "ISPC target ISAs")
+  set(RIND_ISPC_NEEDS_PIC ON)
 endif()
 
 set(CMAKE_ISPC_HEADER_SUFFIX "_ispc.h")
@@ -144,8 +149,16 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/RindEngine.cmake)
 
 # rind_engine library
-file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp" "src/engine/*.ispc" "src/engine/*.mm")
+file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp" "src/engine/*.ispc")
+if(IS_MACOS)
+  file(GLOB_RECURSE ENGINE_OBJCXX_SOURCES "src/engine/*.mm")
+  list(APPEND ENGINE_SOURCES ${ENGINE_OBJCXX_SOURCES})
+endif()
 add_library(rind_engine STATIC ${ENGINE_SOURCES})
+
+if(RIND_ISPC_NEEDS_PIC)
+    target_compile_options(rind_engine PRIVATE $<$<COMPILE_LANGUAGE:ISPC>:--pic>)
+endif()
 
 # ISPC header output
 target_include_directories(rind_engine PRIVATE

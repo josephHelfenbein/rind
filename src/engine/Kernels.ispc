@@ -7,15 +7,17 @@ struct Plane {
     float nx, ny, nz, d;
 };
 
-export uniform ProjectionRange projectVertsSoA(
+export void projectVertsSoA(
     uniform const float vx[], uniform const float vy[], uniform const float vz[],
     uniform int n,
     uniform float ax, uniform float ay, uniform float az,
-    uniform float off
+    uniform float off,
+    uniform ProjectionRange* uniform result
 ) {
     if (n == 0) {
-        uniform ProjectionRange zero = { 0.0f, 0.0f };
-        return zero;
+        result->min = 0.0f;
+        result->max = 0.0f;
+        return;
     }
 
     uniform float p0 = vx[0] * ax + vy[0] * ay + vz[0] * az + off;
@@ -28,10 +30,8 @@ export uniform ProjectionRange projectVertsSoA(
         pmax = max(pmax, p);
     }
 
-    uniform ProjectionRange result;
-    result.min = reduce_min(pmin);
-    result.max = reduce_max(pmax);
-    return result;
+    result->min = reduce_min(pmin);
+    result->max = reduce_max(pmax);
 }
 
 export void cullAABBsAgainstFrustum(

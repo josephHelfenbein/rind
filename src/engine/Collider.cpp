@@ -371,9 +371,9 @@ std::pair<float, float> engine::Collider::projectVertsOntoAxis(std::span<const g
     if (verts.empty()) {
         return { 0.0f, 0.0f };
     }
-    float min = glm::dot(verts[0] + offset, axis);
-    float max = min;
     float offsetProjection = glm::dot(offset, axis);
+    float min = glm::dot(verts[0], axis) + offsetProjection;
+    float max = min;
     for (const auto& vert : verts) {
         float projection = glm::dot(vert, axis) + offsetProjection;
         min = glm::min(min, projection);
@@ -399,7 +399,9 @@ bool engine::Collider::satMTV(std::span<const glm::vec3> vertsA, std::span<const
     size_t edgeCountB = std::min(edgesB.size(), maxEdgesPerShape);
     for (size_t i = 0; i < edgeCountA; ++i) {
         for (size_t j = 0; j < edgeCountB; ++j) {
-            addAxisUnique(axes, glm::cross(edgesA[i], edgesB[j]));
+            glm::vec3 cross = glm::cross(edgesA[i], edgesB[j]);
+            if (glm::dot(cross, cross) < 1e-4f) continue;
+            addAxisUnique(axes, cross);
         }
     }
     float minPenetration = std::numeric_limits<float>::max();
@@ -677,7 +679,14 @@ bool engine::AABBCollider::intersectsMTV(Collider& other, CollisionMTV& out, con
         default:
             return false;
     }
-    return Collider::satMTV(cornersA, vertsB, faceAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj, {}, bSoa);
+    float aSoAX[8], aSoAY[8], aSoAZ[8];
+    for (int c = 0; c < 8; ++c) {
+        aSoAX[c] = cornersA[c].x;
+        aSoAY[c] = cornersA[c].y;
+        aSoAZ[c] = cornersA[c].z;
+    }
+    ColliderVertSoA aSoa{aSoAX, aSoAY, aSoAZ, 8};
+    return Collider::satMTV(cornersA, vertsB, faceAxesA, edgeAxesB, faceAxesA, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj, aSoa, bSoa);
 }
 
 bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
@@ -764,7 +773,14 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
             break;
         }
     }
-    return Collider::satMTV(*cornersAPtr, vertsB, *axesAPtr, edgeAxesB, *axesAPtr, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj, {}, bSoa);
+    float aSoAX[8], aSoAY[8], aSoAZ[8];
+    for (int c = 0; c < 8; ++c) {
+        aSoAX[c] = (*cornersAPtr)[c].x;
+        aSoAY[c] = (*cornersAPtr)[c].y;
+        aSoAZ[c] = (*cornersAPtr)[c].z;
+    }
+    ColliderVertSoA aSoa{aSoAX, aSoAY, aSoAZ, 8};
+    return Collider::satMTV(*cornersAPtr, vertsB, *axesAPtr, edgeAxesB, *axesAPtr, faceAxesB, out, centerA - centerB, glm::vec3(0.0f), glm::vec3(0.0f), {}, bSelfProj, aSoa, bSoa);
 }
 
 bool engine::ConvexHullCollider::intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform) {
@@ -856,19 +872,6 @@ void engine::ConvexHullCollider::ensureCached() {
         }
         cachedAABB = AABB{minW, maxW};
 
-        faceAxisSelfProjCached.resize(faceAxesCached.size());
-        for (size_t a = 0; a < faceAxesCached.size(); ++a) {
-            const glm::vec3& axis = faceAxesCached[a];
-            float pMin = glm::dot(worldVerts[0], axis);
-            float pMax = pMin;
-            for (size_t v = 1; v < worldVerts.size(); ++v) {
-                float p = glm::dot(worldVerts[v], axis);
-                if (p < pMin) pMin = p;
-                if (p > pMax) pMax = p;
-            }
-            faceAxisSelfProjCached[a] = glm::vec2(pMin, pMax);
-        }
-
         const size_t nReal = worldVerts.size();
         const size_t nPad = ((nReal + kSoAPad - 1) / kSoAPad) * kSoAPad;
         worldVertsX.resize(nPad);
@@ -886,6 +889,30 @@ void engine::ConvexHullCollider::ensureCached() {
             worldVertsX[i] = padX;
             worldVertsY[i] = padY;
             worldVertsZ[i] = padZ;
+        }
+
+        faceAxisSelfProjCached.resize(faceAxesCached.size());
+        if (nPad >= engine::simd::kPad) {
+            for (size_t a = 0; a < faceAxesCached.size(); ++a) {
+                const glm::vec3& axis = faceAxesCached[a];
+                auto r = engine::simd::projectVertsSoA(
+                    worldVertsX.data(), worldVertsY.data(), worldVertsZ.data(), nPad,
+                    axis.x, axis.y, axis.z, 0.0f
+                );
+                faceAxisSelfProjCached[a] = glm::vec2(r.min, r.max);
+            }
+        } else {
+            for (size_t a = 0; a < faceAxesCached.size(); ++a) {
+                const glm::vec3& axis = faceAxesCached[a];
+                float pMin = glm::dot(worldVerts[0], axis);
+                float pMax = pMin;
+                for (size_t v = 1; v < worldVerts.size(); ++v) {
+                    float p = glm::dot(worldVerts[v], axis);
+                    if (p < pMin) pMin = p;
+                    if (p > pMax) pMax = p;
+                }
+                faceAxisSelfProjCached[a] = glm::vec2(pMin, pMax);
+            }
         }
     }
 
