@@ -320,7 +320,7 @@ The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering
 - **Camera**: Perspective camera. Exposes the six frustum planes, and the actual per-frame entity cull lives in `EntityManager::renderEntities` which batches all visible-candidate AABBs through `simd::cullAABBsAgainstFrustum`.
 - **SettingsManager**: Persistent video, audio, and input settings.
 - **ThreadPool**: Persistent worker pool used for data-parallel hot paths like per-frame particle collision and animation passes, convex-hull world-space vertex transforms, and init-time texture decode. One worker per logical core minus one; the caller thread runs the first chunk, workers handle the rest, completion is a short spin-wait so chunked work doesn't pay a condvar wakeup.
-- **SIMD module**: Wraps a small set of ISPC kernels (`src/engine/kernels.ispc`) compiled into per-CPU-target variants with first-call CPUID dispatch built into ISPC. Used for batched frustum culling, AABB-vs-AABB and ray-vs-AABB broad-phase filtering, convex-hull SAT projection, and particle kinematics integration.
+- **SIMD module**: Wraps a small set of ISPC kernels (`src/engine/Kernels.ispc`) compiled into per-CPU-target variants with first-call CPUID dispatch built into ISPC. Used for batched frustum culling, AABB-vs-AABB and ray-vs-AABB broad-phase filtering, convex-hull SAT projection, and particle kinematics integration.
 
 ## Rendering pipeline
 

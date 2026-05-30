@@ -1,5 +1,5 @@
 #include <engine/SIMD.h>
-#include <kernels_ispc.h>
+#include <Kernels_ispc.h>
 
 namespace engine::simd {
 
