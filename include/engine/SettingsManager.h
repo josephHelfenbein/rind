@@ -27,6 +27,8 @@ namespace engine {
             float sensitivity = 0.003f;
             float masterVolume = 1.0f;
             bool showFPS = false;
+            uint32_t hdrMode = 0; // 0=Off, 1=HDR10 (PQ), 2=scRGB
+            float hdrPaperWhiteNits = 203.0f; // user-facing "HDR Brightness"
         };
 
         struct SettingsDefinition {
@@ -51,6 +53,7 @@ namespace engine {
             std::string sliderOverrideText = "";
             
             std::function<void(Settings* prev, Settings* curr, Renderer*)> onChange = nullptr;
+            std::function<bool(Renderer*)> enabledIf = nullptr;
 
             bool* extBool = nullptr;
             uint32_t* extEnum = nullptr;
@@ -222,7 +225,7 @@ namespace engine {
 
             settingsUIObject = new UIObject(
                 uiManager,
-                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.5f, 1.0f)),
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.6f, 1.0f)),
                 "settingsUI",
                 glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
                 "ui_window",
@@ -257,16 +260,21 @@ namespace engine {
 
             float labelY = -1300.0f;
             cleanupTempStorage();
+            const glm::vec4 disabledTextTint(1.0f, 1.0f, 1.0f, 0.35f);
+            const glm::vec4 disabledWidgetTint(1.0f, 1.0f, 1.0f, 0.35f);
             for (const SettingsDefinition& def : defs) {
-                settingsUIObject->addChild(new TextObject(
+                bool isEnabled = !def.enabledIf || def.enabledIf(renderer);
+                TextObject* labelObj = new TextObject(
                     uiManager,
                     glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.0675f)), glm::vec3(450.0f, labelY, 0.0f)),
                     def.key + "Label",
-                    glm::vec4(1.0f),
+                    isEnabled ? glm::vec4(1.0f) : disabledTextTint,
                     def.label,
                     "",
                     Corner::TopLeft
-                ));
+                );
+                settingsUIObject->addChild(labelObj);
+                std::vector<UIObject*> interactiveWidgets;
                 switch (def.type) {
                     case SettingsDefinition::Bool: {
                         bool* tempRef;
@@ -276,15 +284,17 @@ namespace engine {
                             tempRef = new bool(*(def.extBool));
                             tempExtBools[def.key] = tempRef;
                         }
-                        settingsUIObject->addChild(new CheckboxObject(
+                        CheckboxObject* checkbox = new CheckboxObject(
                             uiManager,
                             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f)), glm::vec3(-350.0f, labelY * 0.75f, 0.0f)),
                             def.key + "Checkbox",
-                            glm::vec4(1.0f),
+                            isEnabled ? glm::vec4(1.0f) : disabledWidgetTint,
                             *tempRef,
                             *tempRef,
                             Corner::TopRight
-                        ));
+                        );
+                        settingsUIObject->addChild(checkbox);
+                        interactiveWidgets.push_back(checkbox);
                         break;
                     }
                     case SettingsDefinition::Enum: {
@@ -293,15 +303,16 @@ namespace engine {
                         for (const std::string& option : def.enumOptions) {
                             enumOptionsLabel += "   " + option;
                         }
-                        settingsUIObject->addChild(new TextObject(
+                        TextObject* enumLabel = new TextObject(
                             uiManager,
                             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.054f)), glm::vec3(-600, labelY * 1.25 - 350.0f, 0.0f)),
                             def.key + "EnumLabel",
-                            glm::vec4(1.0f),
+                            isEnabled ? glm::vec4(1.0f) : disabledTextTint,
                             enumOptionsLabel,
                             "",
                             Corner::TopRight
-                        ));
+                        );
+                        settingsUIObject->addChild(enumLabel);
                         std::vector<CheckboxObject*> checkboxes;
                         EnumState state;
                         state.memberField = def.enumPtr;
@@ -313,13 +324,14 @@ namespace engine {
                                 uiManager,
                                 glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.09f)), glm::vec3(amountIn, labelY * 0.75f, 0.0f)),
                                 def.key + "Option" + std::to_string(i),
-                                glm::vec4(1.0f),
+                                isEnabled ? glm::vec4(1.0f) : disabledWidgetTint,
                                 *flag,
                                 *flag,
                                 Corner::TopRight
                             );
                             settingsUIObject->addChild(checkbox);
                             checkboxes.push_back(checkbox);
+                            interactiveWidgets.push_back(checkbox);
                             state.flags.push_back(flag);
                             amountIn += 500.0f;
                         }
@@ -353,10 +365,15 @@ namespace engine {
                             def.sliderOverrideValue,
                             def.sliderOverrideText
                         );
+                        if (!isEnabled) slider->setTint(disabledWidgetTint);
                         settingsUIObject->addChild(slider);
+                        interactiveWidgets.push_back(slider);
                         break;
                     }
                 };
+                if (!isEnabled) {
+                    for (UIObject* w : interactiveWidgets) w->setInteractable(false);
+                }
                 labelY -= (def.type == SettingsDefinition::Enum) ? 630.0f : 540.0f;
             }
 
@@ -504,6 +521,17 @@ namespace engine {
                         renderer->recreateSwapChain();
                     }
                 }
+            },
+            { SettingsDefinition::Enum, "HDR Output", "hdrMode", nullptr, &Settings::hdrMode, {"Off", "HDR10", "scRGB"}, nullptr, 0.0f, 0.0f, "", false, 0.0f, false, 0.0f, 0.0f, 0.0f, "",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if (prev->hdrMode != curr->hdrMode) {
+                        renderer->recreateSwapChain();
+                    }
+                },
+                [](Renderer* r) { return r->isHdrSupported(); }
+            },
+            { SettingsDefinition::Slider, "HDR Brightness", "hdrPaperWhiteNits", nullptr, nullptr, {}, &Settings::hdrPaperWhiteNits, 100.0f, 300.0f, " nits", true, 1.0f, true, 0.0f, 0.0f, 0.0f, "", nullptr,
+                [](Renderer* r) { return r->isHdrSupported(); }
             },
         };
 

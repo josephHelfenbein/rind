@@ -336,12 +336,17 @@ The graph is described in `ShaderManager::createDefaultShaders`. One frame runs 
 8. **`ssr`** (`GeneralGraphics`): reads the lit image and G-buffer, ray-marches against depth, and produces a roughness-aware screen-space reflection contribution.
 9. **`bloom`**, then **`bloom_down1`**, **`bloom_down2`**, **`bloom_down3`**, then **`bloom_up2`**, **`bloom_up1`** (`GeneralGraphics`): bloom blur pyramid built from the lit image via a downsample chain followed by an upsample chain.
 10. **`flare`** (`GeneralGraphics`): reads `bloom_down2` and produces lens flare contributions for very bright pixels.
-11. **`combine`** (`GeneralGraphics`): mixes `lighting`, `ssr`, `bloom_up1`, and `flare` into a single HDR image.
+11. **`combine`** (`GeneralGraphics`): mixes `lighting`, `ssr`, `bloom_up1`, and `flare` into a single image. AgX tonemap is applied as three stages (`agxLog`, `agxLook`, `agxSigmoid`) so the artistic look is shared between SDR and HDR paths. The output stage branches on the swapchain colorspace, encoding to sRGB for SDR, PQ Rec.2020 for HDR10, or linear Rec.709 for scRGB.
 12. **`smaa_edge`**, **`smaa_weight`**, **`smaa_blend`** (`GeneralGraphics`): three sequential passes producing the anti-aliased image when SMAA is enabled.
 13. **`ui`** (`GeneralGraphics`): renders the 2D overlay (and the FPS counter, if enabled) into its own image. Has no graph dependencies and records alongside earlier passes.
 14. **`composite`** (`GeneralGraphics`): final pass. Depends on `combine`, `ui`, and `smaa_blend`. Mixes the anti-aliased lit image with the UI overlay, dithers to the swapchain format, and produces the presentable frame.
 
 Nodes that can be empty (no renderable 3D entities, no particles, no probes needing update) carry skip conditions so they cost nothing when there is no work.
+
+## HDR output
+
+The renderer can output HDR10 (PQ, Rec.2020) or scRGB (linear, Rec.709) on supported displays, picked via the HDR Output setting with an HDR Brightness slider for reference white.
+`Renderer::createSwapChain` selects the matching surface format and falls back to SDR if unavailable. Display capability detection is in `engine::Platform::hasHdrDisplay()`. On macOS this uses `NSScreen.maximumReferenceExtendedDynamicRangeColorComponentValue` rather than the Vulkan format query, because MoltenVK advertises HDR colorspaces even on non-HDR displays.
 
 ## Game code
 
@@ -489,7 +494,7 @@ settingsManager = std::make_unique<engine::SettingsManager>(renderer.get(),
 );
 ```
 
-`label` is shown to the user; `key` is the serialization key in the JSON settings file. `extEnum` binds the chosen index back to the `difficulty` variable. The same pattern works for `Bool` (via `extBool` / `defaultBool`) and `Slider` (via `extFloat` plus the usual range, formatting, and clamp fields; see `SettingsDefinition` for the full list). An optional `onChange` callback fires when the setting is applied, receiving the previous settings, the new settings, and the renderer; use it to push the new value somewhere that observes changes (audio volume, screen mode, etc.).
+`label` is shown to the user; `key` is the serialization key in the JSON settings file. `extEnum` binds the chosen index back to the `difficulty` variable. The same pattern works for `Bool` (via `extBool` / `defaultBool`) and `Slider` (via `extFloat` plus the usual range, formatting, and clamp fields; see `SettingsDefinition` for the full list). An optional `onChange` callback fires when the setting is applied, receiving the previous settings, the new settings, and the renderer; use it to push the new value somewhere that observes changes (audio volume, screen mode, etc.). An optional `enabledIf` callback greys the row out and ignores input when it returns false (used to disable HDR settings on non-HDR displays).
 
 `SettingsManager::addToDefs(...)` lets later code append more definitions before the UI is shown, which is useful if some settings depend on assets being registered first.
 

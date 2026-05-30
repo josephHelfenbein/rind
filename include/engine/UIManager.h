@@ -126,6 +126,8 @@ namespace engine {
 
         void setEnabled(bool enabled) { this->enabled = enabled; }
         bool isEnabled() const { return enabled; }
+        void setInteractable(bool interactable) { this->interactable = interactable; }
+        bool isInteractable() const { return interactable; }
         const UIType& getType() const { return type; }
         const glm::vec4& getTint() const { return tint; }
         void setTint(const glm::vec4& tint) { this->tint = tint; }
@@ -164,6 +166,7 @@ namespace engine {
         std::function<void()>* onHover;
         std::function<void()>* onStopHover;
         bool enabled = true;
+        bool interactable = true;
         int textureDirtyFrames = 0;
     };
 

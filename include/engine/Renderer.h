@@ -204,6 +204,17 @@ namespace engine {
         void requestScreenModeApply() { pendingScreenModeApply = true; }
 
         float getFadeAmount() const { return fadeAmount; }
+        struct HdrState {
+            bool enabled = false;
+            bool isPQ = false; // false = scRGB linear
+            float displayMaxNits = 1000.0f;
+            float paperWhiteNits = 203.0f;
+        };
+        HdrState hdrState{};
+        bool hdrSupported = false;
+
+        const HdrState& getHdrState() const { return hdrState; }
+        bool isHdrSupported() const { return hdrSupported; }
 
     private:
         enum class FadeState { Idle, FadingOut, FadingIn };

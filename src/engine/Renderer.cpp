@@ -15,6 +15,7 @@
 #include <engine/io.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
+#include <engine/Platform.h>
 
 #include <algorithm>
 #include <utility>
@@ -1877,6 +1878,7 @@ void engine::Renderer::applyScreenMode() {
 
 void engine::Renderer::createSwapChain(VkSwapchainKHR oldSwapchain) {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+    hdrSupported = engine::Platform::hasHdrDisplay(swapChainSupport.formats);
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
@@ -1928,6 +1930,25 @@ void engine::Renderer::createSwapChain(VkSwapchainKHR oldSwapchain) {
     swapChainImageLayouts.assign(imageCount, VK_IMAGE_LAYOUT_UNDEFINED);
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
+
+    auto* settings = settingsManager ? settingsManager->getSettings() : nullptr;
+    if (settings) {
+        hdrState.displayMaxNits = 1000.0f;
+        hdrState.paperWhiteNits = settings->hdrPaperWhiteNits;
+    }
+    if (surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) {
+        hdrState.enabled = true;
+        hdrState.isPQ = true;
+    } else if (surfaceFormat.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT) {
+        hdrState.enabled = true;
+        hdrState.isPQ = false;
+    } else {
+        hdrState.enabled = false;
+        hdrState.isPQ = false;
+        if (settings && settings->hdrMode != 0) {
+            settings->hdrMode = 0;
+        }
+    }
 }
 
 void engine::Renderer::recreateSwapChain() {
@@ -3818,6 +3839,18 @@ std::vector<const char*> engine::Renderer::getRequiredExtensions() {
         extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
         extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     #endif
+    {
+        uint32_t availableCount = 0;
+        vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, nullptr);
+        std::vector<VkExtensionProperties> availableExts(availableCount);
+        vkEnumerateInstanceExtensionProperties(nullptr, &availableCount, availableExts.data());
+        for (const auto& ext : availableExts) {
+            if (strcmp(ext.extensionName, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0) {
+                extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+                break;
+            }
+        }
+    }
     return extensions;
 }
 
@@ -3935,6 +3968,33 @@ engine::Renderer::SwapChainSupportDetails engine::Renderer::querySwapChainSuppor
 }
 
 VkSurfaceFormatKHR engine::Renderer::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+    uint32_t requestedHdrMode = 0;
+    if (settingsManager && settingsManager->getSettings()) {
+        requestedHdrMode = settingsManager->getSettings()->hdrMode;
+    }
+    if (requestedHdrMode == 1) {
+        // HDR10 (PQ)
+        for (const auto& availableFormat : availableFormats) {
+            if (availableFormat.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 &&
+                availableFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) {
+                return availableFormat;
+            }
+        }
+        for (const auto& availableFormat : availableFormats) {
+            if (availableFormat.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32 &&
+                availableFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) {
+                return availableFormat;
+            }
+        }
+    } else if (requestedHdrMode == 2) {
+        // scRGB linear
+        for (const auto& availableFormat : availableFormats) {
+            if (availableFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+                availableFormat.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT) {
+                return availableFormat;
+            }
+        }
+    }
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;

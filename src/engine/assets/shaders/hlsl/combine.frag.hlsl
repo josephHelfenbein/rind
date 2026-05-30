@@ -4,8 +4,9 @@ struct VSOutput {
 
 struct PushConstants {
     float exposure;
-    uint flags; // bit 0 = SSR enabled
-    uint pad[2];
+    uint flags; // bit 0 = SSR, bit 1 = HDR enabled, bit 2 = PQ (1) vs scRGB (0)
+    float displayMaxNits;
+    float paperWhiteNits;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -52,16 +53,15 @@ float3 agxDefaultContrastApprox(float3 x) {
          - 0.00232;
 }
 
-float3 agx(float3 val) {
+float3 agxLog(float3 val) {
     val = mul(AgXInsetMatrix, val);
     val = max(val, 1e-10);
     val = log2(val);
     val = (val - AgxMinEv) / (AgxMaxEv - AgxMinEv);
-    val = saturate(val);
-    return agxDefaultContrastApprox(val);
+    return val;
 }
 
-float3 agxLookPunchy(float3 val) {
+float3 agxLook(float3 val) {
     const float3 slope = float3(1.0, 1.0, 1.0);
     const float3 power = float3(1.35, 1.35, 1.35);
     const float3 offset = float3(0.0, 0.0, 0.0);
@@ -69,6 +69,10 @@ float3 agxLookPunchy(float3 val) {
     val = pow(max(val * slope + offset, 0.0), power);
     float luma = dot(val, float3(0.2126, 0.7152, 0.0722));
     return luma + saturation * (val - luma);
+}
+
+float3 agxSigmoid(float3 val) {
+    return agxDefaultContrastApprox(saturate(val));
 }
 
 float3 agxEotf(float3 val) {
@@ -89,6 +93,30 @@ float3 triangularDither(float2 pixel) {
     return float3(r, g, b);
 }
 
+static const float3x3 Rec709ToRec2020 = {
+    0.627403896, 0.329283069, 0.043313036,
+    0.069097289, 0.919540395, 0.011362316,
+    0.016391439, 0.088013308, 0.895595253
+};
+
+float3 agxSigmoidHDR(float3 logVal, float peakRatio, float headroomNorm) {
+    float3 sdr = agxDefaultContrastApprox(saturate(logVal));
+    float3 over = max(logVal - 1.0, 0.0);
+    float3 t = saturate(over / max(headroomNorm, 1e-4));
+    float3 shoulder = t * (2.0 - t);
+    return sdr + shoulder * (peakRatio - 1.0);
+}
+
+float3 pqInverseEOTF(float3 L) {
+    const float m1 = 2610.0 / 16384.0;
+    const float m2 = 2523.0 / 4096.0 * 128.0;
+    const float c1 = 3424.0 / 4096.0;
+    const float c2 = 2413.0 / 4096.0 * 32.0;
+    const float c3 = 2392.0 / 4096.0 * 32.0;
+    float3 Lm = pow(max(L, 0.0), m1);
+    return pow((c1 + c2 * Lm) / (1.0 + c3 * Lm), m2);
+}
+
 float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 scene = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     float4 ssr = ((pc.flags & 1u) != 0u) ? ssrTexture.Sample(sampleSampler, input.fragTexCoord) : float4(0.0, 0.0, 0.0, 0.0);
@@ -101,10 +129,34 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     combined *= pc.exposure;
     combined += bloom;
     combined += flare;
-    combined = agxEotf(agxLookPunchy(agx(combined)));
-    combined = saturate((combined - 0.5) * 1.05 + 0.5); // monitor used during testing had high contrast
 
-    combined += triangularDither(fragCoord.xy) * (1.0 / 255.0);
+    float3 graded = agxLook(agxLog(combined));
 
-    return float4(combined, 1.0);
+    bool hdrOn = (pc.flags & 2u) != 0u;
+    bool isPQ  = (pc.flags & 4u) != 0u;
+
+    if (hdrOn) {
+        float peakRatio = max(pc.displayMaxNits / max(pc.paperWhiteNits, 1.0), 1.0);
+        float headroomNorm = log2(peakRatio) / (AgxMaxEv - AgxMinEv);
+        float3 paperWhiteRel = agxSigmoidHDR(graded, peakRatio, headroomNorm);
+
+        float3 linearRec709 = max(mul(AgXOutsetMatrix, paperWhiteRel), 0.0);
+        float3 nitsRec709 = linearRec709 * pc.paperWhiteNits;
+
+        float3 outRGB;
+        if (isPQ) {
+            float3 nitsRec2020 = mul(Rec709ToRec2020, nitsRec709);
+            outRGB = pqInverseEOTF(nitsRec2020 / 10000.0);
+            outRGB += triangularDither(fragCoord.xy) * (1.0 / 1023.0);
+        } else {
+            // scRGB
+            outRGB = nitsRec709 / 80.0;
+        }
+        return float4(outRGB, 1.0);
+    } else {
+        combined = agxEotf(agxSigmoid(graded));
+        combined = min((combined - 0.5) * 1.05 + 0.5, 1.0); // monitor used during testing had high contrast
+        combined += triangularDither(fragCoord.xy) * (1.0 / 255.0);
+        return float4(combined, 1.0);
+    }
 }

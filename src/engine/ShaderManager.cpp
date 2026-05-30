@@ -2016,9 +2016,14 @@ void engine::ShaderManager::createDefaultShaders() {
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     uint32_t flags = 0u;
                     if (renderer->getSettingsManager()->getSettings()->ssrQuality >= 0.5f) flags |= 1u;
+                    const auto hdr = renderer->getHdrState();
+                    if (hdr.enabled) flags |= 2u;
+                    if (hdr.isPQ) flags |= 4u;
                     CombinePC pc = {
                         .exposure = 1.5f,
-                        .flags = flags
+                        .flags = flags,
+                        .displayMaxNits = hdr.displayMaxNits,
+                        .paperWhiteNits = hdr.paperWhiteNits
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CombinePC), &pc);
                 },

@@ -144,7 +144,7 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/RindEngine.cmake)
 
 # rind_engine library
-file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp" "src/engine/*.ispc")
+file(GLOB_RECURSE ENGINE_SOURCES "src/engine/*.cpp" "src/engine/*.ispc" "src/engine/*.mm")
 add_library(rind_engine STATIC ${ENGINE_SOURCES})
 
 # ISPC header output

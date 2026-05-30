@@ -55,6 +55,18 @@ namespace Platform {
 #endif
 	}
 
+#if !defined(__APPLE__)
+	bool hasHdrDisplay(const std::vector<VkSurfaceFormatKHR>& surfaceFormats) {
+		for (const auto& fmt : surfaceFormats) {
+			if (fmt.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+			    fmt.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT) {
+				return true;
+			}
+		}
+		return false;
+	}
+#endif
+
 	int runWithCrashReport(const std::function<void()>& body, const char* logName) {
 		try {
 			body();

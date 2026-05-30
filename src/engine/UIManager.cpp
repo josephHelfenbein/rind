@@ -898,8 +898,8 @@ engine::UIObject* engine::UIManager::processMouseMovement(GLFWwindow* window, do
                 if (foundHover) return;
             }
         }
-        if (isOverNode && !foundHover &&
-            (node->getOnHover() 
+        if (isOverNode && !foundHover && node->isInteractable() &&
+            (node->getOnHover()
             || node->getType() == engine::UIType::Button
             || node->getType() == engine::UIType::Checkbox
             || node->getType() == engine::UIType::Slider)

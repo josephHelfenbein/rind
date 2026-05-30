@@ -129,8 +129,9 @@ namespace engine {
 
     struct CombinePC {
         alignas(4) float exposure;
-        alignas(4) uint32_t flags; // bit 0 = SSR enabled
-        alignas(4) uint32_t pad[2]{0, 0};
+        alignas(4) uint32_t flags; // bit 0 = SSR, bit 1 = HDR enabled, bit 2 = PQ (1) vs scRGB (0)
+        alignas(4) float displayMaxNits;
+        alignas(4) float paperWhiteNits;
     };
 
     struct BloomPC {
