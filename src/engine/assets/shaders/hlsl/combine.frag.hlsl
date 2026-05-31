@@ -123,7 +123,9 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     float3 bloom = bloomTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
     float3 flare = flareTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
 
-    bloom = bloom * bloom * 0.4;
+    const float BLOOM_POWER = 1.5;
+    const float BLOOM_GAIN = 0.45;
+    bloom = pow(max(bloom, 0.0), BLOOM_POWER) * BLOOM_GAIN;
 
     float3 combined = scene + ssr.rgb * ssr.a;
     combined *= pc.exposure;
@@ -136,6 +138,10 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     bool isPQ  = (pc.flags & 4u) != 0u;
 
     if (hdrOn) {
+        const float HDR_PIVOT = 0.5;
+        const float HDR_CONTRAST = 1.06;
+        graded = (graded - HDR_PIVOT) * HDR_CONTRAST + HDR_PIVOT;
+
         float peakRatio = max(pc.displayMaxNits / max(pc.paperWhiteNits, 1.0), 1.0);
         float headroomNorm = log2(peakRatio) / (AgxMaxEv - AgxMinEv);
         float3 linearRec709 = agxToneHDR(graded, peakRatio, headroomNorm);

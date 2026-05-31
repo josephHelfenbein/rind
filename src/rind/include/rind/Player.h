@@ -5,6 +5,7 @@
 #include <engine/Camera.h>
 #include <rind/ScoreCounter.h>
 #include <rind/StatusEffect.h>
+#include <cmath>
 #include <chrono>
 
 namespace rind {
@@ -217,5 +218,15 @@ namespace rind {
 
         float rightStickX = 0.0f;
         float rightStickY = 0.0f;
+        const float rightStickDeadzone = 0.2f;
+
+        float applyStickDeadzone(float value) {
+            float magnitude = std::abs(value);
+            if (magnitude < rightStickDeadzone) {
+                return 0.0f;
+            }
+            float sign = value > 0.0f ? 1.0f : -1.0f;
+            return sign * (magnitude - rightStickDeadzone) / (1.0f - rightStickDeadzone);
+        }
     };
 };

@@ -952,10 +952,10 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
         } else if (event.type == engine::InputEvent::Type::GamepadAxisMove) {
             switch (event.gamepadAxisEvent.axis) {
                 case GLFW_GAMEPAD_AXIS_RIGHT_X:
-                    rightStickX = event.gamepadAxisEvent.value;
+                    rightStickX = applyStickDeadzone(event.gamepadAxisEvent.value);
                     break;
                 case GLFW_GAMEPAD_AXIS_RIGHT_Y:
-                    rightStickY = event.gamepadAxisEvent.value;
+                    rightStickY = applyStickDeadzone(event.gamepadAxisEvent.value);
                     break;
                 case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
                     if (!renderer->isPaused()
