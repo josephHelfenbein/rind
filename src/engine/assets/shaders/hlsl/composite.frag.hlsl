@@ -6,6 +6,8 @@ struct PushConstants {
     float2 invScreenSize;
     uint flag; // 0 = none, 1 = fxaa, 2 = smaa
     float fadeAmount; // 0 = no fade, 1 = fully black
+    uint hdrFlags; // bit 1 = HDR enabled, bit 2 = PQ (1) vs scRGB (0)
+    float paperWhiteNits;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -75,6 +77,40 @@ float3 FXAA(float2 uv) {
     return rgbB;
 }
 
+static const float3x3 Rec709ToRec2020 = {
+    0.627403896, 0.329283069, 0.043313036,
+    0.069097289, 0.919540395, 0.011362316,
+    0.016391439, 0.088013308, 0.895595253
+};
+
+float3 srgbToLinear(float3 c) {
+    float3 lo = c / 12.92;
+    float3 hi = pow((c + 0.055) / 1.055, 2.4);
+    return lerp(hi, lo, step(c, 0.04045));
+}
+
+float3 pqEOTF(float3 N) {
+    const float m1 = 2610.0 / 16384.0;
+    const float m2 = 2523.0 / 4096.0 * 128.0;
+    const float c1 = 3424.0 / 4096.0;
+    const float c2 = 2413.0 / 4096.0 * 32.0;
+    const float c3 = 2392.0 / 4096.0 * 32.0;
+    float3 Np = pow(max(N, 0.0), 1.0 / m2);
+    float3 num = max(Np - c1, 0.0);
+    float3 den = max(c2 - c3 * Np, 1e-6);
+    return pow(num / den, 1.0 / m1);
+}
+
+float3 pqInverseEOTF(float3 L) {
+    const float m1 = 2610.0 / 16384.0;
+    const float m2 = 2523.0 / 4096.0 * 128.0;
+    const float c1 = 3424.0 / 4096.0;
+    const float c2 = 2413.0 / 4096.0 * 32.0;
+    const float c3 = 2392.0 / 4096.0 * 32.0;
+    float3 Lm = pow(max(L, 0.0), m1);
+    return pow((c1 + c2 * Lm) / (1.0 + c3 * Lm), m2);
+}
+
 float4 main(VSOutput input) : SV_Target {
     float4 uiColor = uiTexture.Sample(sampleSampler, input.fragTexCoord);
 
@@ -85,6 +121,28 @@ float4 main(VSOutput input) : SV_Target {
         sceneColor = FXAA(input.fragTexCoord);
     } else {
         sceneColor = sceneTexture.Sample(sampleSampler, input.fragTexCoord).rgb;
+    }
+
+    bool hdrOn = (pc.hdrFlags & 2u) != 0u;
+    bool isPQ  = (pc.hdrFlags & 4u) != 0u;
+
+    if (hdrOn) {
+        float fade = saturate(pc.fadeAmount);
+        if (uiColor.a <= 0.0 && fade <= 0.0) {
+            return float4(sceneColor, 1.0);
+        }
+        float3 uiNits709 = srgbToLinear(saturate(uiColor.rgb)) * pc.paperWhiteNits;
+        if (isPQ) {
+            float3 sceneNits = pqEOTF(sceneColor) * 10000.0;
+            float3 uiNits = mul(Rec709ToRec2020, uiNits709);
+            float3 blended = lerp(sceneNits, uiNits, uiColor.a) * (1.0 - fade);
+            return float4(pqInverseEOTF(blended / 10000.0), 1.0);
+        } else {
+            // scRGB linear
+            float3 sceneNits = sceneColor * 80.0;
+            float3 blended = lerp(sceneNits, uiNits709, uiColor.a) * (1.0 - fade);
+            return float4(blended / 80.0, 1.0);
+        }
     }
 
     float4 composited = lerp(float4(sceneColor, 1.0), uiColor, uiColor.a);

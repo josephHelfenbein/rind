@@ -60,6 +60,7 @@ namespace engine {
         uint32_t height = 0;
         // if == 0, divides swapchain dimensions (1 = full, 2 = half, etc.)
         uint32_t resolutionDivider = 1;
+        std::function<uint32_t(Renderer*)> resolutionDividerFn = nullptr;
 
         VkClearValue clearValue = {};
         uint32_t mipLevels = 1;

@@ -2869,7 +2869,10 @@ void engine::Renderer::createAttachmentResources() {
         renderPass.colorAttachments.reserve(images.size());
         for (auto& image : images) {
             const bool sizeFromSwapchain = image.width == 0 || image.height == 0;
-            uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
+            const uint32_t baseDivider = image.resolutionDividerFn
+                ? image.resolutionDividerFn(this)
+                : image.resolutionDivider;
+            uint32_t divider = baseDivider > 0 ? baseDivider : 1;
             uint32_t width = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
             uint32_t height = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
             VkImage createdImage = VK_NULL_HANDLE;

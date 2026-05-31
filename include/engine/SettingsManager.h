@@ -514,7 +514,14 @@ namespace engine {
                     }
                 }
             },
-            { SettingsDefinition::Slider, "Volumetric Quality", "volumetricQuality", nullptr, nullptr, {}, &Settings::volumetricQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "" },
+            { SettingsDefinition::Slider, "Volumetric Quality", "volumetricQuality", nullptr, nullptr, {}, &Settings::volumetricQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    // for resolution quality change
+                    if ((prev->volumetricQuality < 0.5f) != (curr->volumetricQuality < 0.5f)) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
             { SettingsDefinition::Slider, "SSR Quality", "ssrQuality", nullptr, nullptr, {}, &Settings::ssrQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "Off",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
                     if ((prev->ssrQuality >= 0.5f) != (curr->ssrQuality >= 0.5f)) {
@@ -530,7 +537,12 @@ namespace engine {
                 },
                 [](Renderer* r) { return r->isHdrSupported(); }
             },
-            { SettingsDefinition::Slider, "HDR Brightness", "hdrPaperWhiteNits", nullptr, nullptr, {}, &Settings::hdrPaperWhiteNits, 100.0f, 300.0f, " nits", true, 1.0f, true, 0.0f, 0.0f, 0.0f, "", nullptr,
+            { SettingsDefinition::Slider, "HDR Brightness", "hdrPaperWhiteNits", nullptr, nullptr, {}, &Settings::hdrPaperWhiteNits, 100.0f, 300.0f, " nits", true, 1.0f, true, 0.0f, 0.0f, 0.0f, "",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if (prev->hdrPaperWhiteNits != curr->hdrPaperWhiteNits) {
+                        renderer->setHdrPaperWhiteNits(curr->hdrPaperWhiteNits);
+                    }
+                },
                 [](Renderer* r) { return r->isHdrSupported(); }
             },
         };

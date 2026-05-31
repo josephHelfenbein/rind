@@ -214,6 +214,7 @@ namespace engine {
         bool hdrSupported = false;
 
         const HdrState& getHdrState() const { return hdrState; }
+        void setHdrPaperWhiteNits(float nits) { hdrState.paperWhiteNits = nits; }
         bool isHdrSupported() const { return hdrSupported; }
 
     private:

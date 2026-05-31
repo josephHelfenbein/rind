@@ -274,7 +274,7 @@ void engine::ShaderManager::createDefaultShaders() {
         images.push_back({
             .name = "Normal",
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .format = VK_FORMAT_A2B10G10R10_UNORM_PACK32,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         // Material (Target 2)
@@ -397,17 +397,22 @@ void engine::ShaderManager::createDefaultShaders() {
     volumetricPass->usesSwapchain = false;
     renderPasses.push_back(volumetricPass);
     {
+        auto volumetricDividerFn = [](Renderer* r) -> uint32_t {
+            return r->getSettingsManager()->getSettings()->volumetricQuality < 0.5f ? 4u : 2u;
+        };
         std::vector<PassImage> images;
         images.push_back({
             .name = "VolumetricColor",
-            .resolutionDivider = 2, // half
+            .resolutionDivider = 2, // half (fallback)
+            .resolutionDividerFn = volumetricDividerFn,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
             .format = VK_FORMAT_R16G16B16A16_SFLOAT,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         images.push_back({
             .name = "VolumetricDepth",
-            .resolutionDivider = 2, // half
+            .resolutionDivider = 2, // half (fallback)
+            .resolutionDividerFn = volumetricDividerFn,
             .clearValue = { .depthStencil = { 1.0f, 0 } },
             .format = VK_FORMAT_D32_SFLOAT,
             .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -481,7 +486,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = "BloomColor",
             .resolutionDivider = 2, // half
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .format = VK_FORMAT_B10G11R11_UFLOAT_PACK32,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         bloomPass->images = images;
@@ -500,7 +505,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = imageName,
             .resolutionDivider = divider,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .format = VK_FORMAT_B10G11R11_UFLOAT_PACK32,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         pass->images = images;
@@ -524,7 +529,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .name = "FlareColor",
             .resolutionDivider = 4,
             .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 0.0f} } },
-            .format = VK_FORMAT_R16G16B16A16_SFLOAT,
+            .format = VK_FORMAT_B10G11R11_UFLOAT_PACK32,
             .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
         });
         flarePass->images = images;
@@ -2209,10 +2214,16 @@ void engine::ShaderManager::createDefaultShaders() {
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
                     VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
+                    const auto hdr = renderer->getHdrState();
+                    uint32_t hdrFlags = 0u;
+                    if (hdr.enabled) hdrFlags |= 2u;
+                    if (hdr.isPQ) hdrFlags |= 4u;
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
                         .flags = renderer->getSettingsManager()->getSettings()->aaMode,
-                        .fadeAmount = renderer->getFadeAmount()
+                        .fadeAmount = renderer->getFadeAmount(),
+                        .hdrFlags = hdrFlags,
+                        .paperWhiteNits = hdr.paperWhiteNits
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(CompositePC), &pc);
                 },

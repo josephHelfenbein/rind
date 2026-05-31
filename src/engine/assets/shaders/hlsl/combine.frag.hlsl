@@ -99,12 +99,12 @@ static const float3x3 Rec709ToRec2020 = {
     0.016391439, 0.088013308, 0.895595253
 };
 
-float3 agxSigmoidHDR(float3 logVal, float peakRatio, float headroomNorm) {
-    float3 sdr = agxDefaultContrastApprox(saturate(logVal));
+float3 agxToneHDR(float3 logVal, float peakRatio, float headroomNorm) {
+    float3 sdrLinear = agxEotf(agxSigmoid(logVal));
     float3 over = max(logVal - 1.0, 0.0);
     float3 t = saturate(over / max(headroomNorm, 1e-4));
     float3 shoulder = t * (2.0 - t);
-    return sdr + shoulder * (peakRatio - 1.0);
+    return max(sdrLinear + shoulder * (peakRatio - 1.0), 0.0);
 }
 
 float3 pqInverseEOTF(float3 L) {
@@ -138,9 +138,7 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
     if (hdrOn) {
         float peakRatio = max(pc.displayMaxNits / max(pc.paperWhiteNits, 1.0), 1.0);
         float headroomNorm = log2(peakRatio) / (AgxMaxEv - AgxMinEv);
-        float3 paperWhiteRel = agxSigmoidHDR(graded, peakRatio, headroomNorm);
-
-        float3 linearRec709 = max(mul(AgXOutsetMatrix, paperWhiteRel), 0.0);
+        float3 linearRec709 = agxToneHDR(graded, peakRatio, headroomNorm);
         float3 nitsRec709 = linearRec709 * pc.paperWhiteNits;
 
         float3 outRGB;
