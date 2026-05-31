@@ -398,7 +398,7 @@ void engine::ShaderManager::createDefaultShaders() {
     renderPasses.push_back(volumetricPass);
     {
         auto volumetricDividerFn = [](Renderer* r) -> uint32_t {
-            return r->getSettingsManager()->getSettings()->volumetricQuality < 0.5f ? 4u : 2u;
+            return r->getSettingsManager()->getSettings()->volumetricQuality < 0.5f ? 4u : 3u;
         };
         std::vector<PassImage> images;
         images.push_back({
