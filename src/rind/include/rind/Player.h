@@ -71,7 +71,7 @@ namespace rind {
         }
 
         void resizeHealthbar();
-        void addScore(uint32_t score);
+        void addScore(int32_t score);
 
         void showHitmarker(const glm::vec3& color) {
             hitmarkerColor = color;

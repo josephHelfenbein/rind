@@ -184,8 +184,31 @@ function(rind_engine_bundle_runtimes target_name)
         set(_is_single_config_release TRUE)
     endif()
 
+    # optional Steamworks redistributable to ship alongside the executable
+    get_property(_steam_runtime_lib GLOBAL PROPERTY RIND_STEAM_RUNTIME_LIB)
+
     if(WIN32)
         install(TARGETS ${target_name} RUNTIME DESTINATION . CONFIGURATIONS Release)
+
+        # Steam runtime DLL: copy next to the executable and into the install package
+        if(_steam_runtime_lib AND EXISTS "${_steam_runtime_lib}")
+            install(FILES "${_steam_runtime_lib}" DESTINATION . CONFIGURATIONS Release)
+            if(CMAKE_CONFIGURATION_TYPES)
+                add_custom_command(TARGET ${target_name} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND}
+                        -DBUILD_CONFIG="$<CONFIG>"
+                        -DSOURCE_FILE="${_steam_runtime_lib}"
+                        -DDEST_DIR="$<TARGET_FILE_DIR:${target_name}>"
+                        -P "${RIND_ENGINE_CMAKE_DIR}/copy_if_release.cmake"
+                    COMMENT "Copying Steam runtime DLL to runtime output (Release only)"
+                )
+            elseif(_is_single_config_release)
+                add_custom_command(TARGET ${target_name} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_steam_runtime_lib}" "$<TARGET_FILE_DIR:${target_name}>"
+                    COMMENT "Copying Steam runtime DLL to runtime output"
+                )
+            endif()
+        endif()
 
         if(BUNDLE_WINDOWS_RUNTIMES)
             if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
@@ -314,6 +337,10 @@ function(rind_engine_bundle_runtimes target_name)
                 message(WARNING "BUNDLE_MACOS_RUNTIMES=ON but libMoltenVK.dylib was not found. Set VK_SDK_PATH/VULKAN_SDK or install molten-vk.")
             endif()
 
+            if(_steam_runtime_lib AND EXISTS "${_steam_runtime_lib}")
+                list(APPEND _macos_extra_runtime_libs "${_steam_runtime_lib}")
+            endif()
+
             set(_moltenvk_icd_candidates)
             if(VK_SDK_PATH)
                 list(APPEND _moltenvk_icd_candidates "${VK_SDK_PATH}/macOS/share/vulkan/icd.d/MoltenVK_icd.json")
@@ -378,6 +405,9 @@ function(rind_engine_bundle_runtimes target_name)
             configure_file("${RIND_ENGINE_CMAKE_DIR}/linux_bundle_runtime.cmake.in" "${_linux_bundle_script}" @ONLY)
 
             set(_linux_extra_libs "")
+            if(_steam_runtime_lib AND EXISTS "${_steam_runtime_lib}")
+                list(APPEND _linux_extra_libs "${_steam_runtime_lib}")
+            endif()
             string(REPLACE ";" "|" _linux_extra_libs_pipe "${_linux_extra_libs}")
 
             add_custom_command(TARGET ${target_name} POST_BUILD

@@ -238,6 +238,27 @@ The executable will be located in the `bin` directory (or `bin/Release` on Windo
 ./bin/Rind
 ```
 
+### Building with Steam support
+
+Steam integration (leaderboards) is optional and off by default, gated behind the `RIND_ENABLE_STEAM` flag. With the flag off, the Steam code compiles to empty no-op stubs and no Steamworks header, library, or runtime is referenced or linked.
+
+#### Enabling the build flag
+
+The Steamworks SDK is proprietary and is **not bundled with this repository**. Download it yourself from the [Steamworks partner site](https://partner.steamgames.com/downloads/list), unzip it somewhere stable, then configure pointing `STEAMWORKS_ROOT` at the SDK root (the directory containing `public/` and `redistributable_bin/`):
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DRIND_ENABLE_STEAM=ON -DSTEAMWORKS_ROOT=/path/to/sdk
+```
+
+CMake links the platform-appropriate redistributable and copies the runtime library next to the binary and into the packaged build. The Steamworks SDK itself is not redistributed in this Apache-2.0 repository; only your own local copy is used at build time.
+
+#### How leaderboard submission works (server-authoritative)
+
+The leaderboard uses Steam **Trusted writes**: the game never writes scores directly. On run start and on death it `POST`s to a backend you host, which holds the Steam publisher Web API key, verifies the player's Steam Web API auth ticket, validates the run, and writes the score via the Steam Web API. The backend is not part of this repository.
+
+The client reads its backend config at startup from a `.env` file in the working directory (see [`.env.example`](.env.example)).
+
 ## Packaging
 
 After a successful Release build, run the packaging script to produce a platform-native distributable:

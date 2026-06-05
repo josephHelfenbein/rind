@@ -1,4 +1,7 @@
 #include <rind/GameInstance.h>
+#if RIND_ENABLE_STEAM
+#include <rind/SteamManager.h>
+#endif
 
 #include <engine/Camera.h>
 #include <engine/LightManager.h>
@@ -54,6 +57,9 @@ rind::GameInstance::GameInstance() {
             "START",
             "Lato",
             [sceneManager]() {
+#if RIND_ENABLE_STEAM
+                rind::steam::beginRun();
+#endif
                 sceneManager->setActiveSceneDeferred(1);
             }
         );
@@ -610,6 +616,11 @@ rind::GameInstance::GameInstance() {
     };
 
     renderer = std::make_unique<engine::Renderer>("Rind");
+
+#if RIND_ENABLE_STEAM
+    // Pump Steam callbacks each frame, kept game-side (engine only sees a std::function).
+    renderer->setOnFrameBegin([]{ rind::steam::runCallbacks(); });
+#endif
 
     std::vector<std::unique_ptr<engine::Scene>> scenes;
     scenes.emplace_back(std::make_unique<engine::Scene>(titleScreenScene));

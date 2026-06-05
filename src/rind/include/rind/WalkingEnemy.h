@@ -22,6 +22,6 @@ namespace rind {
         float cachedMaxSafeBackup = 0.0f;
         float backupSearchLo = 0.0f;
         float backupSearchHi = 15.0f;
-        uint32_t getScoreWorth() const override { return 100u; }
+        int32_t getScoreWorth() const override { return 100; }
     };
 };

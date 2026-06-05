@@ -14,6 +14,7 @@
 #include <chrono>
 #include <span>
 #include <unordered_map>
+#include <functional>
 
 namespace engine {
     struct GraphicsShader;
@@ -59,6 +60,8 @@ namespace engine {
         void toggleLockCursor(bool lock);
         bool isPaused() const { return paused; }
         void setPaused(bool paused) { this->paused = paused; }
+
+        void setOnFrameBegin(std::function<void()> callback) { onFrameBegin = std::move(callback); }
 
         std::pair<VkBuffer, VkDeviceMemory> createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
         std::pair<VkImage, VkDeviceMemory> createImage(
@@ -274,6 +277,8 @@ namespace engine {
         float uiScale = 1.0f;
 
         bool paused = false;
+
+        std::function<void()> onFrameBegin;
 
         bool shadowMapRecreationPending = false;
 

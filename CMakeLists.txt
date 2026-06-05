@@ -21,6 +21,15 @@ option(BUNDLE_WINDOWS_RUNTIMES "Bundle required runtime DLLs next to Windows exe
 option(BUNDLE_MACOS_RUNTIMES "Bundle required runtime dylibs and Vulkan ICD next to macOS executable" ON)
 option(BUNDLE_LINUX_RUNTIMES "Bundle runtime .so files next to Linux executable for standalone distribution" ON)
 
+# Game version: single source of truth for packaging and the leaderboard submission version field
+# Override with -DVERSION=x.y.z.
+set(VERSION "1.0.0" CACHE STRING "Game version")
+
+# Optional Steamworks integration (off by default)
+# The SDK is proprietary and is not bundled with this repo, it must be locally downloaded and pointed at with -DSTEAMWORKS_ROOT=/path/to/sdk
+option(RIND_ENABLE_STEAM "Build with optional Steamworks integration (Steam leaderboards)" OFF)
+set(STEAMWORKS_ROOT "" CACHE PATH "Path to the Steamworks SDK root (the directory containing 'public' and 'redistributable_bin')")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(RELEASE_MARCH "native" CACHE STRING "Target -march for release builds (e.g. native, x86-64-v2, znver2)")
@@ -298,6 +307,49 @@ endif()
 add_executable(${PROJECT_NAME} src/main.cpp ${RIND_SOURCES} ${RIND_EXTRA_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src/rind/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE rind_engine)
+
+# Optional Steamworks integration. Wired only into the Rind executable target (rind_engine stays Steam-agnostic)
+if(RIND_ENABLE_STEAM)
+  if(NOT STEAMWORKS_ROOT)
+    message(FATAL_ERROR "RIND_ENABLE_STEAM=ON but STEAMWORKS_ROOT is not set. "
+      "Download the Steamworks SDK from the Steam partner site and configure with "
+      "-DSTEAMWORKS_ROOT=/path/to/sdk")
+  endif()
+  if(NOT EXISTS "${STEAMWORKS_ROOT}/public/steam/steam_api.h")
+    message(FATAL_ERROR "STEAMWORKS_ROOT='${STEAMWORKS_ROOT}' does not look like a "
+      "Steamworks SDK (missing public/steam/steam_api.h).")
+  endif()
+
+  # Select the platform/arch-appropriate redistributable
+  if(IS_WINDOWS)
+    set(STEAM_LINK_LIB "${STEAMWORKS_ROOT}/redistributable_bin/win64/steam_api64.lib")
+    set(STEAM_RUNTIME_LIB "${STEAMWORKS_ROOT}/redistributable_bin/win64/steam_api64.dll")
+  elseif(IS_MACOS)
+    set(STEAM_LINK_LIB "${STEAMWORKS_ROOT}/redistributable_bin/osx/libsteam_api.dylib")
+    set(STEAM_RUNTIME_LIB "${STEAM_LINK_LIB}")
+  else()
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+      set(STEAM_LINK_LIB "${STEAMWORKS_ROOT}/redistributable_bin/linuxarm64/libsteam_api.so")
+    else()
+      set(STEAM_LINK_LIB "${STEAMWORKS_ROOT}/redistributable_bin/linux64/libsteam_api.so")
+    endif()
+    set(STEAM_RUNTIME_LIB "${STEAM_LINK_LIB}")
+  endif()
+
+  if(NOT EXISTS "${STEAM_LINK_LIB}")
+    message(FATAL_ERROR "Steamworks redistributable not found at '${STEAM_LINK_LIB}'. "
+      "Check that STEAMWORKS_ROOT points at a complete SDK for this platform/arch.")
+  endif()
+
+  target_include_directories(${PROJECT_NAME} PRIVATE "${STEAMWORKS_ROOT}/public")
+  target_link_libraries(${PROJECT_NAME} PRIVATE "${STEAM_LINK_LIB}")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
+    RIND_ENABLE_STEAM
+    RIND_GAME_VERSION="${VERSION}")
+
+  set_property(GLOBAL PROPERTY RIND_STEAM_RUNTIME_LIB "${STEAM_RUNTIME_LIB}")
+  message(STATUS "Steamworks integration enabled (SDK: ${STEAMWORKS_ROOT})")
+endif()
 
 # Game-owned assets
 rind_engine_compile_shaders(

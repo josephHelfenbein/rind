@@ -51,3 +51,9 @@ build
 build-dist
 bin
 dist
+
+# Steam: dev-only app id file
+steam_appid.txt
+
+# leaderboard backend config (see .env.example)
+.env

@@ -69,7 +69,7 @@ namespace rind {
 
         float shootingCooldown = 0.5f;
         std::chrono::steady_clock::time_point lastShotTime = std::chrono::steady_clock::now();
-        virtual uint32_t getScoreWorth() const { return 100u; }
+        virtual int32_t getScoreWorth() const { return 100; }
 
         glm::vec3 wanderTarget = glm::vec3(0.0f);
         bool wandering = false;

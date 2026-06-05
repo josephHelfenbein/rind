@@ -18,6 +18,6 @@ namespace rind {
     protected:
         glm::vec3 getTrailColor() const override { return glm::vec3(1.0f, 0.15f, 0.65f); }
     private:
-        uint32_t getScoreWorth() const override { return 1000u; }
+        int32_t getScoreWorth() const override { return 1000; }
     };
 };

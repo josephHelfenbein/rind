@@ -7,6 +7,9 @@
 #include <engine/SceneManager.h>
 #include <engine/SettingsManager.h>
 #include <rind/Grenade.h>
+#if RIND_ENABLE_STEAM
+#include <rind/SteamManager.h>
+#endif
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -316,7 +319,7 @@ void rind::Player::resizeHealthbar() {
     );
 }
 
-void rind::Player::addScore(uint32_t score) {
+void rind::Player::addScore(int32_t score) {
     scoreCounter->addScore(score);
 }
 
@@ -1046,6 +1049,9 @@ void rind::Player::damage(float amount) {
     if (getHealth() <= 0.0f && !isDead) {
         heartbeatOffset = 0.0f;
         isDead = true;
+#if RIND_ENABLE_STEAM
+        rind::steam::uploadScore(scoreCounter->getScore());
+#endif
         stopMove(getPressed(), false);
         audioManager->playSound("player_death", 0.5f, 0.2f);
         engine::UIManager* uiManager = getEntityManager()->getRenderer()->getUIManager();

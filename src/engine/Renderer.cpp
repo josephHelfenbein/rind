@@ -250,6 +250,7 @@ void engine::Renderer::mainLoop() {
         });
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        if (onFrameBegin) onFrameBegin();
         if (pendingScreenModeApply) {
             pendingScreenModeApply = false;
             applyScreenMode();

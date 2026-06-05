@@ -21,6 +21,6 @@ namespace rind {
 
         void hit();
     private:
-        uint32_t getScoreWorth() const override { return 200u; }
+        int32_t getScoreWorth() const override { return 200; }
     };
 };

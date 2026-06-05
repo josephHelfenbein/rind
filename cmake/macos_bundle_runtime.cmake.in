@@ -32,8 +32,23 @@ file(GET_RUNTIME_DEPENDENCIES
     "^/usr/lib/.*"
 )
 
-if(UNRESOLVED_DEPS)
-  message(WARNING "Unresolved runtime dependencies for ${APP_PATH}: ${UNRESOLVED_DEPS}")
+set(_extra_lib_names "")
+foreach(_lib IN LISTS EXTRA_LIBS)
+  get_filename_component(_extra_name "${_lib}" NAME)
+  list(APPEND _extra_lib_names "${_extra_name}")
+endforeach()
+
+set(_real_unresolved "")
+foreach(_dep IN LISTS UNRESOLVED_DEPS)
+  get_filename_component(_dep_basename "${_dep}" NAME)
+  list(FIND _extra_lib_names "${_dep_basename}" _found_idx)
+  if(_found_idx EQUAL -1)
+    list(APPEND _real_unresolved "${_dep}")
+  endif()
+endforeach()
+
+if(_real_unresolved)
+  message(WARNING "Unresolved runtime dependencies for ${APP_PATH}: ${_real_unresolved}")
 endif()
 
 set(ALL_DEPS ${RESOLVED_DEPS})
@@ -69,12 +84,18 @@ if(_dep_count GREATER 0)
     list(GET _bundled_dep_paths ${_idx} _bundled_dep)
     get_filename_component(_dep_name "${_bundled_dep}" NAME)
 
-    execute_process(
-      COMMAND install_name_tool -change "${_old_dep}" "@executable_path/lib/${_dep_name}" "${APP_PATH}"
-      RESULT_VARIABLE _change_result
-      OUTPUT_QUIET
-      ERROR_QUIET
-    )
+    foreach(_old_ref
+        "${_old_dep}"
+        "@loader_path/${_dep_name}"
+        "@rpath/${_dep_name}"
+        "@executable_path/${_dep_name}")
+      execute_process(
+        COMMAND install_name_tool -change "${_old_ref}" "@executable_path/lib/${_dep_name}" "${APP_PATH}"
+        RESULT_VARIABLE _change_result
+        OUTPUT_QUIET
+        ERROR_QUIET
+      )
+    endforeach()
   endforeach()
 
   foreach(_lib IN LISTS _bundled_dep_paths)

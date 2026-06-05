@@ -51,7 +51,7 @@ namespace rind {
             }
         }
 
-        void addScore(uint32_t points) {
+        void addScore(int32_t points) {
             score += points;
             std::string newScoreText = "SCORE: " + std::to_string(score);
             counter->setText(std::move(newScoreText));
@@ -62,9 +62,11 @@ namespace rind {
             growFrame = 0.0f;
         }
 
+        int32_t getScore() const { return score; }
+
     private:
         engine::UIManager* uiManager;
-        uint32_t score = 0u;
+        int32_t score = 0;
         engine::TextObject* counter = nullptr;
 
         float growGoal = 1.0f;

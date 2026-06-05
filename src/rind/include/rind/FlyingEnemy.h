@@ -24,6 +24,6 @@ namespace rind {
         glm::vec3 getTrailColor() const override { return glm::vec3(1.0f, 1.0f, 0.0f); }
     private:
         uint32_t spawnedBullets = 0u;
-        uint32_t getScoreWorth() const override { return 150u; }
+        int32_t getScoreWorth() const override { return 150; }
     };
 };
