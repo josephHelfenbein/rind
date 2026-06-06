@@ -203,6 +203,14 @@ void engine::Renderer::initVulkan() {
     createQuadResources();
 }
 
+float engine::Renderer::getUIScale() const {
+    float modifier = 1.0f;
+    if (settingsManager && settingsManager->getSettings()) {
+        modifier = settingsManager->getSettings()->uiScale;
+    }
+    return uiScale * modifier;
+}
+
 void engine::Renderer::toggleFullscreen() {
     if (!settingsManager) return;
     SettingsManager::Settings* s = settingsManager->getSettings();
@@ -1390,9 +1398,10 @@ void engine::Renderer::recordCommandBuffer(
                         uint32_t imageWidth = image.allocatedWidth;
                         uint32_t imageHeight = image.allocatedHeight;
                         if (imageWidth == 0 || imageHeight == 0) {
+                            const VkExtent2D renderExtent = node.passInfo->ignoreResolutionScale ? swapChainExtent : getRenderExtent();
                             const uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
-                            imageWidth = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
-                            imageHeight = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
+                            imageWidth = image.width == 0 ? std::max(1u, renderExtent.width / divider) : image.width;
+                            imageHeight = image.height == 0 ? std::max(1u, renderExtent.height / divider) : image.height;
                         }
                         if (!foundAttachmentExtent) {
                             attachmentWidth = imageWidth;
@@ -1577,16 +1586,21 @@ void engine::Renderer::dispatchComputePass(VkCommandBuffer commandBuffer, Render
     if (node.computeShaders.empty()) {
         return;
     }
-    VkExtent2D extent = swapChainExtent;
+    VkExtent2D extent = (node.passInfo && node.passInfo->ignoreResolutionScale) ? swapChainExtent : getRenderExtent();
     uint32_t width = extent.width;
     uint32_t height = extent.height;
     uint32_t layerLimit = 1;
     bool hasLayerLimit = false;
     if (node.passInfo && node.passInfo->images.has_value() && !node.passInfo->images->empty()) {
         const auto& img = node.passInfo->images->at(0);
-        const uint32_t divider = img.resolutionDivider > 0 ? img.resolutionDivider : 1;
-        width = img.width == 0 ? width / divider : img.width;
-        height = img.height == 0 ? height / divider : img.height;
+        if (img.allocatedWidth > 0 && img.allocatedHeight > 0) {
+            width = img.allocatedWidth;
+            height = img.allocatedHeight;
+        } else {
+            const uint32_t divider = img.resolutionDivider > 0 ? img.resolutionDivider : 1;
+            width = img.width == 0 ? width / divider : img.width;
+            height = img.height == 0 ? height / divider : img.height;
+        }
         layerLimit = img.arrayLayers > 0 ? img.arrayLayers : 1;
         hasLayerLimit = true;
     }
@@ -2821,6 +2835,21 @@ bool engine::Renderer::isConditionalAttachmentDisabled(const std::string& shader
     return false;
 }
 
+VkExtent2D engine::Renderer::getRenderExtent() const {
+    float scale = 1.0f;
+    if (settingsManager && settingsManager->getSettings()) {
+        scale = settingsManager->getSettings()->resolutionScale;
+    }
+    scale = scale < 0.5f ? 0.5f : (scale > 1.0f ? 1.0f : scale);
+    if (scale >= 1.0f) {
+        return swapChainExtent;
+    }
+    return {
+        std::max(1u, static_cast<uint32_t>(swapChainExtent.width * scale + 0.5f)),
+        std::max(1u, static_cast<uint32_t>(swapChainExtent.height * scale + 0.5f))
+    };
+}
+
 void engine::Renderer::createAttachmentResources() {
     const auto& passes = shaderManager->getRenderPasses();
     managedRenderPasses.clear();
@@ -2867,6 +2896,7 @@ void engine::Renderer::createAttachmentResources() {
         }
 
         auto& images = renderPass.images.value();
+        const VkExtent2D renderExtent = renderPass.ignoreResolutionScale ? swapChainExtent : getRenderExtent();
         renderPass.colorAttachments.reserve(images.size());
         for (auto& image : images) {
             const bool sizeFromSwapchain = image.width == 0 || image.height == 0;
@@ -2874,8 +2904,8 @@ void engine::Renderer::createAttachmentResources() {
                 ? image.resolutionDividerFn(this)
                 : image.resolutionDivider;
             uint32_t divider = baseDivider > 0 ? baseDivider : 1;
-            uint32_t width = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
-            uint32_t height = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
+            uint32_t width = image.width == 0 ? std::max(1u, renderExtent.width / divider) : image.width;
+            uint32_t height = image.height == 0 ? std::max(1u, renderExtent.height / divider) : image.height;
             VkImage createdImage = VK_NULL_HANDLE;
             VkDeviceMemory createdMemory = VK_NULL_HANDLE;
             VkResult allocResult = tryCreateImage(
@@ -2886,8 +2916,8 @@ void engine::Renderer::createAttachmentResources() {
             while (allocResult == VK_ERROR_OUT_OF_DEVICE_MEMORY && sizeFromSwapchain
                    && (width > 1 || height > 1) && divider < 16) {
                 divider *= 2;
-                uint32_t newWidth = image.width == 0 ? std::max(1u, swapChainExtent.width / divider) : image.width;
-                uint32_t newHeight = image.height == 0 ? std::max(1u, swapChainExtent.height / divider) : image.height;
+                uint32_t newWidth = image.width == 0 ? std::max(1u, renderExtent.width / divider) : image.width;
+                uint32_t newHeight = image.height == 0 ? std::max(1u, renderExtent.height / divider) : image.height;
                 if (newWidth == width && newHeight == height) break;
                 width = newWidth;
                 height = newHeight;

@@ -158,7 +158,7 @@ float4 main(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
         return float4(outRGB, 1.0);
     } else {
         combined = agxEotf(agxSigmoid(graded));
-        combined = min((combined - 0.5) * 1.05 + 0.5, 1.0); // monitor used during testing had high contrast
+        combined = min((combined - 0.5) * 1.05 + 0.5, 1.0);
         combined += triangularDither(fragCoord.xy) * (1.0 / 255.0);
         return float4(combined, 1.0);
     }

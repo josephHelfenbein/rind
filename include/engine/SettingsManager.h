@@ -29,6 +29,8 @@ namespace engine {
             bool showFPS = false;
             uint32_t hdrMode = 0; // 0=Off, 1=HDR10 (PQ), 2=scRGB
             float hdrPaperWhiteNits = 203.0f; // user-facing "HDR Brightness"
+            float uiScale = 1.0f; // user UI scale modifier, 0.5 to 2.0
+            float resolutionScale = 1.0f; // internal render resolution scale, 0.5 to 1.0
         };
 
         struct SettingsDefinition {
@@ -225,7 +227,7 @@ namespace engine {
 
             settingsUIObject = new UIObject(
                 uiManager,
-                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.6f, 1.0f)),
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.6f, 0.7f, 1.0f)),
                 "settingsUI",
                 glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),
                 "ui_window",
@@ -500,6 +502,7 @@ namespace engine {
             },
             { SettingsDefinition::Slider, "Sensitivity", "sensitivity", nullptr, nullptr, {}, &Settings::sensitivity, 0.0001f, 0.03f, "", true, 10000.0f, false, 0.0f, 0.0f },
             { SettingsDefinition::Slider, "Master Volume", "masterVolume", nullptr, nullptr, {}, &Settings::masterVolume, 0.0f, 1.0f, "%", true, 100.0f, false, 0.0f, 0.0f },
+            { SettingsDefinition::Slider, "UI Scale", "uiScale", nullptr, nullptr, {}, &Settings::uiScale, 0.5f, 2.0f, "%", true, 100.0f, false, 0.5f, 2.0f },
             { SettingsDefinition::Slider, "FPS Limit", "fpsLimit", nullptr, nullptr, {}, &Settings::fpsLimit, 12.0f, 240.0f, " FPS", true, 1.0f, true, 12.0f, 240.0f, 14.0f, "VSync",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
                     if ((prev->fpsLimit <= 14.1f) != (curr->fpsLimit <= 14.1f)) {
@@ -525,6 +528,13 @@ namespace engine {
             { SettingsDefinition::Slider, "SSR Quality", "ssrQuality", nullptr, nullptr, {}, &Settings::ssrQuality, 0.0f, 3.0f, "", true, 1.0f, true, 0.0f, 3.0f, 0.0f, "Off",
                 [](Settings* prev, Settings* curr, Renderer* renderer) {
                     if ((prev->ssrQuality >= 0.5f) != (curr->ssrQuality >= 0.5f)) {
+                        renderer->recreateSwapChain();
+                    }
+                }
+            },
+            { SettingsDefinition::Slider, "Resolution Scale", "resolutionScale", nullptr, nullptr, {}, &Settings::resolutionScale, 0.5f, 1.0f, "%", true, 100.0f, false, 0.5f, 1.0f, 0.0f, "",
+                [](Settings* prev, Settings* curr, Renderer* renderer) {
+                    if (prev->resolutionScale != curr->resolutionScale) {
                         renderer->recreateSwapChain();
                     }
                 }

@@ -398,7 +398,7 @@ void engine::ShaderManager::createDefaultShaders() {
     renderPasses.push_back(volumetricPass);
     {
         auto volumetricDividerFn = [](Renderer* r) -> uint32_t {
-            return r->getSettingsManager()->getSettings()->volumetricQuality < 0.5f ? 4u : 3u;
+            return r->getSettingsManager()->getSettings()->volumetricQuality < 0.5f ? 3u : 2u;
         };
         std::vector<PassImage> images;
         images.push_back({
@@ -612,6 +612,7 @@ void engine::ShaderManager::createDefaultShaders() {
     auto uiPass = std::make_shared<PassInfo>();
     uiPass->name = "UIPass";
     uiPass->usesSwapchain = false;
+    uiPass->ignoreResolutionScale = true;
     renderPasses.push_back(uiPass);
     {
         std::vector<PassImage> images;
@@ -1822,7 +1823,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .passInfo = pass,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [srcDivider](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    VkExtent2D ext = renderer->getSwapChainExtent();
+                    VkExtent2D ext = renderer->getRenderExtent();
                     BloomPC pc = {
                         .halfPixel = glm::vec2(
                             static_cast<float>(srcDivider) / static_cast<float>(ext.width),
@@ -1867,7 +1868,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .passInfo = pass,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [smallerDivider](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    VkExtent2D ext = renderer->getSwapChainExtent();
+                    VkExtent2D ext = renderer->getRenderExtent();
                     BloomPC pc = {
                         .halfPixel = glm::vec2(
                             static_cast<float>(smallerDivider) / static_cast<float>(ext.width),
@@ -2025,7 +2026,7 @@ void engine::ShaderManager::createDefaultShaders() {
                     if (hdr.enabled) flags |= 2u;
                     if (hdr.isPQ) flags |= 4u;
                     CombinePC pc = {
-                        .exposure = 1.5f,
+                        .exposure = 1.6f,
                         .flags = flags,
                         .displayMaxNits = hdr.displayMaxNits,
                         .paperWhiteNits = hdr.paperWhiteNits
@@ -2068,7 +2069,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
+                    VkExtent2D swapChainExtent = renderer->getRenderExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
                         .flags = renderer->getSettingsManager()->getSettings()->aaMode,
@@ -2118,7 +2119,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
+                    VkExtent2D swapChainExtent = renderer->getRenderExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
                         .flags = renderer->getSettingsManager()->getSettings()->aaMode,
@@ -2170,7 +2171,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .blendEnable = false,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
+                    VkExtent2D swapChainExtent = renderer->getRenderExtent();
                     CompositePC pc = {
                         .inverseScreenSize = glm::vec2(1.0f / static_cast<float>(swapChainExtent.width), 1.0f / static_cast<float>(swapChainExtent.height)),
                         .flags = renderer->getSettingsManager()->getSettings()->aaMode,
@@ -2213,7 +2214,7 @@ void engine::ShaderManager::createDefaultShaders() {
                 .passInfo = mainPass,
                 .colorAttachmentCount = 1,
                 .fillPushConstants = [](Renderer* renderer, GraphicsShader* shader, VkCommandBuffer cmd) {
-                    VkExtent2D swapChainExtent = renderer->getSwapChainExtent();
+                    VkExtent2D swapChainExtent = renderer->getRenderExtent();
                     const auto hdr = renderer->getHdrState();
                     uint32_t hdrFlags = 0u;
                     if (hdr.enabled) hdrFlags |= 2u;

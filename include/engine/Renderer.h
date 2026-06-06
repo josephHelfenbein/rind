@@ -182,7 +182,8 @@ namespace engine {
         VkDevice getDevice() const { return device; }
         uint32_t getFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
         VkExtent2D getSwapChainExtent() const { return swapChainExtent; }
-        float getUIScale() const { return uiScale; }
+        VkExtent2D getRenderExtent() const;
+        float getUIScale() const;
         GLFWwindow* getWindow() const { return window; }
         std::pair<VkBuffer, VkBuffer> getUIBuffers() const { return { uiVertexBuffer, uiIndexBuffer }; }
         UIObject* getHoveredObject() const { return hoveredObject; }

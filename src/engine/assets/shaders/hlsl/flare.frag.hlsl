@@ -13,10 +13,10 @@ SamplerState sampleSampler;
 static const int GHOST_COUNT = 6;
 static const float GHOST_SPACING = 0.28;
 static const float GHOST_THRESHOLD = 10.0;
-static const float HALO_MULTIPLIER = 0.05;
+static const float HALO_MULTIPLIER = 0.04;
 static const float HALO_WIDTH = 0.4;
-static const float CHROMA_DISTORT = 0.001;
-static const float FLARE_INTENSITY = 0.0035;
+static const float CHROMA_DISTORT = 0.0013;
+static const float FLARE_INTENSITY = 0.005;
 
 static const float3 tints[GHOST_COUNT] = {
     float3(1.0, 0.85, 0.7),

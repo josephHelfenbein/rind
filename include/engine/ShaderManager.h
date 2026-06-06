@@ -90,6 +90,7 @@ namespace engine {
         bool usesSwapchain = false;
         bool hasDepthAttachment = false;
         bool isActive = true;
+        bool ignoreResolutionScale = false;
         std::optional<std::vector<PassImage>> images = std::nullopt;
         std::vector<VkRenderingAttachmentInfo> colorAttachments;
         std::optional<VkRenderingAttachmentInfo> depthAttachment;
@@ -119,8 +120,6 @@ namespace engine {
             VkSampler sampler = VK_NULL_HANDLE;
             bool blendEnable = true;
             bool blendAdditive = false;
-            // Optional per-attachment blend states. When non-empty, overrides the
-            // single uniform blend state above. Size must equal colorAttachmentCount.
             std::vector<VkPipelineColorBlendAttachmentState> colorBlendOverrides = {};
             VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
             int colorAttachmentCount = 1;
@@ -303,7 +302,7 @@ namespace engine {
         const std::vector<size_t>& getScheduledNodeOrder() const;
         void resolveRenderGraphShaders();
 
-        // Call between createDefaultShaders() and resolveRenderGraphShaders() to inject or replace passes
+        // call between createDefaultShaders() and resolveRenderGraphShaders() to inject or replace passes
         void setOnRenderGraphReady(std::function<void(ShaderManager*)> cb) { onRenderGraphReady = std::move(cb); }
         bool replaceRenderNode(const std::string& name, RenderNode replacement);
         bool insertRenderNodeAfter(const std::string& predecessor, RenderNode node);

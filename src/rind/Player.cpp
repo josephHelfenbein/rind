@@ -1058,9 +1058,21 @@ void rind::Player::damage(float amount) {
         if (getEntityManager()->getRenderer()->isPaused()) {
             hidePauseMenu();
         }
+        const float baseWidth = 1920.0f;
+        const float baseHeight = 1080.0f;
+        VkExtent2D displaySize = getEntityManager()->getRenderer()->getSwapChainExtent();
+        float contentScale = 1.0f;
+    #ifdef __APPLE__
+        float xscale = 1.0f, yscale = 1.0f;
+        glfwGetWindowContentScale(getEntityManager()->getRenderer()->getWindow(), &xscale, &yscale);
+        contentScale = std::max(xscale, yscale);
+    #endif
+        float layoutScale = std::max(getEntityManager()->getRenderer()->getUIScale() * contentScale, 0.0001f);
+        float widthScale = static_cast<float>(displaySize.width) / (baseWidth * layoutScale);
+        float heightScale = static_cast<float>(displaySize.height) / (baseHeight * layoutScale);
         engine::UIObject* windowTint = new engine::UIObject(
             uiManager,
-            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(3.0f, 3.0f, 1.0f)), glm::vec3(0.0f, 0.0f, -1.0f)), 
+            glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(3.0f * widthScale, 3.0f * heightScale, 1.0f)), glm::vec3(0.0f, 0.0f, -1.0f)), 
             "deathWindowTint",
             glm::vec4(0.5f, 0.0f, 0.0f, 0.8f),
             "ui_window"
