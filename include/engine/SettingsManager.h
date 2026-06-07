@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <engine/Renderer.h>
+#include <engine/TextureManager.h>
 #include <engine/UIManager.h>
 #include <engine/InputManager.h>
 #include <engine/EntityManager.h>
@@ -394,11 +395,17 @@ namespace engine {
                 },
                 Corner::Bottom
             ));
+
+            settingsUIScale = 1.0f;
+            applySettingsScreenFit();
+            renderer->getInputManager()->registerRecreateSwapChainCallback(
+                "settingsScreenFit", [this]() { applySettingsScreenFit(); });
             renderer->refreshDescriptorSets();
         }
 
         void hideSettingsUI() {
             if (!settingsUIObject) return;
+            renderer->getInputManager()->unregisterCallback("settingsScreenFit");
             cleanupTempStorage();
             renderer->setHoveredObject(nullptr);
             renderer->getUIManager()->removeObjectDeferred(settingsUIObject->getName());
@@ -453,6 +460,7 @@ namespace engine {
         Settings* tempSettings = nullptr;
         Renderer* renderer;
         UIObject* settingsUIObject = nullptr;
+        float settingsUIScale = 1.0f;
 
         std::function<void()> onCloseCallback;
         std::string settingsLocation;
@@ -465,6 +473,71 @@ namespace engine {
         std::vector<EnumState> enumStates;
         std::unordered_map<std::string, bool*> tempExtBools;
         std::unordered_map<std::string, float*> tempExtFloats;
+
+        void applySettingsScreenFit() {
+            if (!settingsUIObject) return;
+            if (settingsUIScale < 1.0f) {
+                float undo = 1.0f / settingsUIScale;
+                glm::mat4 undoMat = glm::scale(glm::mat4(1.0f), glm::vec3(undo, undo, 1.0f));
+                glm::mat4 rt = settingsUIObject->getTransform();
+                settingsUIObject->setTransform(glm::scale(glm::mat4(1.0f),
+                    glm::vec3(rt[0][0] * undo, rt[1][1] * undo, 1.0f)));
+                std::function<void(UIObject*)> undoChildren = [&](UIObject* parent) {
+                    for (auto& child : parent->getChildren()) {
+                        if (std::holds_alternative<UIObject*>(child)) {
+                            UIObject* obj = std::get<UIObject*>(child);
+                            obj->setTransform(undoMat * obj->getTransform());
+                            undoChildren(obj);
+                        } else {
+                            TextObject* textObj = std::get<TextObject*>(child);
+                            glm::mat4 t = textObj->getTransform();
+                            t[3][0] *= undo;
+                            t[3][1] *= undo;
+                            textObj->setTransform(t);
+                        }
+                    }
+                };
+                undoChildren(settingsUIObject);
+                settingsUIScale = 1.0f;
+            }
+            float contentScale = 1.0f;
+#ifdef __APPLE__
+            float xscale = 1.0f, yscale = 1.0f;
+            glfwGetWindowContentScale(renderer->getWindow(), &xscale, &yscale);
+            contentScale = std::max(xscale, yscale);
+#endif
+            float layoutScale = std::max(renderer->getUIScale() * contentScale, 0.0001f);
+            glm::mat4 currentTransform = settingsUIObject->getTransform();
+            float rootScaleY = currentTransform[1][1];
+            if (Texture* tex = renderer->getTextureManager()->getTexture("ui_window")) {
+                float panelPixelHeight = static_cast<float>(tex->height) * rootScaleY * layoutScale;
+                float screenHeight = static_cast<float>(renderer->getSwapChainExtent().height);
+                float maxHeight = 0.9f * screenHeight;
+                if (panelPixelHeight > maxHeight) {
+                    float s = maxHeight / panelPixelHeight;
+                    settingsUIObject->setTransform(glm::scale(glm::mat4(1.0f),
+                        glm::vec3(currentTransform[0][0] * s, rootScaleY * s, 1.0f)));
+                    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(s, s, 1.0f));
+                    std::function<void(UIObject*)> scaleChildren = [&](UIObject* parent) {
+                        for (auto& child : parent->getChildren()) {
+                            if (std::holds_alternative<UIObject*>(child)) {
+                                UIObject* obj = std::get<UIObject*>(child);
+                                obj->setTransform(scaleMat * obj->getTransform());
+                                scaleChildren(obj);
+                            } else {
+                                TextObject* textObj = std::get<TextObject*>(child);
+                                glm::mat4 t = textObj->getTransform();
+                                t[3][0] *= s;
+                                t[3][1] *= s;
+                                textObj->setTransform(t);
+                            }
+                        }
+                    };
+                    scaleChildren(settingsUIObject);
+                    settingsUIScale = s;
+                }
+            }
+        }
 
         void cleanupTempStorage() {
             for (auto& es : enumStates) {
