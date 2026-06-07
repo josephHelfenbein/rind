@@ -9,6 +9,12 @@ endif()
 if(NOT DEFINED OUTPUT_DIR)
   set(OUTPUT_DIR "${PROJECT_ROOT}/dist")
 endif()
+if(NOT DEFINED RIND_ENABLE_STEAM)
+  set(RIND_ENABLE_STEAM OFF)
+endif()
+if(NOT DEFINED STEAMWORKS_ROOT)
+  set(STEAMWORKS_ROOT "")
+endif()
 
 set(APP_NAME "Rind")
 
@@ -54,6 +60,9 @@ if(PLATFORM STREQUAL "linux")
       "-DCMAKE_TOOLCHAIN_FILE=${PROJECT_ROOT}/cmake/zig-toolchain.cmake"
       "-DZIG_GLIBC=${ZIG_GLIBC}"
       "-DRELEASE_MARCH=${RELEASE_MARCH}"
+      "-DVERSION=${VERSION}"
+      "-DRIND_ENABLE_STEAM=${RIND_ENABLE_STEAM}"
+      "-DSTEAMWORKS_ROOT=${STEAMWORKS_ROOT}"
     RESULT_VARIABLE _cfg_rc
   )
   if(NOT _cfg_rc EQUAL 0)
