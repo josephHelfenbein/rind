@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-// this header is SDK-free and every function is a no-op when RIND_ENABLE_STEAM is undefined
+// SDK-free and no-op if RIND_ENABLE_STEAM is undefined
 #ifndef RIND_GAME_VERSION
 #define RIND_GAME_VERSION "0.0.0-dev"
 #endif
@@ -13,6 +13,7 @@ namespace rind::steam {
     inline constexpr char kWebApiIdentity[] = "rind-leaderboard";
     inline constexpr char kLeaderboardName[] = "highscores";
     inline constexpr char kGameVersion[] = RIND_GAME_VERSION;
+    inline constexpr int kLeaderboardRows = 12;
 
     bool restartAppIfNecessary();
 

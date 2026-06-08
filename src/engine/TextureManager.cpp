@@ -230,6 +230,13 @@ engine::Texture* engine::TextureManager::getTexture(const std::string& name) {
 }
 
 void engine::TextureManager::registerTextureFromRGBA(const std::string& name, const uint8_t* rgba, int width, int height) {
+    createTextureFromRGBA(name, rgba, width, height);
+}
+
+bool engine::TextureManager::createTextureFromRGBA(const std::string& name, const unsigned char* rgba, int width, int height) {
+    if (rgba == nullptr || width <= 0 || height <= 0) {
+        return false;
+    }
     VkImage image;
     VkDeviceMemory memory;
     std::tie(image, memory) = renderer->createImageFromPixels(
@@ -290,6 +297,7 @@ void engine::TextureManager::registerTextureFromRGBA(const std::string& name, co
         .height = height
     };
     registerTexture(name, tex);
+    return true;
 }
 
 void engine::TextureManager::registerTexture(const std::string& name, const Texture& texture) {

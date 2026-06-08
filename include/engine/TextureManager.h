@@ -35,6 +35,8 @@ namespace engine {
         void registerTexture(const std::string& name, const Texture& texture);
         void registerTextureFromRGBA(const std::string& name, const uint8_t* rgba, int width, int height);
 
+        bool createTextureFromRGBA(const std::string& name, const unsigned char* rgba, int width, int height);
+
     private:
         std::unordered_map<std::string, Texture> textures;
         std::unordered_map<std::string, EmbeddedAsset> embeddedAssets;

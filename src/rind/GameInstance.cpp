@@ -1,6 +1,7 @@
 #include <rind/GameInstance.h>
 #if RIND_ENABLE_STEAM
 #include <rind/SteamManager.h>
+#include <rind/SteamInput.h>
 #include <rind/LeaderboardWindow.h>
 #endif
 
@@ -222,6 +223,7 @@ rind::GameInstance::GameInstance() {
         renderer->getInputManager()->setUIFocused(true);
         renderer->toggleLockCursor(false);
     #if RIND_ENABLE_STEAM
+        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Menu);
         rind::LeaderboardWindow* leaderboardWindow = new rind::LeaderboardWindow(renderer);
     #endif
     };
@@ -617,6 +619,9 @@ rind::GameInstance::GameInstance() {
 
         renderer->getInputManager()->setUIFocused(false);
         renderer->toggleLockCursor(true);
+    #if RIND_ENABLE_STEAM
+        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Gameplay);
+    #endif
     };
 
     renderer = std::make_unique<engine::Renderer>("Rind");
@@ -650,6 +655,15 @@ rind::GameInstance::GameInstance() {
     textureManager->registerEmbeddedTextures(getEmbedded_texture());
     modelManager->registerEmbeddedModels(getEmbedded_model());
     uiManager->registerEmbeddedFonts(getEmbedded_font());
+
+#if RIND_ENABLE_STEAM
+    rind::steaminput::setTextureManager(textureManager.get());
+    inputManager->setExternalEventProducer([this](std::vector<engine::InputEvent>& events) {
+        rind::steaminput::runFrame();
+        inputManager->setGamepadPollingEnabled(!rind::steaminput::isActive());
+        rind::steaminput::collectEvents(events);
+    });
+#endif
 
     settingsManager = std::make_unique<engine::SettingsManager>(renderer.get(),
         std::vector<engine::SettingsManager::SettingsDefinition>{

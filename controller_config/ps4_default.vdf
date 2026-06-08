@@ -1,0 +1,360 @@
+"controller_mappings"
+{
+	"version"		"3"
+	"revision"		"1"
+	"title"		"#title"
+	"description"		"#description"
+	"controller_type"		"controller_ps4"
+	"major_revision"		"0"
+	"minor_revision"		"0"
+	"actions"
+	{
+		"gameplay"
+		{
+			"title"		"#Gameplay"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"move"
+				{
+					"title"		"#Move"
+					"input_mode"		"joystick_move"
+				}
+				"look"
+				{
+					"title"		"#Look"
+					"input_mode"		"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+				"shoot"		"#Shoot"
+				"dash"		"#Dash"
+			}
+			"Button"
+			{
+				"jump"		"#Jump"
+				"heal"		"#Heal"
+				"grenade"		"#Grenade"
+				"punch"		"#Punch"
+				"pause"		"#Pause"
+			}
+		}
+		"menu"
+		{
+			"title"		"#Menu"
+			"legacy_set"		"0"
+			"Button"
+			{
+				"menu_up"		"#MenuUp"
+				"menu_down"		"#MenuDown"
+				"menu_left"		"#MenuLeft"
+				"menu_right"		"#MenuRight"
+				"menu_select"		"#MenuSelect"
+				"menu_cancel"		"#MenuCancel"
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"0"
+		"mode"		"four_buttons"
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay jump, Jump"
+						}
+					}
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay heal, Heal"
+						}
+					}
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"1"
+		"mode"		"trigger"
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay grenade, Grenade"
+						}
+					}
+				}
+			}
+		}
+		"gameactions"
+		{
+			"gameplay"		"dash"
+		}
+	}
+	"group"
+	{
+		"id"		"2"
+		"mode"		"trigger"
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay punch, Punch"
+						}
+					}
+				}
+			}
+		}
+		"gameactions"
+		{
+			"gameplay"		"shoot"
+		}
+	}
+	"group"
+	{
+		"id"		"3"
+		"mode"		"joystick_move"
+		"inputs"
+		{
+		}
+		"gameactions"
+		{
+			"gameplay"		"move"
+		}
+	}
+	"group"
+	{
+		"id"		"4"
+		"mode"		"joystick_move"
+		"inputs"
+		{
+		}
+		"gameactions"
+		{
+			"gameplay"		"look"
+		}
+	}
+	"group"
+	{
+		"id"		"5"
+		"mode"		"switches"
+		"inputs"
+		{
+			"button_start"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay pause, Pause"
+						}
+					}
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay grenade, Grenade"
+						}
+					}
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action gameplay punch, Punch"
+						}
+					}
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"6"
+		"mode"		"four_buttons"
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action menu menu_select, Menu Select"
+						}
+					}
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action menu menu_cancel, Menu Cancel"
+						}
+					}
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"7"
+		"mode"		"dpad"
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action menu menu_up, Menu Up"
+						}
+					}
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action menu menu_down, Menu Down"
+						}
+					}
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action menu menu_right, Menu Right"
+						}
+					}
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action menu menu_left, Menu Left"
+						}
+					}
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+		}
+	}
+	"preset"
+	{
+		"id"		"0"
+		"name"		"gameplay"
+		"group_source_bindings"
+		{
+			"0"		"button_diamond active"
+			"1"		"left_trigger active"
+			"2"		"right_trigger active"
+			"3"		"joystick active"
+			"4"		"right_joystick active"
+			"5"		"switch active"
+		}
+	}
+	"preset"
+	{
+		"id"		"1"
+		"name"		"menu"
+		"group_source_bindings"
+		{
+			"6"		"button_diamond active"
+			"7"		"dpad active"
+		}
+	}
+	"localization"
+	{
+		"english"
+		{
+			"title"		"Rind"
+			"description"		"Default PlayStation 4 controller bindings for Rind."
+			"Gameplay"		"Gameplay"
+			"Menu"		"Menu"
+			"Move"		"Move"
+			"Look"		"Look"
+			"Shoot"		"Shoot"
+			"Dash"		"Dash"
+			"Jump"		"Jump"
+			"Heal"		"Heal"
+			"Grenade"		"Grenade"
+			"Punch"		"Punch"
+			"Pause"		"Pause"
+			"MenuUp"		"Menu Up"
+			"MenuDown"		"Menu Down"
+			"MenuLeft"		"Menu Left"
+			"MenuRight"		"Menu Right"
+			"MenuSelect"		"Menu Select"
+			"MenuCancel"		"Menu Cancel"
+		}
+	}
+}

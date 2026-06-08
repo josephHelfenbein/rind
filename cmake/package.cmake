@@ -118,6 +118,12 @@ if(PLATFORM STREQUAL "macos")
     file(COPY "${BIN_DIR}/icd" DESTINATION "${MACOS_DIR}")
   endif()
 
+  # Steam Input controller configs
+  if(EXISTS "${PROJECT_ROOT}/controller_config")
+    file(COPY "${PROJECT_ROOT}/controller_config" DESTINATION "${MACOS_DIR}")
+    file(COPY "${PROJECT_ROOT}/controller_config" DESTINATION "${OUTPUT_DIR}")
+  endif()
+
   # Optional icon
   set(_ICNS "${PROJECT_ROOT}/cmake/${APP_NAME}.icns")
   if(EXISTS "${_ICNS}")
@@ -183,6 +189,11 @@ elseif(PLATFORM STREQUAL "linux")
     endforeach()
   endif()
 
+  # Steam Input controller configs
+  if(EXISTS "${PROJECT_ROOT}/controller_config")
+    file(COPY "${PROJECT_ROOT}/controller_config" DESTINATION "${APPDIR}/usr/bin")
+  endif()
+
   # AppRun sets LD_LIBRARY_PATH so bundled libs are found
   file(WRITE "${APPDIR}/AppRun"
     "#!/bin/bash\n"
@@ -241,6 +252,11 @@ elseif(PLATFORM STREQUAL "windows")
   foreach(_dll IN LISTS _DLLS)
     file(COPY "${_dll}" DESTINATION "${DIST_DIR}")
   endforeach()
+
+  # Steam Input controller configs
+  if(EXISTS "${PROJECT_ROOT}/controller_config")
+    file(COPY "${PROJECT_ROOT}/controller_config" DESTINATION "${DIST_DIR}")
+  endif()
 
   get_filename_component(_DIST_NAME "${DIST_DIR}" NAME)
   execute_process(

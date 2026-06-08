@@ -7,6 +7,7 @@
 #include <engine/SceneManager.h>
 #include <engine/SettingsManager.h>
 #include <rind/Grenade.h>
+#include <rind/GamepadBindings.h>
 #if RIND_ENABLE_STEAM
 #include <rind/SteamManager.h>
 #endif
@@ -758,6 +759,9 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         renderer->setPaused(true);
         renderer->getInputManager()->setUIFocused(true);
         renderer->toggleLockCursor(false);
+    #if RIND_ENABLE_STEAM
+        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Menu);
+    #endif
     }
     renderer->refreshDescriptorSets();
 }
@@ -773,8 +777,37 @@ void rind::Player::hidePauseMenu(bool uiOnly) {
         renderer->setPaused(false);
         renderer->getInputManager()->setUIFocused(false);
         renderer->toggleLockCursor(true);
+    #if RIND_ENABLE_STEAM
+        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Gameplay);
+    #endif
     }
     renderer->refreshDescriptorSets();
+}
+// action-native input binding layer
+namespace {
+    rind::GameAction keyToAction(int key) {
+        switch (key) {
+            case GLFW_KEY_W: return rind::GameAction::MoveForward;
+            case GLFW_KEY_S: return rind::GameAction::MoveBackward;
+            case GLFW_KEY_A: return rind::GameAction::MoveLeft;
+            case GLFW_KEY_D: return rind::GameAction::MoveRight;
+            case GLFW_KEY_SPACE: return rind::GameAction::Jump;
+            case GLFW_KEY_LEFT_SHIFT: return rind::GameAction::Dash;
+            case GLFW_KEY_Q: return rind::GameAction::Grenade;
+            case GLFW_KEY_F: return rind::GameAction::Punch;
+            case GLFW_KEY_ESCAPE: return rind::GameAction::Pause;
+            default: return rind::GameAction::None;
+        }
+    }
+
+    rind::GameAction mouseButtonToAction(int button) {
+        switch (button) {
+            case GLFW_MOUSE_BUTTON_LEFT: return rind::GameAction::Shoot;
+            case GLFW_MOUSE_BUTTON_RIGHT: return rind::GameAction::Heal;
+            default: return rind::GameAction::None;
+        }
+    }
+
 }
 
 void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) {
@@ -790,36 +823,36 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 inputManager->resetKeyStates();
                 continue;
             }
-            switch (event.keyEvent.key) {
-                case GLFW_KEY_ESCAPE:
+            switch (keyToAction(event.keyEvent.key)) {
+                case GameAction::Pause:
                     renderer->getSettingsManager()->hideSettingsUI();
                     renderer->isPaused() ? hidePauseMenu() : showPauseMenu();
                     break;
-                case GLFW_KEY_W:
+                case GameAction::MoveForward:
                     move(glm::vec3(1.0f, 0.0f, 0.0f));
                     break;
-                case GLFW_KEY_S:
+                case GameAction::MoveBackward:
                     move(glm::vec3(-1.0f, 0.0f, 0.0f));
                     break;
-                case GLFW_KEY_A:
+                case GameAction::MoveLeft:
                     move(glm::vec3(0.0f, 0.0f, -1.0f));
                     break;
-                case GLFW_KEY_D:
+                case GameAction::MoveRight:
                     move(glm::vec3(0.0f, 0.0f, 1.0f));
                     break;
-                case GLFW_KEY_Q:
+                case GameAction::Grenade:
                     if ((std::chrono::steady_clock::now() - lastGrenadeTime) >= std::chrono::duration<float>(grenadeCooldown)) {
                         throwGrenade();
                         lastGrenadeTime = std::chrono::steady_clock::now();
                     }
                     break;
-                case GLFW_KEY_F:
+                case GameAction::Punch:
                     if ((std::chrono::steady_clock::now() - lastPunchTime) >= std::chrono::duration<float>(punchCooldown)) {
                         punch();
                         lastPunchTime = std::chrono::steady_clock::now();
                     }
                     break;
-                case GLFW_KEY_SPACE:
+                case GameAction::Jump:
                     if (isGrounded()) {
                         jump(8.0f);
                     } else if (canDoubleJump) {
@@ -829,24 +862,24 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                         resetDoubleJump = true;
                     }
                     break;
-                case GLFW_KEY_LEFT_SHIFT:
+                case GameAction::Dash:
                     canDash = true;
                     break;
                 default:
                     break;
             }
         } else if (event.type == engine::InputEvent::Type::KeyRelease) {
-            switch (event.keyEvent.key) {
-                case GLFW_KEY_W:
+            switch (keyToAction(event.keyEvent.key)) {
+                case GameAction::MoveForward:
                     stopMove(glm::vec3(1.0f, 0.0f, 0.0f));
                     break;
-                case GLFW_KEY_S:
+                case GameAction::MoveBackward:
                     stopMove(glm::vec3(-1.0f, 0.0f, 0.0f));
                     break;
-                case GLFW_KEY_A:
+                case GameAction::MoveLeft:
                     stopMove(glm::vec3(0.0f, 0.0f, -1.0f));
                     break;
-                case GLFW_KEY_D:
+                case GameAction::MoveRight:
                     stopMove(glm::vec3(0.0f, 0.0f, 1.0f));
                     break;
                 default:
@@ -860,30 +893,35 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                 rotate(glm::vec3(0.0f, -xOffset, -yOffset));
             }
         } else if (event.type == engine::InputEvent::Type::MouseButtonPress && !renderer->isPaused()) {
-            if (event.mouseButtonEvent.button == GLFW_MOUSE_BUTTON_LEFT) {
-                if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)) {
-                    shoot();
-                    lastShotTime = std::chrono::steady_clock::now();
-                }
-            } else if (event.mouseButtonEvent.button == GLFW_MOUSE_BUTTON_RIGHT
-             && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)
-             && inHealZone
-            ) {
-                damage(-10.0f); // heals from enemy explosions
-                lastShotTime = std::chrono::steady_clock::now();
-                break;
+            switch (mouseButtonToAction(event.mouseButtonEvent.button)) {
+                case GameAction::Shoot:
+                    if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)) {
+                        shoot();
+                        lastShotTime = std::chrono::steady_clock::now();
+                    }
+                    break;
+                case GameAction::Heal:
+                    if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)
+                     && inHealZone
+                    ) {
+                        damage(-10.0f); // heals from enemy explosions
+                        lastShotTime = std::chrono::steady_clock::now();
+                    }
+                    break;
+                default:
+                    break;
             }
         } else if (event.type == engine::InputEvent::Type::GamepadButtonPress) {
             if (renderer->isPaused() && event.gamepadButtonEvent.button != GLFW_GAMEPAD_BUTTON_START) {
                 inputManager->resetKeyStates();
                 continue;
             }
-            switch (event.gamepadButtonEvent.button) {
-                case GLFW_GAMEPAD_BUTTON_START:
+            switch (gamepadButtonToAction(event.gamepadButtonEvent.button)) {
+                case GameAction::Pause:
                     renderer->getSettingsManager()->hideSettingsUI();
                     renderer->isPaused() ? hidePauseMenu() : showPauseMenu();
                     break;
-                case GLFW_GAMEPAD_BUTTON_A:
+                case GameAction::Jump:
                     if (isGrounded()) {
                         jump(8.0f);
                     } else if (canDoubleJump) {
@@ -893,7 +931,7 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                         resetDoubleJump = true;
                     }
                     break;
-                case GLFW_GAMEPAD_BUTTON_B:
+                case GameAction::Heal:
                     if ((std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown)
                      && inHealZone
                     ) {
@@ -901,13 +939,13 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                         lastShotTime = std::chrono::steady_clock::now();
                     }
                     break;
-                case GLFW_GAMEPAD_BUTTON_LEFT_BUMPER:
+                case GameAction::Grenade:
                     if ((std::chrono::steady_clock::now() - lastGrenadeTime) >= std::chrono::duration<float>(grenadeCooldown)) {
                         throwGrenade();
                         lastGrenadeTime = std::chrono::steady_clock::now();
                     }
                     break;
-                case GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER:
+                case GameAction::Punch:
                     if ((std::chrono::steady_clock::now() - lastPunchTime) >= std::chrono::duration<float>(punchCooldown)) {
                         punch();
                         lastPunchTime = std::chrono::steady_clock::now();
@@ -953,29 +991,31 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
                     break;
             }
         } else if (event.type == engine::InputEvent::Type::GamepadAxisMove) {
-            switch (event.gamepadAxisEvent.axis) {
-                case GLFW_GAMEPAD_AXIS_RIGHT_X:
-                    rightStickX = applyStickDeadzone(event.gamepadAxisEvent.value);
-                    break;
-                case GLFW_GAMEPAD_AXIS_RIGHT_Y:
-                    rightStickY = applyStickDeadzone(event.gamepadAxisEvent.value);
-                    break;
-                case GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER:
-                    if (!renderer->isPaused()
-                     && event.gamepadAxisEvent.value > 0.5f
-                     && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
-                    {
-                        shoot();
-                        lastShotTime = std::chrono::steady_clock::now();
-                    }
-                    break;
-                case GLFW_GAMEPAD_AXIS_LEFT_TRIGGER:
-                    if (event.gamepadAxisEvent.value > 0.5f) {
-                        canDash = true;
-                    }
-                    break;
-                default:
-                    break;
+            int axis = event.gamepadAxisEvent.axis;
+            float value = event.gamepadAxisEvent.value;
+            if (axis == GLFW_GAMEPAD_AXIS_RIGHT_X) {
+                rightStickX = applyStickDeadzone(value);
+            } else if (axis == GLFW_GAMEPAD_AXIS_RIGHT_Y) {
+                rightStickY = applyStickDeadzone(value);
+            } else {
+                switch (gamepadTriggerToAction(axis)) {
+                    case GameAction::Shoot:
+                        if (!renderer->isPaused()
+                         && value > 0.5f
+                         && (std::chrono::steady_clock::now() - lastShotTime) >= std::chrono::duration<float>(shootingCooldown))
+                        {
+                            shoot();
+                            lastShotTime = std::chrono::steady_clock::now();
+                        }
+                        break;
+                    case GameAction::Dash:
+                        if (value > 0.5f) {
+                            canDash = true;
+                        }
+                        break;
+                    default:
+                        break;
+                }
             }
         }
     }

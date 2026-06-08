@@ -3,6 +3,7 @@
 #include <engine/UIManager.h>
 #include <engine/TextureManager.h>
 #include <engine/Renderer.h>
+#include <rind/SteamManager.h>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
@@ -16,7 +17,7 @@ namespace rind {
         void update(float deltaTime) override;
 
     private:
-        static constexpr int kRows = 12;
+        static constexpr int kRows = rind::steam::kLeaderboardRows;
 
         static constexpr float kPanelW = 0.35f;
         static constexpr float kThinW = 0.04f;

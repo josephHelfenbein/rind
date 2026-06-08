@@ -353,6 +353,16 @@ if(RIND_ENABLE_STEAM)
     RIND_LEADERBOARD_TOKEN="${RIND_LEADERBOARD_TOKEN}")
 
   set_property(GLOBAL PROPERTY RIND_STEAM_RUNTIME_LIB "${STEAM_RUNTIME_LIB}")
+
+  # Steam Input In-Game Actions manifest + default controller bindings
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/controller_config"
+      "$<TARGET_FILE_DIR:${PROJECT_NAME}>/controller_config"
+    COMMENT "Copying Steam Input controller_config next to the executable")
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/controller_config"
+    DESTINATION . CONFIGURATIONS Release)
+
   message(STATUS "Steamworks integration enabled (SDK: ${STEAMWORKS_ROOT})")
 endif()
 

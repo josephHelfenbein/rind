@@ -73,7 +73,7 @@ void engine::InputManager::processInput(GLFWwindow* window) {
         }
         mouseButtonStates[button] = state;
     }
-    if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1)) {
+    if (gamepadPollingEnabled && glfwJoystickIsGamepad(GLFW_JOYSTICK_1)) {
         GLFWgamepadstate state;
         glfwGetGamepadState(GLFW_JOYSTICK_1, &state);
         for (int button = GLFW_GAMEPAD_BUTTON_A; button <= GLFW_GAMEPAD_BUTTON_LAST; ++button) {
@@ -97,7 +97,7 @@ void engine::InputManager::processInput(GLFWwindow* window) {
         }
         for (int axis = GLFW_GAMEPAD_AXIS_LEFT_X; axis <= GLFW_GAMEPAD_AXIS_LAST; ++axis) {
             float value = state.axes[axis];
-            if (std::abs(value - gamepadAxisStates[axis]) > 0.01f) {
+            if (std::abs(value - gamepadAxisStates[axis]) > axisMoveThreshold) {
                 if (!controllerMode) {
                     setControllerMode(true);
                 }
@@ -145,6 +145,9 @@ void engine::InputManager::processInput(GLFWwindow* window) {
                 }
             }
         }
+    }
+    if (externalEventProducer) {
+        externalEventProducer(events);
     }
     dispatch(events);
 }

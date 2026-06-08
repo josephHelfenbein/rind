@@ -26,22 +26,21 @@
 #endif
 
 namespace {
+    constexpr char kHexDigits[] = "0123456789abcdef";
 
     std::string toHex(const uint8* data, int len) {
-        static const char* H = "0123456789abcdef";
         std::string s;
         s.reserve(static_cast<size_t>(len) * 2);
-        for (int i = 0; i < len; ++i) { s += H[data[i] >> 4]; s += H[data[i] & 0xF]; }
+        for (int i = 0; i < len; ++i) { s += kHexDigits[data[i] >> 4]; s += kHexDigits[data[i] & 0xF]; }
         return s;
     }
 
     std::string randomHex(int bytes) {
-        static const char* H = "0123456789abcdef";
         std::random_device rd;
         std::uniform_int_distribution<int> d(0, 255);
         std::string s;
         s.reserve(static_cast<size_t>(bytes) * 2);
-        for (int i = 0; i < bytes; ++i) { const int b = d(rd); s += H[b >> 4]; s += H[b & 0xF]; }
+        for (int i = 0; i < bytes; ++i) { const int b = d(rd); s += kHexDigits[b >> 4]; s += kHexDigits[b & 0xF]; }
         return s;
     }
 
@@ -88,7 +87,7 @@ namespace {
 
     class SteamLeaderboard {
     public:
-        constexpr static int kRows = 12;
+        constexpr static int kRows = rind::steam::kLeaderboardRows;
         using LeaderboardRow = rind::steam::LeaderboardRow;
         using LeaderboardSnapshot = rind::steam::LeaderboardSnapshot;
 

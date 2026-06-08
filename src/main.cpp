@@ -2,6 +2,7 @@
 #include <rind/GameInstance.h>
 #if RIND_ENABLE_STEAM
 #include <rind/SteamManager.h>
+#include <rind/SteamInput.h>
 #endif
 
 int main() {
@@ -15,12 +16,14 @@ int main() {
 	engine::Platform::initialize();
 #if RIND_ENABLE_STEAM
 	rind::steam::init();
+	rind::steaminput::init();
 #endif
 	int result = engine::Platform::runWithCrashReport([] {
 		rind::GameInstance game;
 		game.run();
 	});
 #if RIND_ENABLE_STEAM
+	rind::steaminput::shutdown();
 	rind::steam::shutdown();
 #endif
 	return result;

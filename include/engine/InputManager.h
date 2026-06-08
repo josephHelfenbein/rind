@@ -40,6 +40,9 @@ namespace engine {
         InputManager(Renderer* renderer);
         ~InputManager() = default;
 
+        static constexpr float axisDeadzone = 0.2f;
+        static constexpr float axisMoveThreshold = 0.01f;
+
         void processInput(GLFWwindow* window);
         void dispatch(const std::vector<InputEvent>& events);
         void dispatchRecreateSwapChain();
@@ -47,6 +50,12 @@ namespace engine {
         void unregisterCallback(const std::string& name);
         void registerRecreateSwapChainCallback(const std::string& name, std::function<void()> callback);
         void resetKeyStates();
+
+        void setExternalEventProducer(std::function<void(std::vector<InputEvent>&)> producer) {
+            externalEventProducer = std::move(producer);
+        }
+        void setGamepadPollingEnabled(bool enabled) { gamepadPollingEnabled = enabled; }
+        bool isGamepadPollingEnabled() const { return gamepadPollingEnabled; }
 
         void setCursorLocked(bool locked) { isCursorLocked = locked; }
         void setUIFocused(bool focused) {
@@ -101,7 +110,6 @@ namespace engine {
         int gamepadButtonStates[GLFW_GAMEPAD_BUTTON_LAST + 1] = {0};
         float gamepadAxisStates[GLFW_GAMEPAD_AXIS_LAST + 1] = {0.0f};
         int gamepadAxisZones[GLFW_GAMEPAD_AXIS_LAST + 1] = {0}; // -1, 0, or 1
-        static constexpr float axisDeadzone = 0.2f;
         glm::dvec2 fakeControllerCursor{0.0, 0.0};
         bool fakeCursorPressing = false;
         bool hasMousePosition = false;
@@ -109,5 +117,7 @@ namespace engine {
         bool isCursorLocked = false;
         bool isUIFocused = false;
         bool controllerMode = false;
+        bool gamepadPollingEnabled = true;
+        std::function<void(std::vector<InputEvent>&)> externalEventProducer = nullptr;
     };
 };

@@ -5,6 +5,10 @@
 #include <engine/Camera.h>
 #include <rind/ScoreCounter.h>
 #include <rind/StatusEffect.h>
+#include <rind/GameAction.h>
+#if RIND_ENABLE_STEAM
+#include <rind/SteamInput.h>
+#endif
 #include <cmath>
 #include <chrono>
 
@@ -37,37 +41,43 @@ namespace rind {
             Jump,
             Punch
         };
-        void showKeybindHint(const HintActions& action, const std::string& hint) {
+        std::string hintTexture(const HintActions& action) {
             std::string texture;
-            if (inputManager->isControllerMode()) {
-                texture = actionTexturesGamepad[action];
-            } else {
-                texture = actionTexturesKeyboard[action];
+        #if RIND_ENABLE_STEAM
+            if (rind::steaminput::isActive()) {
+                texture = rind::steaminput::glyphTextureName(toGameAction(action));
             }
+            if (texture.empty())
+        #endif
+            texture = inputManager->isControllerMode() ? actionTexturesGamepad[action] : actionTexturesKeyboard[action];
+            return texture;
+        }
+        void showKeybindHint(const HintActions& action, const std::string& hint) {
+            std::string texture = hintTexture(action);
             activeKeybindHint = action;
             keybindHintObject->setTexture(texture);
             keybindHintTextObject->setText(hint);
             keybindHintDuration = 2.8f;
         }
         void checkKeybindHint() {
-            std::string texture;
-            if (inputManager->isControllerMode()) {
-                texture = actionTexturesGamepad[activeKeybindHint];
-            } else {
-                texture = actionTexturesKeyboard[activeKeybindHint];
-            }
+            std::string texture = hintTexture(activeKeybindHint);
             if (keybindHintObject->getTexture() != texture) {
                 keybindHintObject->setTexture(texture);
             }
-            std::string grenadeTexture;
-            if (inputManager->isControllerMode()) {
-                grenadeTexture = actionTexturesGamepad[HintActions::Grenade];
-            } else {
-                grenadeTexture = actionTexturesKeyboard[HintActions::Grenade];
-            }
+            std::string grenadeTexture = hintTexture(HintActions::Grenade);
             if (grenadeKeybindHintObject->getTexture() != grenadeTexture) {
                 grenadeKeybindHintObject->setTexture(grenadeTexture);
             }
+        }
+        static rind::GameAction toGameAction(const HintActions& action) {
+            switch (action) {
+                case HintActions::Dash: return rind::GameAction::Dash;
+                case HintActions::Heal: return rind::GameAction::Heal;
+                case HintActions::Grenade: return rind::GameAction::Grenade;
+                case HintActions::Jump: return rind::GameAction::Jump;
+                case HintActions::Punch: return rind::GameAction::Punch;
+            }
+            return rind::GameAction::None;
         }
 
         void resizeHealthbar();
