@@ -621,7 +621,9 @@ engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, 
         float minX = std::numeric_limits<float>::max();
         float maxX = std::numeric_limits<float>::lowest();
         for (const char& c : textObj->getText()) {
-            const Character& ch = fontInfo.characters.at(c);
+            auto chIt = fontInfo.characters.find(c);
+            if (chIt == fontInfo.characters.end()) continue;
+            const Character& ch = chIt->second;
             float xpos = penX + ch.bearing.x * scaleX;
             float w = ch.size.x * scaleX;
             minX = std::min(minX, xpos);
@@ -718,19 +720,18 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
         
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
         const auto& descriptorSets = object->getDescriptorSets();
-        if (!descriptorSets.empty()) {
-            const uint32_t dsIndex = std::min<uint32_t>(frameIndex, static_cast<uint32_t>(descriptorSets.size() - 1));
-            vkCmdBindDescriptorSets(
-                commandBuffer,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                shader->pipelineLayout,
-                0,
-                1,
-                &descriptorSets[dsIndex],
-                0,
-                nullptr
-            );
-        }
+        if (descriptorSets.empty()) return;
+        const uint32_t dsIndex = std::min<uint32_t>(frameIndex, static_cast<uint32_t>(descriptorSets.size() - 1));
+        vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            shader->pipelineLayout,
+            0,
+            1,
+            &descriptorSets[dsIndex],
+            0,
+            nullptr
+        );
         glm::vec2 center = rect.position + 0.5f * rect.size;
         glm::mat4 pixelModel(1.0f);
         pixelModel = glm::translate(pixelModel, glm::vec3(center, 0.0f));
@@ -763,7 +764,9 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
         float minX = std::numeric_limits<float>::max();
         float maxX = std::numeric_limits<float>::lowest();
         for (const char& c : object->getText()) {
-            const Character& ch = fontInfo.characters.at(c);
+            auto chIt = fontInfo.characters.find(c);
+            if (chIt == fontInfo.characters.end()) continue;
+            const Character& ch = chIt->second;
             float xpos = penX + ch.bearing.x * scaleX;
             float w = ch.size.x * scaleX;
             minX = std::min(minX, xpos);
@@ -779,7 +782,9 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
 
         const std::string& text = object->getText();
         for (const char& c : text) {
-            const Character& ch = fontInfo.characters.at(c);
+            auto chIt = fontInfo.characters.find(c);
+            if (chIt == fontInfo.characters.end()) continue;
+            const Character& ch = chIt->second;
             float xpos = x + ch.bearing.x * scaleX;
             float ypos = y - (ch.size.y - ch.bearing.y) * scaleY;
             float w = ch.size.x * scaleX;

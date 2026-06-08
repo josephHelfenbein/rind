@@ -1953,6 +1953,7 @@ void engine::ShaderManager::createDefaultShaders() {
             }
         };
         shader.config.setPushConstant<UIPC>(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        shader.config.sampler = renderer->getLinearClampSampler();
         addGraphicsShader(std::move(shader));
     }
 

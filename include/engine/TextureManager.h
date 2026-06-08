@@ -33,6 +33,7 @@ namespace engine {
 
         Texture* getTexture(const std::string& name);
         void registerTexture(const std::string& name, const Texture& texture);
+        void registerTextureFromRGBA(const std::string& name, const uint8_t* rgba, int width, int height);
 
     private:
         std::unordered_map<std::string, Texture> textures;

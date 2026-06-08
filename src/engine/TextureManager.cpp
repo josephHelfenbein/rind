@@ -229,6 +229,69 @@ engine::Texture* engine::TextureManager::getTexture(const std::string& name) {
     return nullptr;
 }
 
+void engine::TextureManager::registerTextureFromRGBA(const std::string& name, const uint8_t* rgba, int width, int height) {
+    VkImage image;
+    VkDeviceMemory memory;
+    std::tie(image, memory) = renderer->createImageFromPixels(
+        const_cast<uint8_t*>(rgba),
+        static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * 4,
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+        1,
+        VK_SAMPLE_COUNT_1_BIT,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        1,
+        0
+    );
+    renderer->transitionImageLayout(
+        image,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        1,
+        1
+    );
+    VkImageView view = renderer->createImageView(
+        image,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        1,
+        VK_IMAGE_VIEW_TYPE_2D,
+        1
+    );
+    VkSampler sampler = renderer->createTextureSampler(
+        VK_FILTER_LINEAR,
+        VK_FILTER_LINEAR,
+        VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        0.0f,
+        VK_FALSE,
+        1.0f,
+        VK_FALSE,
+        VK_COMPARE_OP_ALWAYS,
+        0.0f,
+        0.0f,
+        VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        VK_FALSE
+    );
+    Texture tex = {
+        .name = name,
+        .image = image,
+        .imageView = view,
+        .imageMemory = memory,
+        .imageSampler = sampler,
+        .format = VK_FORMAT_R8G8B8A8_SRGB,
+        .width = width,
+        .height = height
+    };
+    registerTexture(name, tex);
+}
+
 void engine::TextureManager::registerTexture(const std::string& name, const Texture& texture) {
     auto it = textures.find(name);
     if (it != textures.end()) {

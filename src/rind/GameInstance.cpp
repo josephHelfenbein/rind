@@ -1,6 +1,7 @@
 #include <rind/GameInstance.h>
 #if RIND_ENABLE_STEAM
 #include <rind/SteamManager.h>
+#include <rind/LeaderboardWindow.h>
 #endif
 
 #include <engine/Camera.h>
@@ -220,6 +221,9 @@ rind::GameInstance::GameInstance() {
         }
         renderer->getInputManager()->setUIFocused(true);
         renderer->toggleLockCursor(false);
+    #if RIND_ENABLE_STEAM
+        rind::LeaderboardWindow* leaderboardWindow = new rind::LeaderboardWindow(renderer);
+    #endif
     };
 
     std::function<void(engine::Renderer*)> mainGameScene = [this](engine::Renderer* renderer){
