@@ -7,48 +7,21 @@
 #include "steam/isteamhttp.h"
 
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
 #include <vector>
 #include <iostream>
 
+// backend config baked in at build time
+#ifndef RIND_LEADERBOARD_URL
+#define RIND_LEADERBOARD_URL ""
+#endif
+#ifndef RIND_LEADERBOARD_TOKEN
+#define RIND_LEADERBOARD_TOKEN ""
+#endif
+
 namespace {
-
-    struct EnvConfig {
-        std::string url; // RIND_LEADERBOARD_URL (backend endpoint, not secret)
-        std::string token; // RIND_LEADERBOARD_TOKEN (optional soft gate, not security)
-    };
-
-    std::string trim(const std::string& s) {
-        const size_t a = s.find_first_not_of(" \t\r\n");
-        if (a == std::string::npos) return "";
-        const size_t b = s.find_last_not_of(" \t\r\n");
-        std::string out = s.substr(a, b - a + 1);
-        if (out.size() >= 2 && (out.front() == '"' || out.front() == '\'') && out.back() == out.front()) {
-            out = out.substr(1, out.size() - 2);
-        }
-        return out;
-    }
-
-    EnvConfig loadEnv() {
-        EnvConfig cfg;
-        std::ifstream f(".env");
-        if (!f) return cfg;
-        std::string line;
-        while (std::getline(f, line)) {
-            const std::string t = trim(line);
-            if (t.empty() || t[0] == '#') continue;
-            const size_t eq = t.find('=');
-            if (eq == std::string::npos) continue;
-            const std::string key = trim(t.substr(0, eq));
-            const std::string val = trim(t.substr(eq + 1));
-            if (key == "RIND_LEADERBOARD_URL") cfg.url = val;
-            else if (key == "RIND_LEADERBOARD_TOKEN") cfg.token = val;
-        }
-        return cfg;
-    }
 
     std::string toHex(const uint8* data, int len) {
         static const char* H = "0123456789abcdef";
@@ -125,13 +98,14 @@ namespace {
             }
             m_initialized = true;
 
-            m_cfg = loadEnv();
-            if (!m_cfg.url.empty() && m_cfg.url.rfind("https://", 0) != 0) {
+            m_url = RIND_LEADERBOARD_URL;
+            m_token = RIND_LEADERBOARD_TOKEN;
+            if (!m_url.empty() && m_url.rfind("https://", 0) != 0) {
                 std::cerr << "[steam] RIND_LEADERBOARD_URL must be https://; leaderboard submission disabled" << std::endl;
-                m_cfg.url.clear();
+                m_url.clear();
             }
-            if (m_cfg.url.empty()) {
-                std::cerr << "[steam] no valid RIND_LEADERBOARD_URL in .env; leaderboard submission disabled" << std::endl;
+            if (m_url.empty()) {
+                std::cerr << "[steam] no leaderboard URL compiled in; submission disabled" << std::endl;
             }
             m_ticketCb.Register(this, &SteamLeaderboard::OnGetTicket);
         }
@@ -195,7 +169,7 @@ namespace {
         }
 
         void queueOrSend(bool isEnd, const std::string& seed, int32 score) {
-            if (!m_initialized || m_cfg.url.empty()) return;
+            if (!m_initialized || m_url.empty()) return;
             if (m_ticketHex.empty()) {
                 m_pending.push_back({isEnd, seed, score});
                 return;
@@ -205,7 +179,7 @@ namespace {
 
         void sendPost(bool isEnd, const std::string& seed, int32 score) {
             ISteamHTTP* http = SteamHTTP();
-            if (!http || m_cfg.url.empty() || m_ticketHex.empty()) return;
+            if (!http || m_url.empty() || m_ticketHex.empty()) return;
 
             std::string body = std::string("{\"event\":\"") + (isEnd ? "end" : "start")
                 + "\",\"seed\":\"" + seed
@@ -214,10 +188,10 @@ namespace {
             if (isEnd) body += ",\"score\":" + std::to_string(score);
             body += "}";
 
-            HTTPRequestHandle req = http->CreateHTTPRequest(k_EHTTPMethodPOST, m_cfg.url.c_str());
+            HTTPRequestHandle req = http->CreateHTTPRequest(k_EHTTPMethodPOST, m_url.c_str());
             if (req == INVALID_HTTPREQUEST_HANDLE) return;
-            if (!m_cfg.token.empty()) {
-                http->SetHTTPRequestHeaderValue(req, "X-App-Token", m_cfg.token.c_str());
+            if (!m_token.empty()) {
+                http->SetHTTPRequestHeaderValue(req, "X-App-Token", m_token.c_str());
             }
             http->SetHTTPRequestRawPostBody(req, "application/json",
                 reinterpret_cast<uint8*>(const_cast<char*>(body.data())),
@@ -234,7 +208,8 @@ namespace {
         }
 
         bool m_initialized = false;
-        EnvConfig m_cfg;
+        std::string m_url; // leaderboard backend URL (compiled in)
+        std::string m_token; // optional soft token (compiled in)
         HAuthTicket m_hAuthTicket = k_HAuthTicketInvalid; // current run's auth ticket handle
         std::string m_ticketHex; // hex Web API auth ticket (current run)
         std::string m_seed; // current run's session token

@@ -257,7 +257,7 @@ CMake links the platform-appropriate redistributable and copies the runtime libr
 
 The leaderboard uses Steam **Trusted writes**: the game never writes scores directly. On run start and on death it `POST`s to a backend you host, which holds the Steam publisher Web API key, verifies the player's Steam Web API auth ticket, validates the run, and writes the score via the Steam Web API. The backend is not part of this repository.
 
-The client reads its backend config at startup from a `.env` file in the working directory (see [`.env.example`](.env.example)).
+The backend URL is compiled in at configure time (`-DRIND_LEADERBOARD_URL=https://your-server/submit`, https only, kept out of the repo); without it, submission is a no-op. An optional `-DRIND_LEADERBOARD_TOKEN=...` adds an `X-App-Token` header.
 
 ## Packaging
 

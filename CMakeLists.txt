@@ -29,6 +29,9 @@ set(VERSION "1.0.0" CACHE STRING "Game version")
 # The SDK is proprietary and is not bundled with this repo, it must be locally downloaded and pointed at with -DSTEAMWORKS_ROOT=/path/to/sdk
 option(RIND_ENABLE_STEAM "Build with optional Steamworks integration (Steam leaderboards)" OFF)
 set(STEAMWORKS_ROOT "" CACHE PATH "Path to the Steamworks SDK root (the directory containing 'public' and 'redistributable_bin')")
+# Compile-time leaderboard backend config
+set(RIND_LEADERBOARD_URL "" CACHE STRING "Default leaderboard backend submit URL (https)")
+set(RIND_LEADERBOARD_TOKEN "" CACHE STRING "Default leaderboard soft token (optional)")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -345,7 +348,9 @@ if(RIND_ENABLE_STEAM)
   target_link_libraries(${PROJECT_NAME} PRIVATE "${STEAM_LINK_LIB}")
   target_compile_definitions(${PROJECT_NAME} PRIVATE
     RIND_ENABLE_STEAM
-    RIND_GAME_VERSION="${VERSION}")
+    RIND_GAME_VERSION="${VERSION}"
+    RIND_LEADERBOARD_URL="${RIND_LEADERBOARD_URL}"
+    RIND_LEADERBOARD_TOKEN="${RIND_LEADERBOARD_TOKEN}")
 
   set_property(GLOBAL PROPERTY RIND_STEAM_RUNTIME_LIB "${STEAM_RUNTIME_LIB}")
   message(STATUS "Steamworks integration enabled (SDK: ${STEAMWORKS_ROOT})")
