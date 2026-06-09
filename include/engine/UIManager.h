@@ -109,6 +109,9 @@ namespace engine {
         const std::string& getTexture() const { return texture; }
         void setTexture(const std::string& texture) { this->texture = texture; textureDirtyFrames = -1; }
 
+        float getTextureScale() const { return textureScale; }
+        void setTextureScale(float scale) { this->textureScale = scale; }
+
         const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         void setDescriptorSets(const std::vector<VkDescriptorSet>& descriptorSets) { this->descriptorSets = descriptorSets; }
 
@@ -160,6 +163,7 @@ namespace engine {
         glm::mat4 transform;
         Corner anchorCorner;
         std::string texture;
+        float textureScale = 1.0f;
         std::vector<VkDescriptorSet> descriptorSets;
         UIObject* parent = nullptr;
         std::vector<std::variant<UIObject*, TextObject*>> children;

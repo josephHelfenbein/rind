@@ -19,5 +19,6 @@ namespace rind::steaminput {
 
     void setActionSet(ActionSet set);
     void collectEvents(std::vector<engine::InputEvent>& out);
+    void getCursorInput(float& x, float& y, float& trigger);
     std::string glyphTextureName(rind::GameAction action);
 };

@@ -888,8 +888,9 @@ void rind::Player::registerInput(const std::vector<engine::InputEvent>& events) 
         } else if (event.type == engine::InputEvent::Type::MouseMove) {
             if (inputManager->getCursorLocked()) {
                 float sensitivity = renderer->getSettingsManager()->getSettings()->sensitivity;
-                float xOffset = static_cast<float>(event.mouseMoveEvent.xPos) * sensitivity;
-                float yOffset = static_cast<float>(event.mouseMoveEvent.yPos) * sensitivity;
+                constexpr float kMouseLookScale = 0.25f;
+                float xOffset = static_cast<float>(event.mouseMoveEvent.xPos) * sensitivity * kMouseLookScale;
+                float yOffset = static_cast<float>(event.mouseMoveEvent.yPos) * sensitivity * kMouseLookScale;
                 rotate(glm::vec3(0.0f, -xOffset, -yOffset));
             }
         } else if (event.type == engine::InputEvent::Type::MouseButtonPress && !renderer->isPaused()) {

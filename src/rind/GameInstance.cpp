@@ -627,7 +627,7 @@ rind::GameInstance::GameInstance() {
     renderer = std::make_unique<engine::Renderer>("Rind");
 
 #if RIND_ENABLE_STEAM
-    // Pump Steam callbacks each frame, kept game-side (engine only sees a std::function).
+    // pump Steam callbacks each frame, kept game-side
     renderer->setOnFrameBegin([]{ rind::steam::runCallbacks(); });
 #endif
 
@@ -648,8 +648,7 @@ rind::GameInstance::GameInstance() {
     volumetricManager = std::make_unique<engine::VolumetricManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get());
 
-    // Hand the consumer's embedded asset registries to the engine managers
-    // before Renderer::run() initializes Vulkan and asks for them.
+    // hand the consumer's embedded asset registries to the engine managers before Renderer::run()
     shaderManager->registerShaderBytes(getEmbedded_game_shader());
     audioManager->registerEmbeddedAudio(getEmbedded_audio());
     textureManager->registerEmbeddedTextures(getEmbedded_texture());
@@ -660,8 +659,29 @@ rind::GameInstance::GameInstance() {
     rind::steaminput::setTextureManager(textureManager.get());
     inputManager->setExternalEventProducer([this](std::vector<engine::InputEvent>& events) {
         rind::steaminput::runFrame();
-        inputManager->setGamepadPollingEnabled(!rind::steaminput::isActive());
+        bool active = rind::steaminput::isActive();
+        inputManager->setGamepadPollingEnabled(!active);
+        size_t before = events.size();
         rind::steaminput::collectEvents(events);
+        if (!active) return;
+        bool gamepadInput = false;
+        for (size_t i = before; i < events.size(); ++i) {
+            auto t = events[i].type;
+            if (t == engine::InputEvent::Type::GamepadButtonPress ||
+                t == engine::InputEvent::Type::GamepadAxisMove ||
+                t == engine::InputEvent::Type::GamepadAxisPress) {
+                gamepadInput = true;
+                break;
+            }
+        }
+        if (gamepadInput && !inputManager->isControllerMode()) {
+            inputManager->setControllerMode(true);
+        }
+        if (inputManager->getUIFocused() && inputManager->isControllerMode()) {
+            float cx, cy, ct;
+            rind::steaminput::getCursorInput(cx, cy, ct);
+            inputManager->updateControllerCursor(cx, cy, ct);
+        }
     });
 #endif
 

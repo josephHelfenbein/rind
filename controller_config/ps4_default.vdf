@@ -95,19 +95,6 @@
 		"mode"		"trigger"
 		"inputs"
 		{
-			"click"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"game_action gameplay grenade, Grenade"
-						}
-					}
-				}
-			}
 		}
 		"gameactions"
 		{
@@ -120,19 +107,6 @@
 		"mode"		"trigger"
 		"inputs"
 		{
-			"click"
-			{
-				"activators"
-				{
-					"Full_Press"
-					{
-						"bindings"
-						{
-							"binding"		"game_action gameplay punch, Punch"
-						}
-					}
-				}
-			}
 		}
 		"gameactions"
 		{
@@ -169,7 +143,7 @@
 		"mode"		"switches"
 		"inputs"
 		{
-			"button_start"
+			"button_escape"
 			{
 				"activators"
 				{

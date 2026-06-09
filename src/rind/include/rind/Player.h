@@ -41,11 +41,13 @@ namespace rind {
             Jump,
             Punch
         };
-        std::string hintTexture(const HintActions& action) {
+        std::string hintTexture(const HintActions& action, float& outScale) {
             std::string texture;
+            outScale = 1.0f;
         #if RIND_ENABLE_STEAM
             if (rind::steaminput::isActive()) {
                 texture = rind::steaminput::glyphTextureName(toGameAction(action));
+                if (!texture.empty()) outScale = 0.4f;
             }
             if (texture.empty())
         #endif
@@ -53,21 +55,27 @@ namespace rind {
             return texture;
         }
         void showKeybindHint(const HintActions& action, const std::string& hint) {
-            std::string texture = hintTexture(action);
+            float scale = 1.0f;
+            std::string texture = hintTexture(action, scale);
             activeKeybindHint = action;
             keybindHintObject->setTexture(texture);
+            keybindHintObject->setTextureScale(scale);
             keybindHintTextObject->setText(hint);
             keybindHintDuration = 2.8f;
         }
         void checkKeybindHint() {
-            std::string texture = hintTexture(activeKeybindHint);
+            float scale = 1.0f;
+            std::string texture = hintTexture(activeKeybindHint, scale);
             if (keybindHintObject->getTexture() != texture) {
                 keybindHintObject->setTexture(texture);
             }
-            std::string grenadeTexture = hintTexture(HintActions::Grenade);
+            keybindHintObject->setTextureScale(scale);
+            float grenadeScale = 1.0f;
+            std::string grenadeTexture = hintTexture(HintActions::Grenade, grenadeScale);
             if (grenadeKeybindHintObject->getTexture() != grenadeTexture) {
                 grenadeKeybindHintObject->setTexture(grenadeTexture);
             }
+            grenadeKeybindHintObject->setTextureScale(grenadeScale);
         }
         static rind::GameAction toGameAction(const HintActions& action) {
             switch (action) {

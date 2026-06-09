@@ -56,6 +56,7 @@ namespace engine {
         }
         void setGamepadPollingEnabled(bool enabled) { gamepadPollingEnabled = enabled; }
         bool isGamepadPollingEnabled() const { return gamepadPollingEnabled; }
+        void updateControllerCursor(float rightX, float rightY, float triggerValue);
 
         void setCursorLocked(bool locked) { isCursorLocked = locked; }
         void setUIFocused(bool focused) {

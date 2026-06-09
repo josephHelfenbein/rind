@@ -152,6 +152,21 @@ void engine::InputManager::processInput(GLFWwindow* window) {
     dispatch(events);
 }
 
+void engine::InputManager::updateControllerCursor(float rightX, float rightY, float triggerValue) {
+    if (!isUIFocused || !controllerMode) return;
+    GLFWwindow* window = renderer->getWindow();
+    if (std::abs(rightX) > 0.15f || std::abs(rightY) > 0.15f) {
+        int ww, wh;
+        float sensitivity = renderer->getSettingsManager()->getSettings()->sensitivity;
+        glfwGetWindowSize(window, &ww, &wh);
+        fakeControllerCursor += glm::dvec2(rightX * sensitivity * 1000.0f, rightY * sensitivity * 1000.0f);
+        fakeControllerCursor = glm::clamp(fakeControllerCursor, glm::dvec2(0.0), glm::dvec2(ww, wh));
+    }
+    renderer->getUIManager()->setFakeCursorPosition(fakeControllerCursor);
+    renderer->setHoveredObject(renderer->getUIManager()->processMouseMovement(window, fakeControllerCursor.x, fakeControllerCursor.y));
+    fakeCursorPressing = triggerValue > 0.5f;
+}
+
 void engine::InputManager::dispatch(const std::vector<InputEvent>& events) {
     if (unregisterQueue.size()) {
         for (const std::string& name : unregisterQueue) {

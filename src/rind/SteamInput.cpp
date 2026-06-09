@@ -203,6 +203,19 @@ namespace {
             m_haveAxisValue = true;
         }
 
+        void getCursorInput(float& x, float& y, float& trigger) {
+            x = 0.0f; y = 0.0f; trigger = 0.0f;
+            if (!isActive() || !SteamInput()) return;
+            if (m_analog[Analog_Look] != 0) {
+                InputAnalogActionData_t a = SteamInput()->GetAnalogActionData(m_active, m_analog[Analog_Look]);
+                if (a.bActive) { x = a.x; y = -a.y; }
+            }
+            if (m_analog[Analog_Shoot] != 0) {
+                InputAnalogActionData_t t = SteamInput()->GetAnalogActionData(m_active, m_analog[Analog_Shoot]);
+                if (t.bActive) trigger = t.x;
+            }
+        }
+
         std::string glyphTextureName(GameAction action) {
             if (!isActive() || !SteamInput()) return "";
 
@@ -251,7 +264,7 @@ namespace {
         void applyActionSet() {
             if (m_active == 0 || !SteamInput()) return;
             SteamInput()->ActivateActionSet(
-                m_active, m_actionSets[static_cast<int>(m_currentSet)]);
+                m_active, m_actionSets[static_cast<int>(ActionSet::Gameplay)]);
         }
 
         void emitStick(std::vector<engine::InputEvent>& out, int analog, int axisX, int axisY) {
@@ -353,6 +366,9 @@ namespace rind::steaminput {
     bool isActive() { return instance().isActive(); }
     void setActionSet(ActionSet set) { instance().setActionSet(set); }
     void collectEvents(std::vector<engine::InputEvent>& out) { instance().collectEvents(out); }
+    void getCursorInput(float& x, float& y, float& trigger) {
+        instance().getCursorInput(x, y, trigger);
+    }
     std::string glyphTextureName(rind::GameAction action) {
         return instance().glyphTextureName(action);
     }
@@ -368,6 +384,7 @@ namespace rind::steaminput {
     bool isActive() { return false; }
     void setActionSet(ActionSet) {}
     void collectEvents(std::vector<engine::InputEvent>&) {}
+    void getCursorInput(float& x, float& y, float& trigger) { x = 0.0f; y = 0.0f; trigger = 0.0f; }
     std::string glyphTextureName(rind::GameAction) { return ""; }
 }
 

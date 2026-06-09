@@ -642,7 +642,7 @@ engine::LayoutRect engine::UIManager::resolveDesignRect(std::variant<UIObject*, 
         if (!uiObj->getTexture().empty()) {
             if (Texture* tex = renderer->getTextureManager()->getTexture(uiObj->getTexture())) {
                 glm::vec2 texSize = glm::vec2(static_cast<float>(tex->width), static_cast<float>(tex->height));
-                size = texSize * scale;
+                size = texSize * scale * uiObj->getTextureScale();
             }
         }
         position = glm::vec2(uiObj->getTransform()[3][0], uiObj->getTransform()[3][1]);
