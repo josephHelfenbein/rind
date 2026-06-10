@@ -1,5 +1,28 @@
 cmake_minimum_required(VERSION 3.21)
 
+# For Steam Linux Runtime compatibility
+# Opt out with -DRIND_USE_ZIG=OFF to use the system compiler
+if(CMAKE_HOST_UNIX AND NOT CMAKE_HOST_APPLE AND NOT CMAKE_TOOLCHAIN_FILE)
+  option(RIND_USE_ZIG "Linux: build with zig cc so the binary targets an older glibc" ON)
+  if(RIND_USE_ZIG)
+    find_program(RIND_ZIG_EXECUTABLE zig)
+    if(RIND_ZIG_EXECUTABLE)
+      set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/cmake/zig-toolchain.cmake"
+          CACHE FILEPATH "Auto-selected zig toolchain for glibc portability")
+      if(NOT DEFINED CACHE{RELEASE_MARCH})
+        set(RELEASE_MARCH "x86_64_v2" CACHE STRING "Target -march for release builds")
+      endif()
+    else()
+      message(WARNING
+        "RIND_USE_ZIG is ON but `zig` was not found on PATH.\n"
+        "Building with the system compiler instead. The resulting binary may require a newer "
+        "glibc/libstdc++ than the Steam Linux Runtime provides and will crash when launched "
+        "through Steam on the Steam Deck.\n"
+        "Install zig (https://ziglang.org/download/) or pass -DRIND_USE_ZIG=OFF to silence.")
+    endif()
+  endif()
+endif()
+
 if(APPLE)
   project(Rind LANGUAGES C CXX OBJCXX ISPC)
 else()
@@ -12,7 +35,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
   set(CMAKE_ISPC_INSTRUCTION_SETS "neon-i32x4" CACHE STRING "ISPC target ISAs")
 else()
-  set(CMAKE_ISPC_INSTRUCTION_SETS "sse2-i32x4;sse4-i32x4;avx2-i32x8" CACHE STRING "ISPC target ISAs")
+  set(CMAKE_ISPC_INSTRUCTION_SETS "sse2-i32x4;sse4-i32x4;avx2-i32x8;avx512skx-i32x16" CACHE STRING "ISPC target ISAs")
   set(RIND_ISPC_NEEDS_PIC ON)
 endif()
 

@@ -98,9 +98,9 @@ sudo apt install libfreetype6-dev
 
 > If your distro's `ispc` package is older than 1.20 (Ubuntu 22.04 ships an older release), grab a current Linux tarball from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract, and either put the extracted `bin/ispc` on your `PATH` or `sudo cp bin/ispc /usr/local/bin/ispc`.
 
-**2. Install Zig** (required for packaging only)
+**2. Install Zig** (default Linux compiler)
 
-Zig is used by the packaging script to build against an older glibc, ensuring the AppImage runs on systems like the Steam Deck.
+On Linux, the build uses `zig cc` by default so the binary targets an older glibc and static-links its C++ runtime. This is what lets it run under the Steam Linux Runtime on the Steam Deck. The same toolchain is used by the packaging script for the AppImage. Pass `-DRIND_USE_ZIG=OFF` to build with the system compiler instead (local-only; not portable to the Steam Deck).
 
 ```bash
 sudo snap install zig --classic --beta
@@ -144,9 +144,9 @@ sudo apt install \
 
 > Debian stable has no `ispc` package. Download the Linux tarball from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract, and `sudo cp bin/ispc /usr/local/bin/ispc`.
 
-**2. Install Zig** (required for packaging only)
+**2. Install Zig**
 
-Zig is used by the packaging script to build against an older glibc, ensuring the AppImage runs on systems like the Steam Deck.
+On Linux, the build uses `zig cc` by default so the binary targets an older glibc and static-links its C++ runtime. This is what lets it run under the Steam Linux Runtime on the Steam Deck. The same toolchain is used by the packaging script for the AppImage. Pass `-DRIND_USE_ZIG=OFF` to build with the system compiler instead (local-only; not portable to the Steam Deck).
 
 ```bash
 sudo snap install zig --classic --beta
@@ -192,7 +192,7 @@ sudo pacman -S \
 - `freetype2` - font rendering library
 - `directx-shader-compiler` - DXC, available in the official `extra` repo
 - `ispc` - Intel SPMD Program Compiler for the engine's SIMD kernels
-- `zig` - used by the packaging script to target older glibc for portable AppImages
+- `zig` - default Linux compiler (`zig cc`); targets an older glibc so the binary runs under the Steam Linux Runtime / Steam Deck. Pass `-DRIND_USE_ZIG=OFF` to use the system compiler.
 
 > You may also want `vulkan-validation-layers` for debugging.
 
