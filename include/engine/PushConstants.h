@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <cstdint>
 
 namespace engine {
     inline constexpr uint32_t kMaxIrradianceProbes = 64u;

@@ -1,7 +1,11 @@
 #include <rind/CharacterEntity.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/Collider.h>
+#include <engine/SpatialGrid.h>
+#include <engine/io.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
-#include <engine/io.h>
 #include <limits>
 
 static inline glm::mat4 applyWorldTranslation(const glm::mat4& transform, const glm::vec3& offset) {

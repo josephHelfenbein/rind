@@ -5,15 +5,22 @@
 #include <rind/LeaderboardWindow.h>
 #endif
 
-#include <engine/Camera.h>
-#include <engine/LightManager.h>
-#include <engine/IrradianceManager.h>
-#include <engine/EntityManager.h>
-#include <engine/UIManager.h>
-#include <engine/ModelManager.h>
+#include <engine/Renderer.h>
+#include <engine/SceneManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/TextureManager.h>
+#include <engine/EntityManager.h>
+#include <engine/InputManager.h>
+#include <engine/UIManager.h>
+#include <engine/ModelManager.h>
+#include <engine/ParticleManager.h>
+#include <engine/VolumetricManager.h>
+#include <engine/LightManager.h>
+#include <engine/IrradianceManager.h>
 #include <engine/AudioManager.h>
+#include <engine/SettingsManager.h>
+#include <engine/Camera.h>
+#include <engine/Collider.h>
 #include <engine/io.h>
 
 #include <audio/audio_registry.h>
@@ -223,7 +230,6 @@ rind::GameInstance::GameInstance() {
         renderer->getInputManager()->setUIFocused(true);
         renderer->toggleLockCursor(false);
     #if RIND_ENABLE_STEAM
-        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Menu);
         rind::LeaderboardWindow* leaderboardWindow = new rind::LeaderboardWindow(renderer);
     #endif
     };
@@ -619,9 +625,6 @@ rind::GameInstance::GameInstance() {
 
         renderer->getInputManager()->setUIFocused(false);
         renderer->toggleLockCursor(true);
-    #if RIND_ENABLE_STEAM
-        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Gameplay);
-    #endif
     };
 
     renderer = std::make_unique<engine::Renderer>("Rind");

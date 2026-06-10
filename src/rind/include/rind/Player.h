@@ -2,8 +2,8 @@
 
 #include <rind/CharacterEntity.h>
 #include <engine/InputManager.h>
-#include <engine/Camera.h>
-#include <rind/ScoreCounter.h>
+#include <engine/UIManager.h>
+#include <engine/AudioManager.h>
 #include <rind/StatusEffect.h>
 #include <rind/GameAction.h>
 #if RIND_ENABLE_STEAM
@@ -11,8 +11,18 @@
 #endif
 #include <cmath>
 #include <chrono>
+#include <array>
+#include <random>
+
+namespace engine {
+    class Camera;
+    class ParticleManager;
+    class VolumetricManager;
+}
 
 namespace rind {
+    class ScoreCounter;
+
     class Player : public CharacterEntity {
     public:
         Player(
@@ -45,7 +55,7 @@ namespace rind {
             std::string texture;
             outScale = 1.0f;
         #if RIND_ENABLE_STEAM
-            if (rind::steaminput::isActive()) {
+            if (rind::steaminput::isActive() && inputManager->isControllerMode()) {
                 texture = rind::steaminput::glyphTextureName(toGameAction(action));
                 if (!texture.empty()) outScale = 0.4f;
             }

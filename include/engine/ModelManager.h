@@ -1,17 +1,15 @@
 #pragma once
-#include <engine/Renderer.h>
 #include <engine/EmbeddedAssets.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <fastgltf/core.hpp>
-#include <fastgltf/tools.hpp>
-#include <fastgltf/glm_element_traits.hpp>
 #include <vulkan/vulkan.h>
+#include <cfloat>
 #include <vector>
 #include <unordered_map>
 #include <string>
 
 namespace engine {
+    class Renderer;
     struct AABB {
         glm::vec3 min = glm::vec3(FLT_MAX);
         glm::vec3 max = glm::vec3(-FLT_MAX);

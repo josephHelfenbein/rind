@@ -1,10 +1,13 @@
 #include <engine/ParticleManager.h>
-#include <glm/gtc/matrix_transform.hpp>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/ShaderManager.h>
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
 #include <engine/ThreadPool.h>
 #include <engine/SIMD.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 void engine::ParticleManager::ParticleSoA::clearAll() {
     posX.clear(); posY.clear(); posZ.clear();

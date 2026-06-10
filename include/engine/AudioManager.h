@@ -1,6 +1,5 @@
 #pragma once
 
-#include <engine/Renderer.h>
 #include <engine/SettingsManager.h>
 #include <engine/EmbeddedAssets.h>
 #include <string>
@@ -12,6 +11,7 @@
 #include <glm/glm.hpp>
 
 namespace engine {
+    class Renderer;
     struct SoundData {
         ma_sound sound;
         bool isLoaded = false;

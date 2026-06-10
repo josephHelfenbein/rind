@@ -1,14 +1,20 @@
 #pragma once
 
 #include <rind/CharacterEntity.h>
-#include <engine/AudioManager.h>
-#include <engine/ParticleManager.h>
-#include <engine/VolumetricManager.h>
-#include <rind/GameInstance.h>
-#include <rind/Player.h>
 #include <random>
+#include <chrono>
+#include <cstdint>
+
+namespace engine {
+    class AudioManager;
+    class ParticleManager;
+    class VolumetricManager;
+}
 
 namespace rind {
+    class GameInstance;
+    class Player;
+
     enum class EnemyState {
         Spawning,
         Idle,

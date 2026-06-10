@@ -1,16 +1,20 @@
 #include <engine/ShaderManager.h>
 #include <engine/Renderer.h>
 #include <engine/Camera.h>
+#include <engine/EntityManager.h>
 #include <engine/LightManager.h>
 #include <engine/IrradianceManager.h>
 #include <engine/SettingsManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
 #include <engine/TextureManager.h>
+#include <engine/UIManager.h>
 #include <engine/EmbeddedAssets.h>
 #include <engine/PushConstants.h>
 #include <glm/glm.hpp>
 #include <shader/shader_registry.h>
+#include <smaa/Textures/AreaTex.h>
+#include <smaa/Textures/SearchTex.h>
 
 #include <iostream>
 #include <utility>

@@ -1,12 +1,18 @@
 #pragma once
 #include <engine/EntityManager.h>
-#include <engine/UIManager.h>
-#include <engine/TextureManager.h>
-#include <engine/Renderer.h>
 #include <rind/SteamManager.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <cstdint>
-#include <string>
 #include <unordered_set>
+
+namespace engine {
+    class Renderer;
+    class UIManager;
+    class TextureManager;
+    class UIObject;
+    class TextObject;
+    class ButtonObject;
+}
 
 namespace rind {
     class LeaderboardWindow : public engine::Entity {

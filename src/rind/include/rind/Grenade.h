@@ -2,12 +2,16 @@
 
 #include <engine/EntityManager.h>
 #include <engine/Collider.h>
+#include <engine/Camera.h>
 #include <engine/ParticleManager.h>
 #include <engine/AudioManager.h>
 #include <engine/VolumetricManager.h>
 #include <rind/Player.h>
 #include <rind/Enemy.h>
 #include <numbers>
+#include <cmath>
+#include <chrono>
+#include <random>
 
 namespace rind {
     class Grenade : public engine::Entity {

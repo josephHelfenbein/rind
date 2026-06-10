@@ -1,6 +1,13 @@
 #include <rind/WalkingEnemy.h>
+#include <rind/Player.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/Collider.h>
+#include <engine/ModelManager.h>
+#include <engine/AudioManager.h>
 #include <engine/ParticleManager.h>
 #include <glm/gtc/quaternion.hpp>
+#include <chrono>
 #include <numbers>
 
 rind::WalkingEnemy::WalkingEnemy(

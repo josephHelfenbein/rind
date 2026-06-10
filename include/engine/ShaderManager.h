@@ -1,7 +1,8 @@
 #pragma once
 
-#include <engine/Renderer.h>
 #include <engine/EmbeddedAssets.h>
+#include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 #include <string>
 #include <vector>
 #include <memory>
@@ -11,10 +12,9 @@
 #include <unordered_map>
 #include <map>
 #include <functional>
-#include <smaa/Textures/AreaTex.h>
-#include <smaa/Textures/SearchTex.h>
 
 namespace engine {
+    class Renderer;
     struct CubeFace {
         glm::vec3 dir;
         glm::vec3 up;

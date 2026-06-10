@@ -1,20 +1,24 @@
 #pragma once
 
 #include <memory>
-#include <engine/Renderer.h>
-#include <engine/SceneManager.h>
-#include <engine/ShaderManager.h>
-#include <engine/TextureManager.h>
-#include <engine/EntityManager.h>
-#include <engine/InputManager.h>
-#include <engine/UIManager.h>
-#include <engine/ModelManager.h>
-#include <engine/ParticleManager.h>
-#include <engine/VolumetricManager.h>
-#include <engine/LightManager.h>
-#include <engine/IrradianceManager.h>
-#include <engine/AudioManager.h>
-#include <engine/SettingsManager.h>
+#include <cstdint>
+
+namespace engine {
+    class Renderer;
+    class SceneManager;
+    class ShaderManager;
+    class TextureManager;
+    class EntityManager;
+    class InputManager;
+    class UIManager;
+    class ModelManager;
+    class ParticleManager;
+    class VolumetricManager;
+    class LightManager;
+    class IrradianceManager;
+    class AudioManager;
+    class SettingsManager;
+}
 
 namespace rind {
     class GameInstance {

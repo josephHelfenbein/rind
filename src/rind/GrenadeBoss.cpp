@@ -1,9 +1,10 @@
 #include <rind/GrenadeBoss.h>
 #include <rind/Grenade.h>
+#include <rind/SlowBullet.h>
+#include <engine/AudioManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
 #include <glm/gtc/quaternion.hpp>
-#include <rind/SlowBullet.h>
 #include <cmath>
 #include <numbers>
 

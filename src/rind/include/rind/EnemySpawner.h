@@ -1,13 +1,15 @@
 #pragma once
 
 #include <engine/EntityManager.h>
-#include <rind/Enemy.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <rind/GameInstance.h>
 #include <random>
 #include <numbers>
+#include <cmath>
 
 namespace rind {
+    class Player;
+
     template<typename EnemyType>
     class EnemySpawner : public engine::Entity {
     public:

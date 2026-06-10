@@ -1,16 +1,26 @@
 #include <rind/Player.h>
 #include <rind/Enemy.h>
 #include <rind/TempTrigger.h>
+#include <rind/Grenade.h>
+#include <rind/GamepadBindings.h>
+#include <rind/ScoreCounter.h>
+#if RIND_ENABLE_STEAM
+#include <rind/SteamManager.h>
+#include <rind/SteamInput.h>
+#endif
+
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/Camera.h>
+#include <engine/Collider.h>
+#include <engine/SpatialGrid.h>
+#include <engine/InputManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
 #include <engine/UIManager.h>
+#include <engine/ModelManager.h>
 #include <engine/SceneManager.h>
 #include <engine/SettingsManager.h>
-#include <rind/Grenade.h>
-#include <rind/GamepadBindings.h>
-#if RIND_ENABLE_STEAM
-#include <rind/SteamManager.h>
-#endif
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -759,9 +769,6 @@ void rind::Player::showPauseMenu(bool uiOnly) {
         renderer->setPaused(true);
         renderer->getInputManager()->setUIFocused(true);
         renderer->toggleLockCursor(false);
-    #if RIND_ENABLE_STEAM
-        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Menu);
-    #endif
     }
     renderer->refreshDescriptorSets();
 }
@@ -777,9 +784,6 @@ void rind::Player::hidePauseMenu(bool uiOnly) {
         renderer->setPaused(false);
         renderer->getInputManager()->setUIFocused(false);
         renderer->toggleLockCursor(true);
-    #if RIND_ENABLE_STEAM
-        rind::steaminput::setActionSet(rind::steaminput::ActionSet::Gameplay);
-    #endif
     }
     renderer->refreshDescriptorSets();
 }

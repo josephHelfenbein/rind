@@ -2,11 +2,15 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <cmath>
-#include <engine/Renderer.h>
+#include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <vector>
 
 namespace engine {
+    class Renderer;
     class VolumetricManager;
     struct VolumetricGPU {
         alignas(16) glm::mat4 model;

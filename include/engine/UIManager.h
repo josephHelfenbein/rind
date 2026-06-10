@@ -7,8 +7,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <engine/Renderer.h>
 #include <engine/TextureManager.h>
-#include <engine/ShaderManager.h>
-#include <engine/PushConstants.h>
 #include <engine/EmbeddedAssets.h>
 #include <external/freetype/include/ft2build.h>
 #include FT_FREETYPE_H

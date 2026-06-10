@@ -1,8 +1,16 @@
 #include <rind/SlowBullet.h>
 #include <rind/Player.h>
 #include <rind/Enemy.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
 #include <engine/Camera.h>
+#include <engine/Collider.h>
 #include <engine/SpatialGrid.h>
+#include <engine/ModelManager.h>
+#include <engine/ParticleManager.h>
+#include <engine/VolumetricManager.h>
+#include <engine/AudioManager.h>
+#include <cmath>
 #include <numbers>
 
 rind::SlowBullet::SlowBullet(

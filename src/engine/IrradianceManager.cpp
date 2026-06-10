@@ -1,4 +1,6 @@
 #include <engine/IrradianceManager.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/Camera.h>

@@ -1,4 +1,6 @@
 #include <engine/VolumetricManager.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/SettingsManager.h>
 #include <engine/PushConstants.h>

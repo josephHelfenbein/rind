@@ -1,8 +1,14 @@
 #pragma once
 
 #include <engine/EntityManager.h>
-#include <engine/Collider.h>
 #include <random>
+
+namespace engine {
+    class OBBCollider;
+    class ParticleManager;
+    class VolumetricManager;
+    class AudioManager;
+}
 
 namespace rind {
     class SlowBullet : public engine::Entity {

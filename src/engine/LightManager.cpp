@@ -3,6 +3,9 @@
 #ifndef GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #endif
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/ShaderManager.h>
 #include <engine/SettingsManager.h>
 #include <algorithm>
 #include <glm/glm.hpp>

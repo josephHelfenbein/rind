@@ -1,13 +1,15 @@
 #pragma once
 
-#include <engine/Renderer.h>
-#include <engine/EntityManager.h>
 #include <engine/Collider.h>
 #include <engine/SpatialGrid.h>
+#include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 #include <cstdint>
 #include <random>
+#include <vector>
 
 namespace engine {
+    class Renderer;
     struct ParticleGPU {
         alignas(16) glm::vec4 position; // w = age
         alignas(16) glm::vec4 prevPosition; // w = lifetime

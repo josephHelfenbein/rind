@@ -1,5 +1,8 @@
 #include <rind/LeaderboardWindow.h>
 #include <rind/SteamManager.h>
+#include <engine/Renderer.h>
+#include <engine/UIManager.h>
+#include <engine/TextureManager.h>
 #include <engine/InputManager.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

@@ -1,5 +1,8 @@
 #pragma once
-#include <random>
+#include <algorithm>
+#include <string>
+#include <vector>
+#include <glm/glm.hpp>
 
 namespace rind {
     struct StatusEffect {

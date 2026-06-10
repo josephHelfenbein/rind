@@ -1,11 +1,15 @@
 #pragma once
 
-#include <engine/EntityManager.h>
 #include <engine/PushConstants.h>
+#include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 #include <array>
 #include <vector>
+#include <string>
+#include <cstdint>
 
 namespace engine {
+    class Renderer;
     class IrradianceManager;
     class IrradianceProbe {
     public:

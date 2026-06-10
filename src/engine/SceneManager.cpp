@@ -1,4 +1,7 @@
 #include <engine/SceneManager.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/UIManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
 #include <engine/LightManager.h>

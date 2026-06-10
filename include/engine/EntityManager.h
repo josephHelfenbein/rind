@@ -1,16 +1,21 @@
 #pragma once
 
-#include <engine/Renderer.h>
-#include <engine/ShaderManager.h>
-#include <engine/TextureManager.h>
 #include <engine/ModelManager.h>
 #include <engine/SpatialGrid.h>
+#include <vulkan/vulkan.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <functional>
+#include <utility>
+#include <cstdint>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace engine {
+    class Renderer;
+    class EntityManager;
+    struct GraphicsShader;
     class Camera;
     class Collider;
     class Entity {

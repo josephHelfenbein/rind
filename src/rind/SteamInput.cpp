@@ -8,6 +8,8 @@
 #include <GLFW/glfw3.h>
 #include <rind/SteamManager.h>
 #include <rind/GamepadBindings.h>
+#include <engine/TextureManager.h>
+#include <engine/InputManager.h>
 
 #include <array>
 #include <cmath>
@@ -54,7 +56,6 @@ namespace {
     }
 
     using rind::GameAction;
-    using rind::steaminput::ActionSet;
 
     // canonical Steam Input action names
     enum DigitalAction {
@@ -63,13 +64,6 @@ namespace {
         Digital_Grenade,
         Digital_Punch,
         Digital_Pause,
-        // menu set
-        Digital_MenuUp,
-        Digital_MenuDown,
-        Digital_MenuLeft,
-        Digital_MenuRight,
-        Digital_MenuSelect,
-        Digital_MenuCancel,
         Digital_Count
     };
 
@@ -82,17 +76,14 @@ namespace {
     };
 
     constexpr const char* kDigitalNames[Digital_Count] = {
-        "jump", "heal", "grenade", "punch", "pause",
-        "menu_up", "menu_down", "menu_left", "menu_right", "menu_select", "menu_cancel"
+        "jump", "heal", "grenade", "punch", "pause"
     };
     constexpr const char* kAnalogNames[Analog_Count] = {
         "move", "look", "shoot", "dash"
     };
 
     constexpr GameAction kDigitalAction[Digital_Count] = {
-        GameAction::Jump, GameAction::Heal, GameAction::Grenade, GameAction::Punch, GameAction::Pause,
-        GameAction::MenuUp, GameAction::MenuDown, GameAction::MenuLeft, GameAction::MenuRight,
-        GameAction::MenuSelect, GameAction::MenuCancel
+        GameAction::Jump, GameAction::Heal, GameAction::Grenade, GameAction::Punch, GameAction::Pause
     };
 
     class SteamInputManager {
@@ -101,19 +92,18 @@ namespace {
             if (!SteamInput()) return;
             if (!m_inited) {
                 SteamInput()->Init(true);
+                m_inited = true;
+            }
+            {
                 std::error_code ec;
                 std::filesystem::path manifest = executableDir() / "controller_config" /
                     ("game_actions_" + std::to_string(rind::steam::kAppId) + ".vdf");
                 if (std::filesystem::exists(manifest, ec) && !ec) {
                     SteamInput()->SetInputActionManifestFilePath(manifest.string().c_str());
                 }
-                m_inited = true;
             }
 
-            m_actionSets[static_cast<int>(ActionSet::Gameplay)] =
-                SteamInput()->GetActionSetHandle("gameplay");
-            m_actionSets[static_cast<int>(ActionSet::Menu)] =
-                SteamInput()->GetActionSetHandle("menu");
+            m_gameplaySet = SteamInput()->GetActionSetHandle("gameplay");
 
             for (int i = 0; i < Digital_Count; ++i) {
                 m_digital[i] = SteamInput()->GetDigitalActionHandle(kDigitalNames[i]);
@@ -134,6 +124,7 @@ namespace {
             }
             m_inited = false;
             m_active = 0;
+            m_prevActive = 0;
             m_handlesReady = false;
             m_textureManager = nullptr;
             m_glyphCache.clear();
@@ -166,13 +157,16 @@ namespace {
 
         bool isActive() const { return m_active != 0; }
 
-        void setActionSet(ActionSet set) {
-            m_currentSet = set;
-            applyActionSet();
-        }
-
         void collectEvents(std::vector<engine::InputEvent>& out) {
-            if (!isActive() || !SteamInput()) return;
+            if (!SteamInput()) return;
+            if (!isActive()) {
+                if (m_prevActive != 0) { flushReleases(out); m_prevActive = 0; }
+                return;
+            }
+            if (m_active != m_prevActive) {
+                flushReleases(out);
+                m_prevActive = m_active;
+            }
 
             // digital buttons
             for (int i = 0; i < Digital_Count; ++i) {
@@ -221,7 +215,7 @@ namespace {
 
             EInputActionOrigin origins[STEAM_INPUT_MAX_ORIGINS];
             int numOrigins = 0;
-            InputActionSetHandle_t setHandle = m_actionSets[static_cast<int>(m_currentSet)];
+            InputActionSetHandle_t setHandle = m_gameplaySet;
 
             int digital = digitalForAction(action);
             int analog = (digital < 0) ? analogForAction(action) : -1;
@@ -263,8 +257,31 @@ namespace {
     private:
         void applyActionSet() {
             if (m_active == 0 || !SteamInput()) return;
-            SteamInput()->ActivateActionSet(
-                m_active, m_actionSets[static_cast<int>(ActionSet::Gameplay)]);
+            SteamInput()->ActivateActionSet(m_active, m_gameplaySet);
+        }
+
+        void flushReleases(std::vector<engine::InputEvent>& out) {
+            for (int i = 0; i < Digital_Count; ++i) {
+                if (!m_prevDigital[i]) continue;
+                m_prevDigital[i] = false;
+                int button = rind::actionToGamepadButton(kDigitalAction[i]);
+                if (button < 0) continue;
+                engine::InputEvent ev{};
+                ev.type = engine::InputEvent::Type::GamepadButtonRelease;
+                ev.gamepadButtonEvent = { button, 0 };
+                out.push_back(ev);
+            }
+            for (int axis = 0; axis <= GLFW_GAMEPAD_AXIS_LAST; ++axis) {
+                if (m_prevAxisZone[axis] != 0) {
+                    engine::InputEvent ev{};
+                    ev.type = engine::InputEvent::Type::GamepadAxisRelease;
+                    ev.gamepadAxisEvent = { axis, static_cast<float>(m_prevAxisZone[axis]) };
+                    out.push_back(ev);
+                    m_prevAxisZone[axis] = 0;
+                }
+                m_prevAxisValue[axis] = 0.0f;
+            }
+            m_haveAxisValue = false;
         }
 
         void emitStick(std::vector<engine::InputEvent>& out, int analog, int axisX, int axisY) {
@@ -334,11 +351,11 @@ namespace {
 
         engine::TextureManager* m_textureManager = nullptr;
         InputHandle_t m_active = 0;
+        InputHandle_t m_prevActive = 0;
         bool m_inited = false;
         bool m_handlesReady = false;
-        ActionSet m_currentSet = ActionSet::Gameplay;
 
-        InputActionSetHandle_t m_actionSets[2] = {0, 0};
+        InputActionSetHandle_t m_gameplaySet = 0;
         InputDigitalActionHandle_t m_digital[Digital_Count] = {0};
         InputAnalogActionHandle_t m_analog[Analog_Count] = {0};
 
@@ -364,7 +381,6 @@ namespace rind::steaminput {
     }
     void runFrame() { instance().runFrame(); }
     bool isActive() { return instance().isActive(); }
-    void setActionSet(ActionSet set) { instance().setActionSet(set); }
     void collectEvents(std::vector<engine::InputEvent>& out) { instance().collectEvents(out); }
     void getCursorInput(float& x, float& y, float& trigger) {
         instance().getCursorInput(x, y, trigger);
@@ -382,7 +398,6 @@ namespace rind::steaminput {
     void setTextureManager(engine::TextureManager*) {}
     void runFrame() {}
     bool isActive() { return false; }
-    void setActionSet(ActionSet) {}
     void collectEvents(std::vector<engine::InputEvent>&) {}
     void getCursorInput(float& x, float& y, float& trigger) { x = 0.0f; y = 0.0f; trigger = 0.0f; }
     std::string glyphTextureName(rind::GameAction) { return ""; }

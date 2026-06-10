@@ -1,12 +1,13 @@
 #pragma once
 
-#include <engine/Renderer.h>
 #include <engine/EmbeddedAssets.h>
-#include <stb/stb_image.h>
+#include <vulkan/vulkan.h>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 
 namespace engine {
+    class Renderer;
     struct Texture {
         std::string name;
         VkImage image = VK_NULL_HANDLE;

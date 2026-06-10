@@ -1,6 +1,10 @@
 #pragma once
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
+#include <algorithm>
+#include <cmath>
+#include <random>
+#include <string>
 
 namespace rind {
     class ScoreCounter : public engine::Entity {

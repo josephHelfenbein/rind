@@ -1,4 +1,5 @@
 #include <engine/TextureManager.h>
+#include <engine/Renderer.h>
 #include <engine/ThreadPool.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>

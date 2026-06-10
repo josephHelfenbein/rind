@@ -1,4 +1,7 @@
 #include <engine/EntityManager.h>
+#include <engine/Renderer.h>
+#include <engine/ShaderManager.h>
+#include <engine/TextureManager.h>
 #include <engine/Camera.h>
 #include <engine/IrradianceManager.h>
 #include <engine/Collider.h>

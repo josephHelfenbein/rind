@@ -5,13 +5,15 @@
 #include <filesystem>
 #include <cstdlib>
 #include <unordered_map>
+#include <vector>
+#include <functional>
+#include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <engine/Renderer.h>
 #include <engine/TextureManager.h>
 #include <engine/UIManager.h>
 #include <engine/InputManager.h>
-#include <engine/EntityManager.h>
 #include <engine/io.h>
 
 namespace engine {
@@ -19,19 +21,19 @@ namespace engine {
     public:
         struct Settings {
             uint32_t aoMode = 2; // 0 = disabled, 1 = ssao, 2 = gtao
-            uint32_t aaMode = 1; // 0 = none, 1 = FXAA, 2 = SMAA
+            uint32_t aaMode = 2; // 0 = none, 1 = FXAA, 2 = SMAA
             uint32_t screenMode = 0; // 0 = windowed, 1 = borderless, 2 = fullscreen
-            float fpsLimit = 14.0f;
+            float fpsLimit = 13.0f;
             float shadowQuality = 2.0f; // 0=256 1 sample, 1=512 2 samples, 2=1024 4 samples, 3=2048 8 samples
             float volumetricQuality = 2.0f; // 0 = very low, 1 = low, 2 = medium, 3 = high
-            float ssrQuality = 2.0f; // 0 = off, 1 = low, 2 = medium, 3 = high
-            float sensitivity = 0.003f;
+            float ssrQuality = 1.0f; // 0 = off, 1 = low, 2 = medium, 3 = high
+            float sensitivity = 0.01f;
             float masterVolume = 1.0f;
             bool showFPS = false;
             uint32_t hdrMode = 0; // 0=Off, 1=HDR10 (PQ), 2=scRGB
             float hdrPaperWhiteNits = 203.0f; // user-facing "HDR Brightness"
             float uiScale = 1.0f; // user UI scale modifier, 0.5 to 2.0
-            float resolutionScale = 1.0f; // internal render resolution scale, 0.5 to 1.0
+            float resolutionScale = 0.8f; // internal render resolution scale, 0.5 to 1.0
         };
 
         struct SettingsDefinition {

@@ -1,8 +1,15 @@
 #include <rind/Enemy.h>
+#include <rind/Player.h>
+#include <rind/GameInstance.h>
 #include <rind/TempTrigger.h>
+#include <engine/Renderer.h>
+#include <engine/EntityManager.h>
+#include <engine/Collider.h>
+#include <engine/AudioManager.h>
 #include <engine/ParticleManager.h>
 #include <engine/VolumetricManager.h>
 #include <glm/gtc/quaternion.hpp>
+#include <array>
 #include <stdexcept>
 
 rind::Enemy::Enemy(

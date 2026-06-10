@@ -1,5 +1,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include <engine/AudioManager.h>
+#include <engine/Renderer.h>
+#include <engine/SettingsManager.h>
 #include <iostream>
 
 ma_result init_engine_with_channels(ma_engine* engine, ma_uint32 channels) {

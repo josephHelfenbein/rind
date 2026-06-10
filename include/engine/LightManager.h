@@ -1,7 +1,8 @@
 #pragma once
 
-#include <engine/EntityManager.h>
+#include <engine/ModelManager.h>
 #include <engine/PushConstants.h>
+#include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <array>
 #include <memory>
@@ -9,6 +10,7 @@
 #include <vector>
 
 namespace engine {
+    class Renderer;
     class LightManager;
 
     // stable handle for lights

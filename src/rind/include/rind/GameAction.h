@@ -6,7 +6,6 @@ namespace rind {
         MoveForward, MoveBackward, MoveLeft, MoveRight,
         Look, // camera (analog)
         Jump, Dash, Shoot, Grenade, Punch, Heal, Pause,
-        MenuUp, MenuDown, MenuLeft, MenuRight, MenuSelect, MenuCancel,
         None
     };
 }

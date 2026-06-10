@@ -71,20 +71,6 @@
 				"pause"		"#Pause"
 			}
 		}
-		"menu"
-		{
-			"title"		"#Menu"
-			"legacy_set"		"0"
-			"Button"
-			{
-				"menu_up"		"#MenuUp"
-				"menu_down"		"#MenuDown"
-				"menu_left"		"#MenuLeft"
-				"menu_right"		"#MenuRight"
-				"menu_select"		"#MenuSelect"
-				"menu_cancel"		"#MenuCancel"
-			}
-		}
 	}
 	"localization"
 	{
@@ -93,7 +79,6 @@
 			"title"		"Rind"
 			"description"		"Action set configuration for Rind."
 			"Gameplay"		"Gameplay"
-			"Menu"		"Menu"
 			"Move"		"Move"
 			"Look"		"Look"
 			"Shoot"		"Shoot"
@@ -103,12 +88,6 @@
 			"Grenade"		"Grenade"
 			"Punch"		"Punch"
 			"Pause"		"Pause"
-			"MenuUp"		"Menu Up"
-			"MenuDown"		"Menu Down"
-			"MenuLeft"		"Menu Left"
-			"MenuRight"		"Menu Right"
-			"MenuSelect"		"Menu Select"
-			"MenuCancel"		"Menu Cancel"
 		}
 	}
 }

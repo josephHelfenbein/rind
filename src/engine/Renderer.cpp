@@ -17,6 +17,8 @@
 #include <engine/SettingsManager.h>
 #include <engine/Platform.h>
 
+#include <glm/glm.hpp>
+
 #include <algorithm>
 #include <utility>
 #include <unordered_map>

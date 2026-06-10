@@ -5,8 +5,10 @@
 #endif
 
 #include <engine/EntityManager.h>
+#include <engine/Renderer.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <array>
 
 namespace engine {
     class Camera : public Entity {

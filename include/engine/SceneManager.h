@@ -1,14 +1,12 @@
 #pragma once
 
-#include <engine/Renderer.h>
-#include <engine/EntityManager.h>
-#include <engine/UIManager.h>
 #include <memory>
 #include <string>
 #include <functional>
-#include <map>
+#include <vector>
 
 namespace engine {
+    class Renderer;
     class Scene {
     public:
         Scene(std::function<void(Renderer* renderer)> onLoad) : onLoad(onLoad) {};
