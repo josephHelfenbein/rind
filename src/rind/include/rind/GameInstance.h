@@ -45,6 +45,6 @@ namespace rind {
         std::unique_ptr<engine::AudioManager> audioManager;
         std::unique_ptr<engine::SettingsManager> settingsManager;
 
-        uint32_t difficulty = 0;
+        uint32_t difficulty = 1;
     };
 };

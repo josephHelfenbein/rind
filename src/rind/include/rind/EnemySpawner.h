@@ -31,7 +31,8 @@ namespace rind {
                 countTimer = 0.0f;
             }
             float waveProgress = sinf(std::numbers::pi_v<float> * (countTimer / 5.0f)) + 1.0f;
-            uint32_t maxEnemies = waveProgress * (maxEnemyMultiplier * gameInstance->getDifficultyLevel() + baseMaxEnemies);
+            float difficultyScale = gameInstance->getDifficultyLevel() == 0u ? 0.4f : static_cast<float>(gameInstance->getDifficultyLevel());
+            uint32_t maxEnemies = waveProgress * (maxEnemyMultiplier * difficultyScale + baseMaxEnemies);
             if (enemyCount >= maxEnemies) {
                 readyToSpawn = false;
                 return;
@@ -43,7 +44,7 @@ namespace rind {
 
             spawnTimer += deltaTime;
             float timeRandomness = dist(rng) * baseSpawnRate * 0.25f; // +-25% of base spawn rate
-            float adjustedSpawnInterval = (baseSpawnRate + timeRandomness) * ((5.0f - gameInstance->getDifficultyLevel()) / 5.0f);
+            float adjustedSpawnInterval = (baseSpawnRate + timeRandomness) * ((5.0f - difficultyScale) / 5.0f);
             if (spawnTimer >= adjustedSpawnInterval) {
                 if (spawnChance > 1e-9f) {
                     float spawnRoll = (dist(rng) + 1.0f) * 0.5f; // 0 to 1
