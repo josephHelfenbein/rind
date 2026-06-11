@@ -8,6 +8,7 @@
 #include "steam/isteamfriends.h"
 #include "steam/isteamutils.h"
 #include "steam/isteamhttp.h"
+#include "steam/steam_api_flat.h"
 
 #include <cstdint>
 #include <memory>
@@ -238,7 +239,7 @@ namespace {
         }
 
         void compose() {
-            uint64 localId = SteamUser() ? SteamUser()->GetSteamID().ConvertToUint64() : 0;
+            uint64 localId = SteamUser() ? SteamAPI_ISteamUser_GetSteamID(SteamUser()) : 0;
             std::vector<Entry> chosen;
             if (m_hasPlayer && m_player.rank <= kRows - 1) {
                 chosen = m_top;

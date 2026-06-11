@@ -4,6 +4,7 @@
 
 #include "steam/steam_api.h"
 #include "steam/isteaminput.h"
+#include "steam/steam_api_flat.h"
 #include <stb/stb_image.h>
 #include <GLFW/glfw3.h>
 #include <rind/SteamManager.h>
@@ -175,7 +176,7 @@ namespace {
                 if (button < 0) continue;
                 if (m_digital[i] == 0) continue;
                 InputDigitalActionData_t d =
-                    SteamInput()->GetDigitalActionData(m_active, m_digital[i]);
+                    SteamAPI_ISteamInput_GetDigitalActionData(SteamInput(), m_active, m_digital[i]);
                 bool pressed = d.bActive && d.bState;
                 if (pressed != m_prevDigital[i]) {
                     engine::InputEvent ev{};
@@ -202,11 +203,11 @@ namespace {
             x = 0.0f; y = 0.0f; trigger = 0.0f;
             if (!isActive() || !SteamInput()) return;
             if (m_analog[Analog_Look] != 0) {
-                InputAnalogActionData_t a = SteamInput()->GetAnalogActionData(m_active, m_analog[Analog_Look]);
+                InputAnalogActionData_t a = SteamAPI_ISteamInput_GetAnalogActionData(SteamInput(), m_active, m_analog[Analog_Look]);
                 if (a.bActive) { x = a.x; y = -a.y; }
             }
             if (m_analog[Analog_Shoot] != 0) {
-                InputAnalogActionData_t t = SteamInput()->GetAnalogActionData(m_active, m_analog[Analog_Shoot]);
+                InputAnalogActionData_t t = SteamAPI_ISteamInput_GetAnalogActionData(SteamInput(), m_active, m_analog[Analog_Shoot]);
                 if (t.bActive) trigger = t.x;
             }
         }
@@ -287,7 +288,7 @@ namespace {
 
         void emitStick(std::vector<engine::InputEvent>& out, int analog, int axisX, int axisY) {
             if (m_analog[analog] == 0) return;
-            InputAnalogActionData_t a = SteamInput()->GetAnalogActionData(m_active, m_analog[analog]);
+            InputAnalogActionData_t a = SteamAPI_ISteamInput_GetAnalogActionData(SteamInput(), m_active, m_analog[analog]);
             float x = a.bActive ? a.x : 0.0f;
             float y = a.bActive ? -a.y : 0.0f;
             emitAxis(out, axisX, x);
@@ -296,7 +297,7 @@ namespace {
 
         void emitTrigger(std::vector<engine::InputEvent>& out, int analog, int axis) {
             if (m_analog[analog] == 0) return;
-            InputAnalogActionData_t a = SteamInput()->GetAnalogActionData(m_active, m_analog[analog]);
+            InputAnalogActionData_t a = SteamAPI_ISteamInput_GetAnalogActionData(SteamInput(), m_active, m_analog[analog]);
             float t = a.bActive ? a.x : 0.0f;
             emitAxis(out, axis, t * 2.0f - 1.0f);
         }
