@@ -90,10 +90,6 @@ namespace {
     public:
         void init() {
             if (!SteamInput()) return;
-            if (!m_inited) {
-                SteamInput()->Init(true);
-                m_inited = true;
-            }
             {
                 std::error_code ec;
                 std::filesystem::path manifest = executableDir() / "controller_config" /
@@ -102,16 +98,23 @@ namespace {
                     SteamInput()->SetInputActionManifestFilePath(manifest.string().c_str());
                 }
             }
+            if (!m_inited) {
+                SteamInput()->Init(true);
+                m_inited = true;
+            }
 
             m_gameplaySet = SteamInput()->GetActionSetHandle("gameplay");
 
+            bool ready = (m_gameplaySet != 0);
             for (int i = 0; i < Digital_Count; ++i) {
                 m_digital[i] = SteamInput()->GetDigitalActionHandle(kDigitalNames[i]);
+                ready = ready && m_digital[i] != 0;
             }
             for (int i = 0; i < Analog_Count; ++i) {
                 m_analog[i] = SteamInput()->GetAnalogActionHandle(kAnalogNames[i]);
+                ready = ready && m_analog[i] != 0;
             }
-            m_handlesReady = (m_digital[Digital_Jump] != 0);
+            m_handlesReady = ready;
         }
 
         void setTextureManager(engine::TextureManager* textureManager) {
@@ -146,10 +149,8 @@ namespace {
             InputHandle_t handles[STEAM_INPUT_MAX_COUNT];
             int count = SteamInput()->GetConnectedControllers(handles);
             if (count > 0) {
-                if (m_active != handles[0]) {
-                    m_active = handles[0];
-                    applyActionSet();
-                }
+                m_active = handles[0];
+                applyActionSet();
             } else {
                 m_active = 0;
             }
