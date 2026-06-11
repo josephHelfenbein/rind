@@ -334,6 +334,13 @@ add_executable(${PROJECT_NAME} src/main.cpp ${RIND_SOURCES} ${RIND_EXTRA_SOURCES
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src/rind/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE rind_engine)
 
+if(IS_WINDOWS AND _is_single_config_release)
+  set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+  if(MSVC)
+    target_link_options(${PROJECT_NAME} PRIVATE "/ENTRY:mainCRTStartup")
+  endif()
+endif()
+
 # Optional Steamworks integration. Wired only into the Rind executable target (rind_engine stays Steam-agnostic)
 if(RIND_ENABLE_STEAM)
   if(NOT STEAMWORKS_ROOT)
@@ -458,27 +465,33 @@ if(IS_MACOS)
   endif()
 endif()
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT RIND_IPO_SUPPORTED OUTPUT _rind_ipo_check_output LANGUAGES CXX)
+if(NOT RIND_IPO_SUPPORTED)
+  message(STATUS "Link-time optimization (LTO) not supported by this toolchain; building without it.")
+endif()
+
 # Compiler flags: apply to both targets (ISPC has its own flag syntax)
 foreach(_tgt rind_engine ${PROJECT_NAME})
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${_tgt} PRIVATE
-      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-fvectorize;-fslp-vectorize;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-flto;-fomit-frame-pointer;-finline-functions;-Wno-nan-infinity-disabled>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-fvectorize;-fslp-vectorize;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-fomit-frame-pointer;-finline-functions;-Wno-nan-infinity-disabled>"
       "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-O0>"
     )
-    set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${RIND_IPO_SUPPORTED})
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(${_tgt} PRIVATE
-      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-flto;-fomit-frame-pointer;-finline-functions;-ftree-vectorize>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-fomit-frame-pointer;-finline-functions;-ftree-vectorize>"
       "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-O0>"
     )
-    set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${RIND_IPO_SUPPORTED})
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(${_tgt} PRIVATE
       "$<$<COMPILE_LANGUAGE:CXX>:/FS>"
-      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:/O2;/Oi;/Ot;/Gy;/GL;/fp:fast;/DNDEBUG>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:/O2;/Oi;/Ot;/Gy;/fp:fast;/DNDEBUG>"
       "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:/W4;/Zi;/Od>"
     )
-    set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${RIND_IPO_SUPPORTED})
   endif()
   if(MSVC)
     target_compile_options(${_tgt} PRIVATE

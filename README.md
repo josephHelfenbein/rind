@@ -26,9 +26,10 @@ The codebase is open so people can read it, contribute, mod the game, or build t
 ### Windows
 
 1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload selected. This provides MSVC, CMake, and the Windows SDK.
-2. Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows). This includes `dxc.exe` and sets up `VULKAN_SDK` in your environment automatically.
-3. Verify `dxc.exe` is accessible. It should be on your PATH after the SDK install. If not, add `%VULKAN_SDK%\Bin` to your PATH manually.
-4. Install **ISPC**. Download the latest Windows `.zip` from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract it somewhere stable, and add the extracted `bin\` directory to your PATH so `ispc.exe` is discoverable. Alternatively `scoop install main/ispc` if you use [Scoop](https://scoop.sh/).
+2. Install **Ninja** and put it on your PATH (`winget install Ninja-build.Ninja`, `scoop install ninja`, or download from the [Ninja releases](https://github.com/ninja-build/ninja/releases)).
+3. Install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows). This includes `dxc.exe` and sets up `VULKAN_SDK` in your environment automatically.
+4. Verify `dxc.exe` is accessible. It should be on your PATH after the SDK install. If not, add `%VULKAN_SDK%\Bin` to your PATH manually.
+5. Install **ISPC**. Download the latest Windows `.zip` from the [ISPC GitHub releases](https://github.com/ispc/ispc/releases), extract it somewhere stable, and add the extracted `bin\` directory to your PATH so `ispc.exe` is discoverable. Alternatively `scoop install main/ispc` if you use [Scoop](https://scoop.sh/).
 
 ---
 
@@ -218,20 +219,28 @@ git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
+On **Windows**, configure with the Ninja generator (required for ISPC support):
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+```
+
 ### 3. Build
 
 ```bash
-cmake --build build --config Release --parallel
+cmake --build build --parallel
 ```
 
 ### 4. Run
 
-The executable will be located in the `bin` directory (or `bin/Release` on Windows).
+The executable will be located in the `bin` directory.
 
 **Windows:**
 ```powershell
-.\bin\Release\Rind.exe
+.\bin\Rind.exe
 ```
+
+> Log output is not visible for Windows Release builds. Build with `-DCMAKE_BUILD_TYPE=Debug` to get a console with logs.
 
 **macOS / Linux:**
 ```bash

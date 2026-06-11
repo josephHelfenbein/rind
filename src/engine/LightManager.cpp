@@ -458,7 +458,7 @@ void engine::Light::renderShadowMap(Renderer* renderer, VkCommandBuffer commandB
             if (entity->getModel()
              && !notShadowTypes.contains(entity->getType())
              && entity->getCastShadow()
-             && intersectsShadowRange(entity->getModel()->getAABB(), entity->getWorldTransform())) {
+             && intersectsShadowRange(entity->getModel()->getAABB(), entity->getWorldTransform(), kMovableShadowCastRange)) {
                 Model* model = entity->getModel();
                 const auto& shadowDS = entity->getShadowDescriptorSets();
                 if (shadowDS.empty()) {

@@ -17,6 +17,8 @@ namespace engine {
     using LightHandle = uint64_t;
     inline constexpr LightHandle kInvalidLightHandle = 0;
 
+    inline constexpr float kMovableShadowCastRange = 20.0f;
+
     class Light {
     public:
         Light(
@@ -100,12 +102,13 @@ namespace engine {
             const glm::vec3 worldExtents = basis * localExtents;
             return glm::length(worldExtents);
         }
-        bool intersectsShadowRange(const engine::AABB& aabb, const glm::mat4& worldTransform) const {
+        bool intersectsShadowRange(const engine::AABB& aabb, const glm::mat4& worldTransform, float rangeLimit = -1.0f) const {
             const glm::vec3 center = getWorldAABBCenter(aabb, worldTransform);
             const float boundsRadius = getWorldAABBBoundingRadius(aabb, worldTransform);
             const float distanceToLight = glm::length(center - getWorldPosition());
             const float cullRangeScale = 1.02f;
-            return (distanceToLight - boundsRadius) <= (radius * cullRangeScale);
+            const float range = (rangeLimit >= 0.0f && rangeLimit < radius) ? rangeLimit : radius;
+            return (distanceToLight - boundsRadius) <= (range * cullRangeScale);
         }
         LightHandle handle = kInvalidLightHandle; // stable id
         uint32_t lightIdx = 0xFFFFFFFF; // upload-slot index, reassigned by reorderLights
