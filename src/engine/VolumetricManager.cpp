@@ -12,7 +12,12 @@ engine::Volumetric::Volumetric(
     const glm::vec4& color,
     float lifetime,
     float acceleration
-) : initialTransform(initialTransform), finalTransform(finalTransform), color(color), lifetime(lifetime), acceleration(acceleration) {}
+) : initialTransform(initialTransform), finalTransform(finalTransform), color(color), lifetime(lifetime), acceleration(acceleration) {
+    glm::vec3 skew;
+    glm::vec4 persp;
+    glm::decompose(initialTransform, scaleA, rotA, transA, skew, persp);
+    glm::decompose(finalTransform, scaleB, rotB, transB, skew, persp);
+}
 
 engine::VolumetricManager::VolumetricManager(engine::Renderer* renderer)
     : renderer(renderer) {

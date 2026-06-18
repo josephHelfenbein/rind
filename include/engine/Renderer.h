@@ -349,7 +349,7 @@ namespace engine {
             bool valid = false;
         };
         RenderSubmitGraph renderSubmitGraph;
-        std::vector<std::unordered_map<std::string, VkPipelineStageFlags2>> renderNodeAttachmentReadStages;
+        std::vector<std::vector<VkPipelineStageFlags2>> renderNodeAttachmentReadStages;
 
         class EntityManager* entityManager;
         class InputManager* inputManager;

@@ -28,7 +28,7 @@ namespace engine {
 
         void updateParticleBuffer(uint32_t currentFrame);
         void createParticleDescriptorSets();
-        std::vector<VkDescriptorSet> getDescriptorSets() const { return descriptorSets; }
+        const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
         const std::vector<VkBuffer>& getParticleBuffers() const { return particleBuffers; }
         uint32_t getParticleCount() const { return static_cast<uint32_t>(particles.count()); }
 

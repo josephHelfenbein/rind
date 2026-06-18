@@ -178,6 +178,7 @@ namespace engine {
         std::vector<VkDeviceMemory> lightsBuffersMemory;
         std::vector<void*> lightBuffersMapped;
         std::vector<uint8_t> lightsDirty;
+        std::vector<uint8_t> shadowLightsDirty;
         std::vector<VkBuffer> shadowLightsBuffers;
         std::vector<VkDeviceMemory> shadowLightsMemories;
         std::vector<void*> shadowLightsMapped;

@@ -39,20 +39,24 @@ namespace engine {
             float t = age / std::max(lifetime, 0.0001f);
             float eased = 1.0f - std::pow(1.0f - t, std::max(acceleration, 0.0001f));
 
-            glm::vec3 scaleA, scaleB, transA, transB, skew;
-            glm::vec4 persp;
-            glm::quat rotA, rotB;
-            glm::decompose(initialTransform, scaleA, rotA, transA, skew, persp);
-            glm::decompose(finalTransform, scaleB, rotB, transB, skew, persp);
             glm::vec3 scale = glm::mix(scaleA, scaleB, eased);
             glm::quat rot = glm::slerp(rotA, rotB, eased);
             glm::vec3 trans = glm::mix(transA, transB, eased);
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), trans) 
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), trans)
                 * glm::toMat4(rot)
                 * glm::scale(glm::mat4(1.0f), scale);
+
+            glm::vec3 invScale(
+                1.0f / (std::abs(scale.x) < 1e-6f ? std::copysign(1e-6f, scale.x == 0.0f ? 1.0f : scale.x) : scale.x),
+                1.0f / (std::abs(scale.y) < 1e-6f ? std::copysign(1e-6f, scale.y == 0.0f ? 1.0f : scale.y) : scale.y),
+                1.0f / (std::abs(scale.z) < 1e-6f ? std::copysign(1e-6f, scale.z == 0.0f ? 1.0f : scale.z) : scale.z)
+            );
+            glm::mat4 invModel = glm::scale(glm::mat4(1.0f), invScale)
+                * glm::transpose(glm::toMat4(rot))
+                * glm::translate(glm::mat4(1.0f), -trans);
             return {
                 .model = model,
-                .invModel = glm::inverse(model),
+                .invModel = invModel,
                 .color = color,
                 .age = age,
                 .lifetime = lifetime
@@ -71,6 +75,8 @@ namespace engine {
         float acceleration = 2.0f;
         float age = 0.0f;
         bool markedForDeletion = false;
+        glm::vec3 scaleA, scaleB, transA, transB;
+        glm::quat rotA, rotB;
     };
     class VolumetricManager {
     public:
@@ -86,8 +92,8 @@ namespace engine {
 
         void updateVolumetricBuffer(uint32_t currentFrame);
         void createVolumetricDescriptorSets();
-        std::vector<VkDescriptorSet> getDescriptorSets() const { return descriptorSets; }
-        std::vector<Volumetric> getVolumetrics() const { return volumetrics; }
+        const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
+        const std::vector<Volumetric>& getVolumetrics() const { return volumetrics; }
 
         void updateAll(float deltaTime);
         void renderVolumetrics(VkCommandBuffer commandBuffer, uint32_t currentFrame);

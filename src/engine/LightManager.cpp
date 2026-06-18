@@ -781,10 +781,17 @@ void engine::LightManager::markLightsDirty() {
     const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
     if (lightsDirty.size() != frames) {
         lightsDirty.assign(frames, 1u);
-        return;
+    } else {
+        for (size_t i = 0; i < frames; ++i) {
+            lightsDirty[i] = 1u;
+        }
     }
-    for (size_t i = 0; i < frames; ++i) {
-        lightsDirty[i] = 1u;
+    if (shadowLightsDirty.size() != frames) {
+        shadowLightsDirty.assign(frames, 1u);
+    } else {
+        for (size_t i = 0; i < frames; ++i) {
+            shadowLightsDirty[i] = 1u;
+        }
     }
 }
 
@@ -844,11 +851,18 @@ void engine::LightManager::updateShadowLightsBuffer(uint32_t frameIndex) {
     if (frameIndex >= shadowLightsBuffers.size() || shadowLightsMapped[frameIndex] == nullptr) {
         return;
     }
+    if (shadowLightsDirty.size() < shadowLightsBuffers.size()) {
+        shadowLightsDirty.assign(shadowLightsBuffers.size(), 1u);
+    }
+    if (shadowLightsDirty[frameIndex] == 0u) {
+        return;
+    }
     ShadowLightsSSBO* gpuData = static_cast<ShadowLightsSSBO*>(shadowLightsMapped[frameIndex]);
     const size_t count = std::min(lights.size(), static_cast<size_t>(kMaxPointLights));
     for (size_t i = 0; i < count; ++i) {
         lights[i]->fillShadowLightEntry(gpuData->lights[i]);
     }
+    shadowLightsDirty[frameIndex] = 0u;
 }
 
 void engine::LightManager::updateLightsUBO(uint32_t frameIndex) {

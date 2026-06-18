@@ -14,8 +14,7 @@ engine::ThreadPool& engine::ThreadPool::global() {
 
 engine::ThreadPool::ThreadPool() {
     const size_t hw = std::max<size_t>(1, std::thread::hardware_concurrency());
-    // Caller thread runs chunk 0
-    // workers handle the rest, so spawn hw-1
+    // caller thread runs chunk 0 workers handle the rest, so spawn hw-1
     const size_t workerN = hw > 1 ? hw - 1 : 0;
     workers.reserve(workerN);
     for (size_t i = 0; i < workerN; ++i) {
@@ -37,24 +36,17 @@ engine::ThreadPool::~ThreadPool() {
 void engine::ThreadPool::workerLoop() {
     g_inParallel = true;
     while (true) {
-        std::function<void()> task;
+        ChunkTask task{};
         {
             std::unique_lock<std::mutex> lk(m);
             cv.wait(lk, [this] { return !tasks.empty() || !running; });
             if (!running && tasks.empty()) return;
-            task = std::move(tasks.front());
+            task = tasks.front();
             tasks.pop_front();
         }
-        task();
+        (*task.fn)(task.begin, task.end, task.chunkIdx);
+        task.remaining->fetch_sub(1, std::memory_order_release);
     }
-}
-
-void engine::ThreadPool::submit(std::function<void()> task) {
-    {
-        std::lock_guard<std::mutex> lk(m);
-        tasks.push_back(std::move(task));
-    }
-    cv.notify_one();
 }
 
 size_t engine::ThreadPool::numChunks(size_t begin, size_t end, size_t minChunk) const {
@@ -86,14 +78,15 @@ void engine::ThreadPool::parallel_for_chunks(size_t begin, size_t end, size_t mi
 
     std::atomic<size_t> remaining{chunks - 1};
     g_inParallel = true;
-    for (size_t c = 1; c < chunks; ++c) {
-        const size_t b = begin + c * chunkSize;
-        const size_t e = std::min(b + chunkSize, end);
-        submit([&fn, &remaining, b, e, c] {
-            fn(b, e, c);
-            remaining.fetch_sub(1, std::memory_order_release);
-        });
+    {
+        std::lock_guard<std::mutex> lk(m);
+        for (size_t c = 1; c < chunks; ++c) {
+            const size_t b = begin + c * chunkSize;
+            const size_t e = std::min(b + chunkSize, end);
+            tasks.push_back(ChunkTask{&fn, b, e, c, &remaining});
+        }
     }
+    cv.notify_all();
     fn(begin, std::min(begin + chunkSize, end), 0);
     while (remaining.load(std::memory_order_acquire) > 0) {
         std::this_thread::yield();

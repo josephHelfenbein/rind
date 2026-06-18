@@ -37,13 +37,10 @@ size_t engine::ParticleManager::ParticleSoA::push(
 }
 
 void engine::ParticleManager::ParticleSoA::truncateFront(size_t n) {
-    auto eraseN = [n](auto& v) { v.erase(v.begin(), v.begin() + n); };
-    eraseN(posX); eraseN(posY); eraseN(posZ);
-    eraseN(velX); eraseN(velY); eraseN(velZ);
-    eraseN(prevPosX); eraseN(prevPosY); eraseN(prevPosZ);
-    eraseN(prevPrevPosX); eraseN(prevPrevPosY); eraseN(prevPrevPosZ);
-    eraseN(age); eraseN(lifetime); eraseN(type); eraseN(dead);
-    eraseN(size); eraseN(colorR); eraseN(colorG); eraseN(colorB);
+    if (n == 0) return;
+    if (n >= count()) { clearAll(); return; }
+    for (size_t i = 0; i < n; ++i) dead[i] = 1;
+    compactDead();
 }
 
 void engine::ParticleManager::ParticleSoA::compactDead() {

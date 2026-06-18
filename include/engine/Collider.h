@@ -101,6 +101,10 @@ namespace engine {
         bool intersectsMTV(Collider& other, CollisionMTV& out, const glm::mat4& deltaTransform = glm::mat4(1.0f)) override;
     private:
         glm::vec3 halfSize;
+
+        mutable engine::AABB cachedAABB{};
+        mutable uint32_t lastTransformGeneration = 0;
+        mutable bool isCached = false;
     };
     class OBBCollider : public Collider {
     public:
@@ -121,6 +125,7 @@ namespace engine {
         mutable std::array<glm::vec3, 8> cornersCache;
         mutable std::array<glm::vec3, 3> axesCache;
         mutable glm::vec3 centerCache{0.0f};
+        mutable engine::AABB cachedAABB{};
         mutable uint32_t lastTransformGeneration = 0;
         mutable bool isCached = false;
     };

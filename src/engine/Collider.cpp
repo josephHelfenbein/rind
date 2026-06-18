@@ -530,14 +530,21 @@ void engine::ConvexHullCollider::buildConvexData(const std::vector<glm::vec3>& v
 }
 
 engine::AABB engine::AABBCollider::getWorldAABB() {
+    uint32_t currentGen = getTransformGeneration();
+    if (isCached && currentGen == lastTransformGeneration) {
+        return cachedAABB;
+    }
     const glm::mat4& transform = getWorldTransform();
     auto corners = Collider::buildOBBCorners(transform, halfSize);
-    return Collider::aabbFromCorners(corners);
+    cachedAABB = Collider::aabbFromCorners(corners);
+    lastTransformGeneration = currentGen;
+    isCached = true;
+    return cachedAABB;
 }
 
 engine::AABB engine::OBBCollider::getWorldAABB() {
     ensureCached();
-    return Collider::aabbFromCorners(cornersCache);
+    return cachedAABB;
 }
 
 void engine::OBBCollider::ensureCached() {
@@ -553,6 +560,7 @@ void engine::OBBCollider::ensureCached() {
         Collider::normalizeOrZero(glm::vec3(currentTransform[2]))
     };
     centerCache = glm::vec3(currentTransform[3]);
+    cachedAABB = Collider::aabbFromCorners(cornersCache);
     lastTransformGeneration = currentGen;
     isCached = true;
 }

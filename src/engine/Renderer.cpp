@@ -621,6 +621,7 @@ void engine::Renderer::buildRenderAttachmentReadStages() {
             return std::find(node.shaderNames.begin(), node.shaderNames.end(), shaderName) != node.shaderNames.end();
         };
 
+        renderNodeAttachmentReadStages[nodeIdx].reserve(node.passInfo->images.value().size());
         for (const auto& image : node.passInfo->images.value()) {
             VkPipelineStageFlags2 linkedStages = 0;
 
@@ -686,7 +687,7 @@ void engine::Renderer::buildRenderAttachmentReadStages() {
             if (linkedStages == 0) {
                 linkedStages = shaderReadStages;
             }
-            renderNodeAttachmentReadStages[nodeIdx][image.name] = linkedStages;
+            renderNodeAttachmentReadStages[nodeIdx].push_back(linkedStages);
         }
     }
 }
@@ -1137,16 +1138,19 @@ void engine::Renderer::recordCommandBuffer(
             const VkPipelineStageFlags2 shaderReadStages = isComputeQueue
                 ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
                 : (VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
-            for (auto& image : node.passInfo->images.value()) {
+            auto& nodeImages = node.passInfo->images.value();
+            const std::vector<VkPipelineStageFlags2>* nodeReadStages =
+                nodeIdx < renderNodeAttachmentReadStages.size()
+                    ? &renderNodeAttachmentReadStages[nodeIdx]
+                    : nullptr;
+            for (size_t imageIdx = 0; imageIdx < nodeImages.size(); ++imageIdx) {
+                auto& image = nodeImages[imageIdx];
                 if (image.image == VK_NULL_HANDLE) {
                     continue;
                 }
                 VkPipelineStageFlags2 linkedReadStages = shaderReadStages;
-                if (nodeIdx < renderNodeAttachmentReadStages.size()) {
-                    auto stageIt = renderNodeAttachmentReadStages[nodeIdx].find(image.name);
-                    if (stageIt != renderNodeAttachmentReadStages[nodeIdx].end()) {
-                        linkedReadStages = stageIt->second;
-                    }
+                if (nodeReadStages && imageIdx < nodeReadStages->size()) {
+                    linkedReadStages = (*nodeReadStages)[imageIdx];
                 }
                 if (isComputeQueue) {
                     linkedReadStages &= ~(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT |

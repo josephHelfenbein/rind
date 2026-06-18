@@ -4,10 +4,10 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <unordered_map>
+#include <engine/ModelManager.h>
 
 namespace engine {
     class Collider;
-    struct AABB;
 
     class SpatialGrid {
     public:
@@ -57,15 +57,20 @@ namespace engine {
                        static_cast<size_t>(coord.z) * 83492791UL;
             }
         };
-        
+
         CellCoord getCell(const glm::vec3& pos) const;
         void getCellRange(const AABB& aabb, CellCoord& minCell, CellCoord& maxCell) const;
-        
+
+        struct CellEntry {
+            Collider* collider;
+            AABB aabb;
+        };
+
         float cellSize;
         float invCellSize;
-        std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash> dynamicCells;
+        std::unordered_map<CellCoord, std::vector<CellEntry>, CellCoordHash> dynamicCells;
         std::unordered_map<Collider*, std::vector<CellCoord>> dynamicColliderCells;
-        std::unordered_map<CellCoord, std::vector<Collider*>, CellCoordHash> staticCells;
+        std::unordered_map<CellCoord, std::vector<CellEntry>, CellCoordHash> staticCells;
         std::unordered_map<Collider*, std::vector<CellCoord>> staticColliderCells;
     };
 }

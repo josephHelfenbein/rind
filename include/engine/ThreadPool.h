@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -28,10 +29,17 @@ namespace engine {
     private:
         ThreadPool();
         void workerLoop();
-        void submit(std::function<void()> task);
+
+        struct ChunkTask {
+            const ChunkFn* fn;
+            size_t begin;
+            size_t end;
+            size_t chunkIdx;
+            std::atomic<size_t>* remaining;
+        };
 
         std::vector<std::thread> workers;
-        std::deque<std::function<void()>> tasks;
+        std::deque<ChunkTask> tasks;
         std::mutex m;
         std::condition_variable cv;
         bool running = true;
