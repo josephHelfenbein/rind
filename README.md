@@ -6,6 +6,10 @@ Licensed under Apache 2.0.
 
 ## The game
 
+
+https://github.com/user-attachments/assets/09cfa877-60bb-400b-84dd-d5022e30a0c6
+
+
 You play a robot with a laser gun, grenades, a melee punch, a dash, and a double jump. The laser gun overheats, so timing matters. Enemies arrive in waves: walking grunts, flying drones, and heavy bashers, plus four elite variants (flying, bashing, grenade-throwing, missile-firing). Kills can give a random status effect that buffs or debuffs the player, and the explosion left behind can heal the player. The score will keep climbing until you lose.
 
 ## The repository
