@@ -1,8 +1,30 @@
-# Rind
 
-Rind is an open-source first-person shooter and the custom Vulkan engine it runs on. You fight waves of robots, and the difficulty gets harder the longer you stay alive.
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![MIT License][license-shield]][license-url]
+[![LinkedIn][linkedin-shield]][linkedin-url]
 
-Licensed under Apache 2.0.
+<br />
+<div align="center">
+
+<a href="https://github.com/josephHelfenbein/rind">
+    <img src="src/assets/textures/rind-icon.png" alt="Logo" width="80" height="80">
+  </a>
+
+<h3 align="center">Rind</h3>
+
+  <p align="center">
+    An open-source first-person shooter and the custom Vulkan engine it runs on. You fight waves of robots, and the difficulty gets harder the longer you stay alive.
+    <br />
+    <br />
+    <a href="https://github.com/josephHelfenbein/rind/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    ·
+    <a href="https://github.com/josephHelfenbein/rind/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+  </p>
+</div>
+
 
 ## The game
 
@@ -15,6 +37,12 @@ You play a robot with a laser gun, grenades, a melee punch, a dash, and a double
 ## The repository
 
 The codebase is open so people can read it, contribute, mod the game, or build their own game on top of the engine. The Steam page is [here](https://store.steampowered.com/app/4412940/Rind/).
+
+### Built With
+
+* [![C++][C++]][C++-url]
+* [![Vulkan][Vulkan]][Vulkan-url]
+* [![ISPC][ISPC]][ISPC-url]
 
 ## Prerequisites
 
@@ -551,20 +579,27 @@ Notes:
 - New engine shaders go in `src/engine/assets/shaders/hlsl/`; new game shaders go in `src/rind/assets/shaders/hlsl/`. Both are picked up automatically and compiled to SPIR-V by `rind_engine_compile_shaders` on the next configure. Stem-based stage detection: `*.vert.hlsl` maps to vertex, `*.frag.hlsl` to fragment, `*.comp.hlsl` to compute.
 - The render graph is data-driven. New passes are added by appending a `RenderNode` in `ShaderManager::createDefaultShaders` with the right `dependsOnNodeNames` and lane assignment; there is no separate scheduler file to update. Consumer projects that don't want to fork the engine can add or replace passes from outside via `setOnRenderGraphReady` plus `insertRenderNodeAfter` or `replaceRenderNode` (see "Extending the engine" above).
 
-## Acknowledgements
-
-Third-party libraries Rind depends on:
-
-- [glm](https://github.com/g-truc/glm), linear algebra
-- [GLFW](https://www.glfw.org), windowing and input
-- [FreeType](https://freetype.org), font rasterization
-- [fastgltf](https://github.com/spnda/fastgltf), glTF parsing
-- [miniaudio](https://github.com/mackron/miniaudio), audio playback
-- [stb](https://github.com/nothings/stb), image decoding
-- [SMAA](https://github.com/iryoku/smaa), anti-aliasing
-- [DXC](https://github.com/microsoft/DirectXShaderCompiler), HLSL to SPIR-V compilation
-- [MoltenVK](https://github.com/KhronosGroup/MoltenVK), Vulkan on Metal for macOS
-
 ## License
 
 Apache License 2.0. See [`LICENSE`](LICENSE).
+
+
+[contributors-shield]: https://img.shields.io/github/contributors/josephHelfenbein/rind.svg?style=for-the-badge
+[contributors-url]: https://github.com/josephHelfenbein/rind/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/josephHelfenbein/rind.svg?style=for-the-badge
+[forks-url]: https://github.com/josephHelfenbein/rind/network/members
+[stars-shield]: https://img.shields.io/github/stars/josephHelfenbein/rind.svg?style=for-the-badge
+[stars-url]: https://github.com/josephHelfenbein/rind/stargazers
+[issues-shield]: https://img.shields.io/github/issues/josephHelfenbein/rind.svg?style=for-the-badge
+[issues-url]: https://github.com/josephHelfenbein/rind/issues
+[license-shield]: https://img.shields.io/github/license/josephHelfenbein/rind.svg?style=for-the-badge
+[license-url]: https://github.com/josephHelfenbein/rind/blob/master/LICENSE.txt
+[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
+[linkedin-url]: https://linkedin.com/in/joseph-j-helfenbein
+
+[C++]: https://img.shields.io/badge/c++-00599C?logo=cplusplus&style=for-the-badge&logoColor=white
+[C++-url]: https://developer.oracle.com/languages/javascript.html
+[Vulkan]: https://img.shields.io/badge/vulkan-A41E22?logo=vulkan&style=for-the-badge&logoColor=white&logoSize=auto
+[Vulkan-url]: https://www.vulkan.org/
+[ISPC]: https://img.shields.io/badge/ispc-0071C5?logo=intel&style=for-the-badge&logoColor=white&logoSize=auto
+[ISPC-url]: https://ispc.github.io/index.html
