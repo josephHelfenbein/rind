@@ -3,7 +3,7 @@
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
+[![Steam][steam-shield]][steam-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
 <br />
@@ -37,6 +37,19 @@ You play a robot with a laser gun, grenades, a melee punch, a dash, and a double
 ## The repository
 
 The codebase is open so people can read it, contribute, mod the game, or build their own game on top of the engine. The Steam page is [here](https://store.steampowered.com/app/4412940/Rind/).
+
+### Where to start
+
+Pick the path that matches what you're here for:
+
+| I want to...                            | Jump to |
+| ------------------------------------- | ------- |
+| **Build the game**            | [Prerequisites](#prerequisites), [Build Instructions](#build-instructions) |
+| **Understand how it works**           | [The game](#the-game), [Game code](#game-code), [Engine overview](#engine-overview), [Rendering pipeline](#rendering-pipeline) |
+| **Mod the game**                      | [Modding the game](#modding-the-game) |
+| **Build my own game on the engine**   | [Submodule guide](#using-rind_engine-as-a-submodule), [Asset pipeline](#asset-pipeline) |
+| **Report a bug**              | [Reporting bugs](#reporting-bugs) |
+| **Contribute**                | [Contributing](#contributing) |
 
 ### Built With
 
@@ -133,13 +146,11 @@ sudo apt install libfreetype6-dev
 
 **2. Install Zig** (default Linux compiler)
 
-On Linux, the build uses `zig cc` by default so the binary targets an older glibc and static-links its C++ runtime. This is what lets it run under the Steam Linux Runtime on the Steam Deck. The same toolchain is used by the packaging script for the AppImage. Pass `-DRIND_USE_ZIG=OFF` to build with the system compiler instead (local-only; not portable to the Steam Deck).
+Targets an older `glibc` with Zig so the binary runs under the Steam Linux Runtime and Steam Deck. Pass `-DRIND_USE_ZIG=OFF` for the system compiler instead.
 
 ```bash
-sudo snap install zig --classic --beta
+sudo snap install zig --classic --beta   # or download from ziglang.org/download
 ```
-
-Alternatively, download from [ziglang.org](https://ziglang.org/download/).
 
 **3. Install DXC via LunarG apt repo**
 
@@ -179,13 +190,11 @@ sudo apt install \
 
 **2. Install Zig**
 
-On Linux, the build uses `zig cc` by default so the binary targets an older glibc and static-links its C++ runtime. This is what lets it run under the Steam Linux Runtime on the Steam Deck. The same toolchain is used by the packaging script for the AppImage. Pass `-DRIND_USE_ZIG=OFF` to build with the system compiler instead (local-only; not portable to the Steam Deck).
+Targets an older `glibc` with Zig so the binary runs under the Steam Linux Runtime and Steam Deck. Pass `-DRIND_USE_ZIG=OFF` for the system compiler instead.
 
 ```bash
-sudo snap install zig --classic --beta
+sudo snap install zig --classic --beta   # or download from ziglang.org/download
 ```
-
-Alternatively, download from [ziglang.org](https://ziglang.org/download/).
 
 **3. Install DXC**
 
@@ -225,7 +234,7 @@ sudo pacman -S \
 - `freetype2` - font rendering library
 - `directx-shader-compiler` - DXC, available in the official `extra` repo
 - `ispc` - Intel SPMD Program Compiler for the engine's SIMD kernels
-- `zig` - default Linux compiler (`zig cc`); targets an older glibc so the binary runs under the Steam Linux Runtime / Steam Deck. Pass `-DRIND_USE_ZIG=OFF` to use the system compiler.
+- `zig` - default Linux compiler (`zig cc`); targets an older `glibc` so the binary runs under the Steam Linux Runtime and Steam Deck. Pass `-DRIND_USE_ZIG=OFF` to use the system compiler.
 
 > You may also want `vulkan-validation-layers` for debugging.
 
@@ -324,7 +333,7 @@ The script auto-detects the OS it is running on and packages accordingly.
 
 ### macOS
 
-No extra tools required. The `.app` bundle includes the bundled dylibs and Vulkan ICD and can be double-clicked or distributed as-is. Optionally place a `cmake/Rind.icns` file to embed an icon.
+No extra tools required. The `.app` bundle includes the bundled dylibs and Vulkan ICD and can be double-clicked or distributed as-is.
 
 ### Linux
 
@@ -345,8 +354,6 @@ chmod +x appimagetool-x86_64.AppImage
 sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
 ```
 
-Optionally place a 256x256 PNG at `cmake/rind.png` to embed an icon.
-
 ### Windows
 
 No extra tools required. A `.zip` of the distributable folder is created automatically using CMake's built-in archive support.
@@ -363,6 +370,8 @@ No extra tools required. A `.zip` of the distributable folder is created automat
 - **`include/external/`**: vendored third-party libraries, pulled in as submodules.
 
 ## Engine overview
+
+*One central `Renderer` owns the GPU, and a set of focused managers (lights, particles, physics, audio, UI, etc.) each handle one job and route their work through it.*
 
 The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering. The renderer owns the shared GPU state; other managers request resources from it and submit work back through it. Headers are in `include/engine/` and sources in `src/engine/`.
 
@@ -385,6 +394,8 @@ The engine is a deferred PBR renderer built on Vulkan 1.3 with Dynamic Rendering
 - **SIMD module**: Wraps a small set of ISPC kernels (`src/engine/Kernels.ispc`) compiled into per-CPU-target variants with first-call CPUID dispatch built into ISPC. Used for batched frustum culling, AABB-vs-AABB and ray-vs-AABB broad-phase filtering, convex-hull SAT projection, and particle kinematics integration.
 
 ## Rendering pipeline
+
+*Each frame is assembled in stages: fill the geometry buffers, light them, layer on effects (shadows, particles, volumetrics, reflections, bloom, etc.), then tonemap and draw the UI on top. The numbered list below is that order.*
 
 The graph is described in `ShaderManager::createDefaultShaders`. One frame runs roughly in the order below; the lane name after each step matches the `RenderLane::name` it is assigned to in code, and async lanes run in parallel with the main `GeneralGraphics` lane on a separate compute queue.
 
@@ -412,9 +423,50 @@ The renderer can output HDR10 (PQ, Rec.2020) or scRGB (linear, Rec.709) on suppo
 
 ## Game code
 
-All gameplay lives in `src/rind/`. The engine knows nothing about it; a downstream consumer ships its own equivalent (see "Using `rind_engine` as a submodule" below).
+All gameplay lives in `src/rind/`. The engine knows nothing about it; a downstream consumer ships its own equivalent (see [Using `rind_engine` as a submodule](#using-rind_engine-as-a-submodule) below).
 
 `GameInstance` is the top-level controller that owns the engine managers, builds scenes, registers spawners, and drives the main loop. The player is a first-person `CharacterEntity` with a laser gun, grenades, melee, dash, and double jump. Enemies (`WalkingEnemy`, `FlyingEnemy`, `BashingEnemy`) extend a shared `Enemy` subclass of `CharacterEntity` with a state machine for spawning, chasing, and attacking. Four elite variants add dashes, grenades, or guided missiles. `EnemySpawner` is a templated wave spawner whose wave size and pacing follow a sinusoidal curve over time.
+
+## Modding the game
+
+Gameplay is plain C++ in `src/rind/`, and assets are loose files under `src/assets/`. Both are picked up on the next CMake reconfigure. The modding loop is: edit, reconfigure, rebuild, run.
+
+*Note: A modified build is local-only. It can't submit to the official Steam leaderboard, score submission is server-authoritative and the backend isn't part of this repo (see [How leaderboard submission works](#how-leaderboard-submission-works-server-authoritative)). If you want your change in the official game instead, [contribute it](#contributing).*
+
+### Swap or add assets
+
+Drop a file into the matching folder and rebuild.
+
+| Changing | Put files in | Formats |
+| --- | --- | --- |
+| Models | `src/assets/models/` | `.glb` |
+| Textures / materials | `src/assets/textures/` | `.png`, `.jpg`, `.hdr` |
+| Audio | `src/assets/audio/` | `.wav` |
+| Fonts | `src/assets/fonts/` | `.ttf`, `.otf` |
+
+Replacing a file with the same name re-skins the game with no code change. (See [Asset pipeline](#asset-pipeline) below.)
+
+### Tune the waves and difficulty
+
+Enemy waves are created in the `EnemySpawner` blocks in `src/rind/GameInstance.cpp`. Each spawner takes its enemy type, a spawn location, and a few tuning numbers:
+
+- `maxEnemyMultiplier`, `baseMaxEnemies`: how many of this enemy can be alive at once, scaling with difficulty.
+- `baseSpawnRate`: base seconds between spawns, also scales with difficulty.
+- `spawnChance`: optional 0-1 roll gating each spawn, used to make bosses rare.
+
+The live wave size pulses on a sine curve and scales with the player's chosen difficulty (logic in `src/rind/include/rind/EnemySpawner.h`).
+
+### Change the player or enemies
+
+Each entity is its own file pair in `src/rind/`:
+
+- **Player** (`Player.cpp`, `Player.h`): movement, gun (and overheat), grenades, melee, dash, double jump, health.
+- **Enemies**: `WalkingEnemy`, `FlyingEnemy`, `BashingEnemy`, and the four elites (`FlyingBoss`, `BashingBoss`, `GrenadeBoss`, `MissileBoss`), all extending `Enemy`, which has base enemy behavior logic.
+- **Base Character** (`CharacterEntity`): a character controller that `Player` and `Enemy` extend.
+
+To add an enemy variant, make a subclass of `Enemy` and register a spawner for it in `GameInstance`. On-kill status effects live in `StatusEffect.h`.
+
+For deeper changes like new render passes or custom settings, see [Using `rind_engine` as a submodule](#using-rind_engine-as-a-submodule) for the engine's extension hooks.
 
 ## Asset pipeline
 
@@ -435,48 +487,47 @@ Engine shaders are baked into `librind_engine.a` at engine-build time. Every oth
 
 ## Using `rind_engine` as a submodule
 
-A downstream project that wants to build a different game on this engine adds Rind as a submodule and links against the `rind_engine` static library. A minimal consumer `CMakeLists.txt`:
+The engine ships no game code or game assets, so building your own game on it involves:
+
+1. **`CMakeLists.txt`**: add Rind as a submodule, link `rind_engine`, and embed your assets.
+2. **`main.cpp`**: the entry point that boots the engine and runs your game.
+3. **`MyGameInstance`**: create the managers, hand them your assets, and run.
+
+**1. `CMakeLists.txt`**: link the engine and embed your assets (one `embed_asset_category` call per category):
 
 ```cmake
 cmake_minimum_required(VERSION 3.21)
 project(MyGame)
 
-add_subdirectory(third_party/rind)
+add_subdirectory(third_party/rind)        # Rind, added as a submodule
 
 add_executable(MyGame src/main.cpp src/MyGameInstance.cpp)
 target_include_directories(MyGame PRIVATE src)
 target_link_libraries(MyGame PRIVATE rind_engine)
 
-# Compile and embed your own shaders. Both graphics (.vert/.frag) and
-# compute (.comp) HLSL files are picked up by stem-based stage detection.
-rind_engine_compile_shaders(
-    TARGET MyGame
+# Compile your HLSL shaders to SPIR-V (stage detected from the
+# .vert/.frag/.comp stem), then embed the results.
+rind_engine_compile_shaders(TARGET MyGame
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/assets/shaders/hlsl
     OUT_DIR    ${CMAKE_BINARY_DIR}/shaders/compiled)
 embed_asset_category(TARGET MyGame CATEGORY game_shader
-    DIRECTORY ${CMAKE_BINARY_DIR}/shaders/compiled
-    EXTENSIONS "*.spv")
+    DIRECTORY ${CMAKE_BINARY_DIR}/shaders/compiled EXTENSIONS "*.spv")
 
-# Embed your own non-shader assets.
+# Embed your other assets.
 embed_asset_category(TARGET MyGame CATEGORY texture
-    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/textures
-    EXTENSIONS "*.png" "*.hdr" RECURSIVE ON)
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/textures EXTENSIONS "*.png" "*.hdr" RECURSIVE ON)
 embed_asset_category(TARGET MyGame CATEGORY font
-    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/fonts
-    EXTENSIONS "*.ttf" "*.otf" RECURSIVE ON)
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/fonts    EXTENSIONS "*.ttf" "*.otf" RECURSIVE ON)
 embed_asset_category(TARGET MyGame CATEGORY audio
-    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/audio
-    EXTENSIONS "*.wav")
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/audio    EXTENSIONS "*.wav")
 embed_asset_category(TARGET MyGame CATEGORY model
-    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/models
-    EXTENSIONS "*.glb" RECURSIVE ON)
+    DIRECTORY ${CMAKE_SOURCE_DIR}/assets/models   EXTENSIONS "*.glb" RECURSIVE ON)
 
-# Platform runtime bundling: copies Vulkan loader / MoltenVK / etc.
-# next to the executable for Win/macOS/Linux release builds.
+# Copy the platform runtimes (Vulkan loader / MoltenVK / etc.) next to the binary.
 rind_engine_bundle_runtimes(MyGame)
 ```
 
-A minimal consumer `main.cpp`:
+**2. `main.cpp`**: boot the engine, then run your game:
 
 ```cpp
 #include <engine/Platform.h>
@@ -491,7 +542,7 @@ int main() {
 }
 ```
 
-A minimal `MyGameInstance`, mirroring the wiring `rind::GameInstance` does:
+**3. `MyGameInstance`**: create the managers, then register your assets with them before `run()`. This mirrors the wiring `rind::GameInstance` does:
 
 ```cpp
 // Generated by embed_asset_category() for each category embedded above
@@ -511,15 +562,12 @@ mygame::MyGameInstance::MyGameInstance() {
     modelManager    = std::make_unique<engine::ModelManager>(renderer.get());
     audioManager    = std::make_unique<engine::AudioManager>(renderer.get());
 
-    // Hand consumer-side embedded assets to engine managers BEFORE run()
+    // Hand consumer-side embedded assets to engine managers before run()
     shaderManager->registerShaderBytes(getEmbedded_game_shader());
     audioManager->registerEmbeddedAudio(getEmbedded_audio());
     textureManager->registerEmbeddedTextures(getEmbedded_texture());
     modelManager->registerEmbeddedModels(getEmbedded_model());
     uiManager->registerEmbeddedFonts(getEmbedded_font());
-
-    // Optional: change the font that engine-internal widgets request
-    // uiManager->setDefaultFontName("MyFont");
 }
 ```
 
@@ -567,17 +615,27 @@ A few engine internals reach for assets by name, so consumers need to either reg
 - **Default fonts.** Settings UI body text, FPS counter, and slider value labels request the font set on `UIManager::setDefaultFontName(...)` (default `"Lato"`). The settings panel title uses `UIManager::setDefaultTitleFontName(...)` (default `"RubikGlitch"`). Either register fonts under those names, or set new defaults before any engine widget is created.
 - **Material fallback names.** `EntityManager` falls back to texture names `materials_default_albedo` / `_metallic` / `_roughness` / `_normal` when a `gbuffer` entity's specified textures are missing, and to `ui_window` for missing UI textures. Missing entities log a warning instead of crashing.
 
+## Reporting bugs
+
+Found a problem playing the game? [Open a bug report](https://github.com/josephHelfenbein/rind/issues/new?labels=bug&template=bug-report---.md)!
+
+To make it fixable, please include:
+
+- **What happened** and what you expected instead.
+- **Steps to reproduce it** (what you were doing when it occurred).
+- **Your setup**: OS, GPU, and whether you're on the Steam version or a build you made yourself.
+
 ## Contributing
 
 Contributions are welcome under Apache 2.0. Issues and pull requests live on [GitHub](https://github.com/josephHelfenbein/rind).
 
-Notes:
+How to contribute:
 
-- For a debug build, configure with `-DCMAKE_BUILD_TYPE=Debug`. Vulkan validation layers are not enabled by default; install the Vulkan SDK's validation layers and set `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` (or the loader's `VK_LOADER_LAYERS_ENABLE` equivalent) in the environment when running.
-- Shader changes recompile from HLSL to SPIR-V automatically. If a shader fails to compile, the build error will name the source file.
-- The engine and game sources are picked up by `file(GLOB_RECURSE ... src/engine/*.cpp)` into the `rind_engine` library target, and `file(GLOB_RECURSE ... src/rind/*.cpp)` into the `Rind` executable, both in the root `CMakeLists.txt`. New source files in those directories are picked up on the next reconfigure.
-- New engine shaders go in `src/engine/assets/shaders/hlsl/`; new game shaders go in `src/rind/assets/shaders/hlsl/`. Both are picked up automatically and compiled to SPIR-V by `rind_engine_compile_shaders` on the next configure. Stem-based stage detection: `*.vert.hlsl` maps to vertex, `*.frag.hlsl` to fragment, `*.comp.hlsl` to compute.
-- The render graph is data-driven. New passes are added by appending a `RenderNode` in `ShaderManager::createDefaultShaders` with the right `dependsOnNodeNames` and lane assignment; there is no separate scheduler file to update. Consumer projects that don't want to fork the engine can add or replace passes from outside via `setOnRenderGraphReady` plus `insertRenderNodeAfter` or `replaceRenderNode` (see "Extending the engine" above).
+1. Fork the repo and create a branch off `main`.
+2. Build and test your change locally (see [Build Instructions](#build-instructions)).
+3. Open a pull request describing what it does and why. For larger features, open an issue first so it can be discussed before investing the work.
+
+For a debug build, configure with `-DCMAKE_BUILD_TYPE=Debug`. Vulkan validation layers are not enabled by default; install the Vulkan SDK's validation layers and set `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` (or the loader's `VK_LOADER_LAYERS_ENABLE` equivalent) in the environment when running.
 
 ## License
 
@@ -592,13 +650,13 @@ Apache License 2.0. See [`LICENSE`](LICENSE).
 [stars-url]: https://github.com/josephHelfenbein/rind/stargazers
 [issues-shield]: https://img.shields.io/github/issues/josephHelfenbein/rind.svg?style=for-the-badge
 [issues-url]: https://github.com/josephHelfenbein/rind/issues
-[license-shield]: https://img.shields.io/github/license/josephHelfenbein/rind.svg?style=for-the-badge
-[license-url]: https://github.com/josephHelfenbein/rind/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/joseph-j-helfenbein
+[steam-shield]: https://img.shields.io/badge/-steam-black.svg?style=for-the-badge&logo=steam&colorB=555
+[steam-url]: https://store.steampowered.com/app/4412940/Rind
 
 [C++]: https://img.shields.io/badge/c++-00599C?logo=cplusplus&style=for-the-badge&logoColor=white
-[C++-url]: https://developer.oracle.com/languages/javascript.html
+[C++-url]: https://isocpp.org/
 [Vulkan]: https://img.shields.io/badge/vulkan-A41E22?logo=vulkan&style=for-the-badge&logoColor=white&logoSize=auto
 [Vulkan-url]: https://www.vulkan.org/
 [ISPC]: https://img.shields.io/badge/ispc-0071C5?logo=intel&style=for-the-badge&logoColor=white&logoSize=auto
