@@ -18,6 +18,15 @@ void engine::ParticleManager::ParticleSoA::clearAll() {
     size.clear(); colorR.clear(); colorG.clear(); colorB.clear();
 }
 
+void engine::ParticleManager::ParticleSoA::reserveAll(size_t n) {
+    posX.reserve(n); posY.reserve(n); posZ.reserve(n);
+    velX.reserve(n); velY.reserve(n); velZ.reserve(n);
+    prevPosX.reserve(n); prevPosY.reserve(n); prevPosZ.reserve(n);
+    prevPrevPosX.reserve(n); prevPrevPosY.reserve(n); prevPrevPosZ.reserve(n);
+    age.reserve(n); lifetime.reserve(n); type.reserve(n); dead.reserve(n);
+    size.reserve(n); colorR.reserve(n); colorG.reserve(n); colorB.reserve(n);
+}
+
 size_t engine::ParticleManager::ParticleSoA::push(
     const glm::vec3& pos, const glm::vec3& col, const glm::vec3& vel,
     float life, float typ, float sz)
@@ -250,6 +259,7 @@ engine::ParticleManager::ParticleManager(Renderer* renderer)
     }
 
 void engine::ParticleManager::init() {
+    particles.reserveAll(maxParticles);
     VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
     size_t frames = static_cast<size_t>(renderer->getMaxFramesInFlight());
     particleBuffers.resize(frames);

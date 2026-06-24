@@ -53,6 +53,7 @@ namespace engine {
             size_t count() const { return posX.size(); }
             bool empty() const { return posX.empty(); }
             void clearAll();
+            void reserveAll(size_t n);
             size_t push(const glm::vec3& pos, const glm::vec3& col, const glm::vec3& vel,
                         float life, float typ, float sz);
             void truncateFront(size_t n);

@@ -46,6 +46,7 @@ engine::VolumetricManager::~VolumetricManager() {
 }
 
 void engine::VolumetricManager::init() {
+    volumetrics.reserve(maxVolumetrics);
     VkDeviceSize cubeSize = sizeof(unitCube);
     std::tie(cubeVertexBuffer, cubeVertexBufferMemory) = renderer->createBuffer(
         cubeSize,
