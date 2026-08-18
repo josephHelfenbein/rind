@@ -22,6 +22,9 @@ namespace engine {
     struct RenderNode;
     struct Texture;
     class UIObject;
+    namespace profiler {
+        class Profiler;
+    };
 
     class Renderer {
     public:
@@ -42,6 +45,10 @@ namespace engine {
         void registerVolumetricManager(class VolumetricManager* volumetricManager) { this->volumetricManager = volumetricManager; }
         void registerLightManager(class LightManager* lightManager) { this->lightManager = lightManager; }
         void registerIrradianceManager(class IrradianceManager* irradianceManager) { this->irradianceManager = irradianceManager; }
+        #ifdef NDEBUG
+        void registerProfiler(class profiler::Profiler* profiler) { this->profiler = profiler; }
+        #endif
+
         class EntityManager* getEntityManager() { return entityManager; }
         class InputManager* getInputManager() { return inputManager; }
         class UIManager* getUIManager() { return uiManager; }
@@ -241,10 +248,8 @@ namespace engine {
         };
         #ifdef NDEBUG
             const bool enableValidationLayers = false;
-            const bool DEBUG_RENDER_LOGS = false;
         #else
             const bool enableValidationLayers = true;
-            const bool DEBUG_RENDER_LOGS = true;
         #endif
 
         void initWindow();
@@ -364,6 +369,7 @@ namespace engine {
         class VolumetricManager* volumetricManager;
         class LightManager* lightManager;
         class IrradianceManager* irradianceManager;
+        class profiler::Profiler* profiler = nullptr; // registered in debug builds
 
         UIObject* hoveredObject = nullptr;
         bool clicking = false;

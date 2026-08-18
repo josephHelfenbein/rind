@@ -16,6 +16,8 @@
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
 #include <engine/Platform.h>
+#include <engine/Profiler.h>
+
 
 #include <glm/glm.hpp>
 
@@ -693,6 +695,7 @@ void engine::Renderer::buildRenderAttachmentReadStages() {
 }
 
 void engine::Renderer::drawFrame() {
+    PROFILER_FRAME(profiler);
     auto shouldRebuildAttachments = [this]() {
         if (!shaderManager) return false;
         const auto& renderGraph = shaderManager->getRenderGraph();
@@ -769,6 +772,7 @@ void engine::Renderer::drawFrame() {
         createPostProcessDescriptorSets();
     }
     if (settingsManager->getSettings()->fpsLimit > 14.1f) {
+        PROFILER_ZONE(profiler, profiler::Zone::Throttle);
         double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);
         double targetTime = lastFrameTime + frameDuration;
         double currentTime = glfwGetTime();
@@ -780,18 +784,19 @@ void engine::Renderer::drawFrame() {
             std::this_thread::yield();
         }
     }
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[drawFrame] frame " << currentFrame << " start" << std::endl;
-    }
     VkFence frameFences[] = { inFlightFences[currentFrame], inFlightComputeFences[currentFrame] };
-    vkWaitForFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences, VK_TRUE, UINT64_MAX);
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::WaitFences);
+        vkWaitForFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences, VK_TRUE, UINT64_MAX);
+    }
     uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult result;
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Acquire);
+        result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    }
     deltaTime = static_cast<float>(glfwGetTime()) - lastFrameTime;
     lastFrameTime = static_cast<float>(glfwGetTime());
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[drawFrame] acquired imageIndex=" << imageIndex << " result=" << result << std::endl;
-    }
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         recreateSwapChain();
         return;
@@ -812,6 +817,7 @@ void engine::Renderer::drawFrame() {
         }
     }
     if (submitGraphStale) {
+        PROFILER_ZONE(profiler, profiler::Zone::BuildGraph);
         buildRenderSubmitGraph();
         buildRenderAttachmentReadStages();
     }
@@ -867,11 +873,14 @@ void engine::Renderer::drawFrame() {
         vkResetCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], 0);
     }
 
-    bool framePrepDone = false;
-    for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
-        const size_t submissionNodeIdx = submissions[submissionIdx].nodeIdx;
-        recordCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], imageIndex, std::span<const size_t>(&submissionNodeIdx, 1), !framePrepDone, submissions[submissionIdx].queueClass);
-        framePrepDone = true;
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Record);
+        bool framePrepDone = false;
+        for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
+            const size_t submissionNodeIdx = submissions[submissionIdx].nodeIdx;
+            recordCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], imageIndex, std::span<const size_t>(&submissionNodeIdx, 1), !framePrepDone, submissions[submissionIdx].queueClass);
+            framePrepDone = true;
+        }
     }
 
     std::vector<VkSemaphore>& frameBoundarySemaphores = crossQueueSegmentSemaphores[currentFrame];
@@ -884,14 +893,6 @@ void engine::Renderer::drawFrame() {
             throw std::runtime_error("Failed to create segmented boundary semaphore!");
         }
         frameBoundarySemaphores.push_back(newSemaphore);
-    }
-
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[drawFrame] recordCommandBuffer begin imageIndex=" << imageIndex
-                  << " submissions=" << submissions.size()
-                  << " graphicsSubmissions=" << graphicsSubmissionCount
-                  << " computeSubmissions=" << computeSubmissionCount
-                  << " crossQueueEdges=" << crossQueueEdges.size() << std::endl;
     }
 
     auto submitNode = [&](VkQueue queue,
@@ -930,73 +931,73 @@ void engine::Renderer::drawFrame() {
         }
     }
 
-    for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
-        const size_t submissionIdx = submissionOrder[orderPos];
-        const RenderSubmitNode& submission = submissions[submissionIdx];
-        const bool isLastSubmission = orderPos + 1 == submissionOrder.size();
-        const bool isLastGraphics = orderPos == lastGraphicsOrderPos;
-        const bool isLastCompute = orderPos == lastComputeOrderPos;
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Submit);
+        for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
+            const size_t submissionIdx = submissionOrder[orderPos];
+            const RenderSubmitNode& submission = submissions[submissionIdx];
+            const bool isLastSubmission = orderPos + 1 == submissionOrder.size();
+            const bool isLastGraphics = orderPos == lastGraphicsOrderPos;
+            const bool isLastCompute = orderPos == lastComputeOrderPos;
 
-        frameWaitSemaphores.clear();
-        frameWaitStages.clear();
-        frameSignalSemaphores.clear();
+            frameWaitSemaphores.clear();
+            frameWaitStages.clear();
+            frameSignalSemaphores.clear();
 
-        const bool shouldWaitOnImageAvailable = orderPos == imageAvailableWaitOrderPos;
-        if (shouldWaitOnImageAvailable) {
-            frameWaitSemaphores.push_back(imageAvailableSemaphores[currentFrame]);
-            frameWaitStages.push_back(submission.queueClass == NodeQueueClass::Compute
-                ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-        }
+            const bool shouldWaitOnImageAvailable = orderPos == imageAvailableWaitOrderPos;
+            if (shouldWaitOnImageAvailable) {
+                frameWaitSemaphores.push_back(imageAvailableSemaphores[currentFrame]);
+                frameWaitStages.push_back(submission.queueClass == NodeQueueClass::Compute
+                    ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+            }
 
-        for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
-            frameWaitSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
-            frameWaitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-        }
-        for (size_t edgeIdx : submission.outgoingCrossQueueEdges) {
-            frameSignalSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
-        }
-        if (isLastSubmission) {
-            frameSignalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
-        }
+            for (size_t edgeIdx : submission.incomingCrossQueueEdges) {
+                frameWaitSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
+                frameWaitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+            }
+            for (size_t edgeIdx : submission.outgoingCrossQueueEdges) {
+                frameSignalSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
+            }
+            if (isLastSubmission) {
+                frameSignalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
+            }
 
-        VkFence submitFence = VK_NULL_HANDLE;
-        if (isLastGraphics) {
-            submitFence = inFlightFences[currentFrame];
-        } else if (hasAsyncComputeQueue && isLastCompute) {
-            submitFence = inFlightComputeFences[currentFrame];
-        }
-        VkQueue submitQueue = submission.queueClass == NodeQueueClass::Compute ? computeQueue : graphicsQueue;
-        VkResult submitResult = submitNode(
-                submitQueue,
-                frameSubmissionCommandBuffers[submissionIdx],
-                frameWaitSemaphores,
-                frameWaitStages,
-                frameSignalSemaphores,
-                submitFence);
-        if (submitResult != VK_SUCCESS) {
-            std::cerr << "vkQueueSubmit failed with VkResult=" << submitResult
-                      << " submissionIdx=" << submissionIdx
-                      << " queueClass=" << (submission.queueClass == NodeQueueClass::Compute ? "Compute" : "Graphics")
-                      << " nodeIdx=" << submission.nodeIdx
-                      << std::endl;
-            throw std::runtime_error("Failed to submit node command buffer!");
+            VkFence submitFence = VK_NULL_HANDLE;
+            if (isLastGraphics) {
+                submitFence = inFlightFences[currentFrame];
+            } else if (hasAsyncComputeQueue && isLastCompute) {
+                submitFence = inFlightComputeFences[currentFrame];
+            }
+            VkQueue submitQueue = submission.queueClass == NodeQueueClass::Compute ? computeQueue : graphicsQueue;
+            VkResult submitResult = submitNode(
+                    submitQueue,
+                    frameSubmissionCommandBuffers[submissionIdx],
+                    frameWaitSemaphores,
+                    frameWaitStages,
+                    frameSignalSemaphores,
+                    submitFence);
+            if (submitResult != VK_SUCCESS) {
+                std::cerr << "vkQueueSubmit failed with VkResult=" << submitResult
+                        << " submissionIdx=" << submissionIdx
+                        << " queueClass=" << (submission.queueClass == NodeQueueClass::Compute ? "Compute" : "Graphics")
+                        << " nodeIdx=" << submission.nodeIdx
+                        << std::endl;
+                throw std::runtime_error("Failed to submit node command buffer!");
+            }
         }
     }
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[drawFrame] submit done" << std::endl;
-    }
-    VkPresentInfoKHR presentInfo = {
-        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &renderFinishedSemaphores[currentFrame],
-        .swapchainCount = 1,
-        .pSwapchains = &swapChain,
-        .pImageIndices = &imageIndex
-    };
-    result = vkQueuePresentKHR(presentQueue, &presentInfo);
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[drawFrame] present result=" << result << std::endl;
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Present);
+        VkPresentInfoKHR presentInfo = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &renderFinishedSemaphores[currentFrame],
+            .swapchainCount = 1,
+            .pSwapchains = &swapChain,
+            .pImageIndices = &imageIndex
+        };
+        result = vkQueuePresentKHR(presentQueue, &presentInfo);
     }
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         framebufferResized = false;
@@ -1021,9 +1022,6 @@ void engine::Renderer::recordCommandBuffer(
     if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("Failed to begin recording command buffer!");
     }
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[record] frame=" << currentFrame << " imageIndex=" << imageIndex << " begin" << std::endl;
-    }
     auto& renderGraph = shaderManager->getRenderGraph();
     const size_t nodeCount = renderGraph.size();
     const auto& scheduledOrder = shaderManager->getScheduledNodeOrder();
@@ -1041,22 +1039,44 @@ void engine::Renderer::recordCommandBuffer(
         }
     }
 
-    if (doFramePrep && !paused) {
-        entityManager->updateAll(deltaTime);
-        audioManager->update();
-        particleManager->updateAll(deltaTime);
-        volumetricManager->updateAll(deltaTime);
-    }
-    if (doFramePrep) {
-        particleManager->updateParticleBuffer(currentFrame);
-        volumetricManager->updateVolumetricBuffer(currentFrame);
-    }
-    if (doFramePrep && entityManager->getCamera()) {
-        Camera* cam = entityManager->getCamera();
-        glm::vec3 pos = cam->getWorldPosition();
-        glm::vec3 fwd = -glm::normalize(glm::vec3(cam->getWorldTransform()[2]));
-        glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
-        audioManager->updateListener(pos, fwd, up);
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update);
+        if (doFramePrep && !paused) {
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Entities);
+                entityManager->updateAll(deltaTime);
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Audio);
+                audioManager->update();
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Particles);
+                particleManager->updateAll(deltaTime);
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics);
+                volumetricManager->updateAll(deltaTime);
+            }
+        }
+        if (doFramePrep) {
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Buffer);
+                particleManager->updateParticleBuffer(currentFrame);
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics_Buffer);
+                volumetricManager->updateVolumetricBuffer(currentFrame);
+            }
+        }
+        if (doFramePrep && entityManager->getCamera()) {
+            PROFILER_ZONE(profiler, profiler::Zone::Update_Audio_Listener);
+            Camera* cam = entityManager->getCamera();
+            glm::vec3 pos = cam->getWorldPosition();
+            glm::vec3 fwd = -glm::normalize(glm::vec3(cam->getWorldTransform()[2]));
+            glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
+            audioManager->updateListener(pos, fwd, up);
+        }
     }
 
     for (size_t nodeOrderIdx = 0; nodeOrderIdx < resolvedOrder.size(); ++nodeOrderIdx) {
@@ -1068,9 +1088,6 @@ void engine::Renderer::recordCommandBuffer(
         if (!node.passInfo) {
             const bool skipDraw = node.skipCondition && node.skipCondition(this);
             if (!skipDraw && node.customRenderFunc && !node.usesRendering) {
-                if (DEBUG_RENDER_LOGS) {
-                    std::cout << "[record] executing passless custom render function for node '" << node.name << "'" << std::endl;
-                }
                 node.customRenderFunc(this, commandBuffer, currentFrame);
             }
             continue;
@@ -1430,10 +1447,6 @@ void engine::Renderer::recordCommandBuffer(
             const bool hasColorAttachments = renderingInfo.colorAttachmentCount > 0 && renderingInfo.pColorAttachments != nullptr;
             const bool hasDepthAttachment = renderingInfo.pDepthAttachment != nullptr;
             if (!hasColorAttachments && !hasDepthAttachment) {
-                if (DEBUG_RENDER_LOGS) {
-                    std::cout << "[record] skipping pass '" << node.passInfo->name
-                              << "' because it has no render attachments" << std::endl;
-                }
                 renderingBlocked = true;
             }
 
@@ -1450,19 +1463,7 @@ void engine::Renderer::recordCommandBuffer(
                 hasInvalidAttachment = true;
             }
             if (hasInvalidAttachment) {
-                if (DEBUG_RENDER_LOGS) {
-                    std::cout << "[record] skipping pass '" << node.passInfo->name
-                              << "' due to null attachment image view" << std::endl;
-                }
                 renderingBlocked = true;
-            }
-
-            if (!renderingBlocked && DEBUG_RENDER_LOGS) {
-                std::cout << "[record] begin pass '" << node.passInfo->name
-                          << "' extent=" << renderingInfo.renderArea.extent.width << "x"
-                          << renderingInfo.renderArea.extent.height
-                          << " colorCount=" << renderingInfo.colorAttachmentCount
-                          << " hasDepth=" << (hasDepthAttachment ? 1 : 0) << std::endl;
             }
 
             if (!renderingBlocked) {
@@ -1487,33 +1488,16 @@ void engine::Renderer::recordCommandBuffer(
 
         const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
         const bool passCannotRender = usesRendering && !beganRendering;
-
-        if (passIsInactive || skipDraw || passCannotRender) {
-            if (DEBUG_RENDER_LOGS) {
-                std::cout << "[record] pass " << node.passInfo->name << " skipping draw (inactive, skip condition, or blocked rendering)" << std::endl;
-            }
-        } else if (node.customRenderFunc) {
-            if (DEBUG_RENDER_LOGS) {
-                std::cout << "[record] executing custom render function for pass" << std::endl;
-            }
+        
+        if (node.customRenderFunc) {
             node.customRenderFunc(this, commandBuffer, currentFrame);
         } else if (!node.computeShaders.empty() && !node.usesRendering) {
-            if (DEBUG_RENDER_LOGS) {
-                std::cout << "[record] dispatching compute pass '" << node.name << "'" << std::endl;
-            }
             dispatchComputePass(commandBuffer, node);
         } else if (node.is2D) {
-            if (DEBUG_RENDER_LOGS) {
-                std::cout << "[record] rendering generic 2D pass" << std::endl;
-            }
             draw2DPass(commandBuffer, node);
         }
         if (beganRendering) {
             fpCmdEndRendering(commandBuffer);
-        }
-
-        if (DEBUG_RENDER_LOGS) {
-            std::cout << "[record] end pass " << node.passInfo->name << std::endl;
         }
 
         if (!postBarriers.empty()) {
@@ -1554,9 +1538,6 @@ void engine::Renderer::recordCommandBuffer(
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Failed to record command buffer!");
     }
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[record] command buffer end" << std::endl;
-    }
 }
 
 void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& node) {
@@ -1567,10 +1548,6 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
         }
         if (!shader->descriptorSets.empty()) {
             const uint32_t dsIndex = std::min<uint32_t>(currentFrame, static_cast<uint32_t>(shader->descriptorSets.size() - 1));
-            if (DEBUG_RENDER_LOGS) {
-                std::cout << "[draw2DPass] shader=" << shader->name << " bind DS count=1 idx=" << dsIndex
-                          << " handle=" << shader->descriptorSets[dsIndex] << std::endl;
-            }
             vkCmdBindDescriptorSets(
                 commandBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1581,8 +1558,6 @@ void engine::Renderer::draw2DPass(VkCommandBuffer commandBuffer, RenderNode& nod
                 0,
                 nullptr
             );
-        } else if (DEBUG_RENDER_LOGS) {
-            std::cout << "[draw2DPass] shader=" << shader->name << " has NO descriptor sets" << std::endl;
         }
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
     }
@@ -3267,15 +3242,9 @@ void engine::Renderer::ensureFallback2DTexture() {
 }
 
 void engine::Renderer::createPostProcessDescriptorSets() {
-    if (DEBUG_RENDER_LOGS) {
-        std::cout << "[Debug] createPostProcessDescriptorSets starting..." << std::endl;
-    }
     for (const auto& shaderPtr : shaderManager->getGraphicsShaders()) {
         GraphicsShader* shader = shaderPtr.get();
         if (!shader || shader->config.inputBindings.empty()) continue;
-        if (DEBUG_RENDER_LOGS) {
-            std::cout << "[Debug] Processing shader: " << shader->name << std::endl;
-        }
 
         if (shader->descriptorPool != VK_NULL_HANDLE) {
             VkResult poolReset = vkResetDescriptorPool(device, shader->descriptorPool, 0);
@@ -3463,19 +3432,6 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                     .descriptorType = descriptorType,
                     .pImageInfo = &imageInfos[startIndex]
                 });
-                if (DEBUG_RENDER_LOGS) {
-                    const uint64_t viewHandle = (uint64_t) imageView;
-                    const uint64_t samplerHandle = descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER
-                        ? (uint64_t) mainTextureSampler
-                        : (uint64_t) imageInfos[startIndex].sampler;
-                    std::cout << "[descriptors] shader=" << shader->name
-                              << " frame=" << i
-                              << " binding=" << binding.binding
-                              << " type=" << descriptorType
-                              << " imageView=0x" << std::hex << viewHandle << std::dec
-                              << " sampler=0x" << std::hex << samplerHandle << std::dec
-                              << std::endl;
-                }
             }
             samplerToUse = shader->config.sampler ? shader->config.sampler : mainTextureSampler;
             for (int frag = 0; frag < fragmentBindings; ++frag) {
@@ -3531,18 +3487,6 @@ void engine::Renderer::createPostProcessDescriptorSets() {
                         .descriptorType = type,
                         .pImageInfo = &imageInfos[startIndex]
                     });
-                    if (DEBUG_RENDER_LOGS) {
-                        const uint64_t viewHandle = (uint64_t) (imageInfos[startIndex].imageView);
-                        const uint64_t samplerHandle = (uint64_t) (imageInfos[startIndex].sampler);
-                        std::cout << "[descriptors] shader=" << shader->name
-                                  << " frame=" << i
-                                  << " binding=" << (vertexBindings + frag)
-                                  << " type=" << type
-                                  << " fallback imageView=0x" << std::hex << viewHandle << std::dec
-                                  << " sampler=0x" << std::hex << samplerHandle << std::dec
-                                  << " count=" << descriptorCount
-                                  << std::endl;
-                    }
                 }
             }
         }

@@ -19,6 +19,9 @@
 #include <engine/IrradianceManager.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
+#ifdef NDEBUG
+#include <engine/Profiler.h>
+#endif
 #include <engine/Camera.h>
 #include <engine/Collider.h>
 #include <engine/io.h>
@@ -650,6 +653,9 @@ rind::GameInstance::GameInstance() {
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     volumetricManager = std::make_unique<engine::VolumetricManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get());
+#ifdef NDEBUG
+    profiler = std::make_unique<engine::profiler::Profiler>(renderer.get());
+#endif
 
     // hand the consumer's embedded asset registries to the engine managers before Renderer::run()
     shaderManager->registerShaderBytes(getEmbedded_game_shader());

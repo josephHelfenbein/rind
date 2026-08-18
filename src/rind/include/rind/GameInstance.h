@@ -18,6 +18,11 @@ namespace engine {
     class IrradianceManager;
     class AudioManager;
     class SettingsManager;
+    #ifdef NDEBUG
+    namespace profiler {
+        class Profiler;
+    }
+    #endif
 }
 
 namespace rind {
@@ -44,6 +49,9 @@ namespace rind {
         std::unique_ptr<engine::IrradianceManager> irradianceManager;
         std::unique_ptr<engine::AudioManager> audioManager;
         std::unique_ptr<engine::SettingsManager> settingsManager;
+        #ifdef NDEBUG
+        std::unique_ptr<engine::profiler::Profiler> profiler;
+        #endif
 
         uint32_t difficulty = 1;
     };

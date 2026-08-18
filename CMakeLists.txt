@@ -472,17 +472,18 @@ if(NOT RIND_IPO_SUPPORTED)
 endif()
 
 # Compiler flags: apply to both targets (ISPC has its own flag syntax)
+# Debug uses -Og on GCC/Clang, /Od on MSVC
 foreach(_tgt rind_engine ${PROJECT_NAME})
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${_tgt} PRIVATE
       "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-fvectorize;-fslp-vectorize;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-fomit-frame-pointer;-finline-functions;-Wno-nan-infinity-disabled>"
-      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-O0>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-Og>"
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${RIND_IPO_SUPPORTED})
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(${_tgt} PRIVATE
       "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3;-DNDEBUG;-funroll-loops;-ffast-math;-march=${RELEASE_MARCH};-mtune=${RELEASE_MARCH};-fomit-frame-pointer;-finline-functions;-ftree-vectorize>"
-      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-O0>"
+      "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Debug>>:-Wall;-Wextra;-g;-Og>"
     )
     set_target_properties(${_tgt} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${RIND_IPO_SUPPORTED})
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
