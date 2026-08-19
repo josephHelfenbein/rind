@@ -155,6 +155,8 @@ namespace profiler {
         void beginFrame() {
             currentFrameIndex = (currentFrameIndex + 1) % kMaxFrames;
             ring[currentFrameIndex].startNs = Clock::Now();
+            ring[currentFrameIndex].endNs = 0;
+            ring[currentFrameIndex].zones.fill(Span{0, 0});
         }
 
         void endFrame() {

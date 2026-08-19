@@ -1050,9 +1050,9 @@ void engine::Renderer::recordCommandBuffer(
         }
     }
 
-    {
+    if (doFramePrep) {
         PROFILER_ZONE(profiler, profiler::Zone::Update);
-        if (doFramePrep && !paused) {
+        if (!paused) {
             {
                 PROFILER_ZONE(profiler, profiler::Zone::Update_Entities);
                 entityManager->updateAll(deltaTime);
@@ -1070,17 +1070,15 @@ void engine::Renderer::recordCommandBuffer(
                 volumetricManager->updateAll(deltaTime);
             }
         }
-        if (doFramePrep) {
-            {
-                PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Buffer);
-                particleManager->updateParticleBuffer(currentFrame);
-            }
-            {
-                PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics_Buffer);
-                volumetricManager->updateVolumetricBuffer(currentFrame);
-            }
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Buffer);
+            particleManager->updateParticleBuffer(currentFrame);
         }
-        if (doFramePrep && entityManager->getCamera()) {
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics_Buffer);
+            volumetricManager->updateVolumetricBuffer(currentFrame);
+        }
+        if (entityManager->getCamera()) {
             PROFILER_ZONE(profiler, profiler::Zone::Update_Audio_Listener);
             Camera* cam = entityManager->getCamera();
             glm::vec3 pos = cam->getWorldPosition();
