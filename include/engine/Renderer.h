@@ -406,7 +406,6 @@ namespace engine {
             VkCommandBuffer commandBuffer,
             uint32_t imageIndex,
             std::span<const size_t> nodeOrder = {},
-            bool doFramePrep = true,
             NodeQueueClass queueClass = NodeQueueClass::Graphics
         );
 

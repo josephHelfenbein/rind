@@ -8,8 +8,9 @@ namespace profiler {
 // also update kZoneNames
 enum class Zone : uint8_t {
     // root
-    Throttle, WaitFences, Acquire, BuildGraph, Update, Record, Submit, Present,
-    // update children
+    Cleanup, Throttle, WaitFences, Acquire, BuildGraph, Update, Record, Submit, Present,
+    // children
+    Cleanup_Deletions, Cleanup_Additions, Cleanup_ShadowMaps, Cleanup_Irradiance,
     Update_Entities, Update_Audio, Update_Particles, Update_Volumetrics,
     Update_ParticlesBuffer, Update_VolumetricsBuffer, Update_Audio_Listener,
     Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_LoadTextures,
@@ -42,7 +43,8 @@ namespace profiler {
 
     // parent-child relationship defined by underscore prefixes
     inline constexpr std::array<std::string_view, static_cast<size_t>(Zone::Count)> kZoneNames = {
-        "Throttle", "WaitFences", "Acquire", "BuildGraph", "Update", "Record", "Submit", "Present",
+        "Cleanup", "Throttle", "WaitFences", "Acquire", "BuildGraph", "Update", "Record", "Submit", "Present",
+        "Cleanup_Deletions", "Cleanup_Additions", "Cleanup_ShadowMaps", "Cleanup_Irradiance",
         "Update_Entities", "Update_Audio", "Update_Particles", "Update_Volumetrics",
         "Update_ParticlesBuffer", "Update_VolumetricsBuffer", "Update_Audio_Listener",
         "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_LoadTextures",

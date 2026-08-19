@@ -759,28 +759,39 @@ void engine::Renderer::drawFrame() {
         recreateSwapChain();
         return;
     }
-    entityManager->processPendingDeletions();
-    entityManager->processPendingAdditions();
-    if (shadowMapRecreationPending) {
-        lightManager->createAllShadowMaps();
-        vkDeviceWaitIdle(device);
-        createPostProcessDescriptorSets();
-        shadowMapRecreationPending = false;
-    }
-    if (irradianceManager->needsIrradianceBaking()) {
-        entityManager->loadTextures();
-        irradianceManager->createAllIrradianceMaps();
-        VkCommandBuffer cmdBuffer = beginSingleTimeCommands();
-        irradianceManager->bakeIrradianceMaps(cmdBuffer);
-        irradianceManager->recordIrradianceReadback(cmdBuffer);
-        endSingleTimeCommands(cmdBuffer);
-        irradianceManager->processIrradianceSH();
-        irradianceManager->setIrradianceBakingPending(false);
-        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            irradianceManager->updateIrradianceProbesUBO(i);
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Cleanup);
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Deletions);
+            entityManager->processPendingDeletions();
         }
-        vkDeviceWaitIdle(device);
-        createPostProcessDescriptorSets();
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Additions);
+            entityManager->processPendingAdditions();
+        }
+        if (shadowMapRecreationPending) {
+            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_ShadowMaps);
+            lightManager->createAllShadowMaps();
+            vkDeviceWaitIdle(device);
+            createPostProcessDescriptorSets();
+            shadowMapRecreationPending = false;
+        }
+        if (irradianceManager->needsIrradianceBaking()) {
+            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Irradiance);
+            entityManager->loadTextures();
+            irradianceManager->createAllIrradianceMaps();
+            VkCommandBuffer cmdBuffer = beginSingleTimeCommands();
+            irradianceManager->bakeIrradianceMaps(cmdBuffer);
+            irradianceManager->recordIrradianceReadback(cmdBuffer);
+            endSingleTimeCommands(cmdBuffer);
+            irradianceManager->processIrradianceSH();
+            irradianceManager->setIrradianceBakingPending(false);
+            for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+                irradianceManager->updateIrradianceProbesUBO(i);
+            }
+            vkDeviceWaitIdle(device);
+            createPostProcessDescriptorSets();
+        }
     }
     double currentTime = glfwGetTime();
     if (settingsManager->getSettings()->fpsLimit > 14.1f) {
@@ -885,12 +896,48 @@ void engine::Renderer::drawFrame() {
     }
 
     {
+        PROFILER_ZONE(profiler, profiler::Zone::Update);
+        if (!paused) {
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Entities);
+                entityManager->updateAll(deltaTime);
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Audio);
+                audioManager->update();
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Particles);
+                particleManager->updateAll(deltaTime);
+            }
+            {
+                PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics);
+                volumetricManager->updateAll(deltaTime);
+            }
+        }
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Update_ParticlesBuffer);
+            particleManager->updateParticleBuffer(currentFrame);
+        }
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Update_VolumetricsBuffer);
+            volumetricManager->updateVolumetricBuffer(currentFrame);
+        }
+        if (entityManager->getCamera()) {
+            PROFILER_ZONE(profiler, profiler::Zone::Update_Audio_Listener);
+            Camera* cam = entityManager->getCamera();
+            glm::vec3 pos = cam->getWorldPosition();
+            glm::vec3 fwd = -glm::normalize(glm::vec3(cam->getWorldTransform()[2]));
+            glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
+            audioManager->updateListener(pos, fwd, up);
+        }
+    }
+
+    {
         PROFILER_ZONE(profiler, profiler::Zone::Record);
-        bool framePrepDone = false;
         for (size_t submissionIdx = 0; submissionIdx < submissions.size(); ++submissionIdx) {
             const size_t submissionNodeIdx = submissions[submissionIdx].nodeIdx;
-            recordCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], imageIndex, std::span<const size_t>(&submissionNodeIdx, 1), !framePrepDone, submissions[submissionIdx].queueClass);
-            framePrepDone = true;
+            recordCommandBuffer(frameSubmissionCommandBuffers[submissionIdx], imageIndex, std::span<const size_t>(&submissionNodeIdx, 1), submissions[submissionIdx].queueClass);
         }
     }
 
@@ -1024,7 +1071,6 @@ void engine::Renderer::recordCommandBuffer(
     VkCommandBuffer commandBuffer,
     uint32_t imageIndex,
     std::span<const size_t> nodeOrder,
-    bool doFramePrep,
     NodeQueueClass queueClass
 ) {
     VkCommandBufferBeginInfo beginInfo = {
@@ -1047,44 +1093,6 @@ void engine::Renderer::recordCommandBuffer(
                 fallbackOrder[idx] = idx;
             }
             resolvedOrder = fallbackOrder;
-        }
-    }
-
-    if (doFramePrep) {
-        PROFILER_ZONE(profiler, profiler::Zone::Update);
-        if (!paused) {
-            {
-                PROFILER_ZONE(profiler, profiler::Zone::Update_Entities);
-                entityManager->updateAll(deltaTime);
-            }
-            {
-                PROFILER_ZONE(profiler, profiler::Zone::Update_Audio);
-                audioManager->update();
-            }
-            {
-                PROFILER_ZONE(profiler, profiler::Zone::Update_Particles);
-                particleManager->updateAll(deltaTime);
-            }
-            {
-                PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics);
-                volumetricManager->updateAll(deltaTime);
-            }
-        }
-        {
-            PROFILER_ZONE(profiler, profiler::Zone::Update_ParticlesBuffer);
-            particleManager->updateParticleBuffer(currentFrame);
-        }
-        {
-            PROFILER_ZONE(profiler, profiler::Zone::Update_VolumetricsBuffer);
-            volumetricManager->updateVolumetricBuffer(currentFrame);
-        }
-        if (entityManager->getCamera()) {
-            PROFILER_ZONE(profiler, profiler::Zone::Update_Audio_Listener);
-            Camera* cam = entityManager->getCamera();
-            glm::vec3 pos = cam->getWorldPosition();
-            glm::vec3 fwd = -glm::normalize(glm::vec3(cam->getWorldTransform()[2]));
-            glm::vec3 up = glm::normalize(glm::vec3(cam->getWorldTransform()[1]));
-            audioManager->updateListener(pos, fwd, up);
         }
     }
 
