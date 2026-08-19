@@ -6,6 +6,7 @@
 #include <engine/Camera.h>
 #include <engine/SpatialGrid.h>
 #include <engine/ThreadPool.h>
+#include <engine/Profiler.h>
 #include <engine/SIMD.h>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -477,34 +478,44 @@ void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uin
 
 void engine::ParticleManager::updateAll(float deltaTime) {
     const size_t count = particles.count();
+    profiler::Profiler* profiler = renderer->getProfiler();
 
-    // SIMD kinematics for every particle
-    engine::simd::integrateParticleKinematics(
-        particles.posX.data(), particles.posY.data(), particles.posZ.data(),
-        particles.velX.data(), particles.velY.data(), particles.velZ.data(),
-        particles.prevPosX.data(), particles.prevPosY.data(), particles.prevPosZ.data(),
-        particles.prevPrevPosX.data(), particles.prevPrevPosY.data(), particles.prevPrevPosZ.data(),
-        particles.age.data(),
-        particles.lifetime.data(),
-        particles.type.data(),
-        particles.dead.data(),
-        count,
-        deltaTime,
-        kGravity
-    );
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Integrate);
+        // SIMD kinematics for every particle
+        engine::simd::integrateParticleKinematics(
+            particles.posX.data(), particles.posY.data(), particles.posZ.data(),
+            particles.velX.data(), particles.velY.data(), particles.velZ.data(),
+            particles.prevPosX.data(), particles.prevPosY.data(), particles.prevPosZ.data(),
+            particles.prevPrevPosX.data(), particles.prevPrevPosY.data(), particles.prevPrevPosZ.data(),
+            particles.age.data(),
+            particles.lifetime.data(),
+            particles.type.data(),
+            particles.dead.data(),
+            count,
+            deltaTime,
+            kGravity
+        );
+    }
 
-    // scalar collision for the subset of particles that need it
-    if (count > 64) {
-        ThreadPool::global().parallel_for_chunks(0, count, 32, [&](size_t b, size_t e, size_t) {
-            for (size_t i = b; i < e; ++i) {
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Collision);
+        // scalar collision for the subset of particles that need it
+        if (count > 64) {
+            ThreadPool::global().parallel_for_chunks(0, count, 32, [&](size_t b, size_t e, size_t) {
+                for (size_t i = b; i < e; ++i) {
+                    collideOne(i, deltaTime);
+                }
+            });
+        } else {
+            for (size_t i = 0; i < count; ++i) {
                 collideOne(i, deltaTime);
             }
-        });
-    } else {
-        for (size_t i = 0; i < count; ++i) {
-            collideOne(i, deltaTime);
         }
     }
 
-    particles.compactDead();
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Compact);
+        particles.compactDead();
+    }
 }

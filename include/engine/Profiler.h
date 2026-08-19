@@ -11,7 +11,9 @@ enum class Zone : uint8_t {
     Throttle, WaitFences, Acquire, BuildGraph, Update, Record, Submit, Present,
     // update children
     Update_Entities, Update_Audio, Update_Particles, Update_Volumetrics,
-    Update_Particles_Buffer, Update_Volumetrics_Buffer, Update_Audio_Listener,
+    Update_ParticlesBuffer, Update_VolumetricsBuffer, Update_Audio_Listener,
+    Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_LoadTextures,
+    Update_Particles_Integrate, Update_Particles_Collision, Update_Particles_Compact,
     Count
 };
 
@@ -42,7 +44,9 @@ namespace profiler {
     inline constexpr std::array<std::string_view, static_cast<size_t>(Zone::Count)> kZoneNames = {
         "Throttle", "WaitFences", "Acquire", "BuildGraph", "Update", "Record", "Submit", "Present",
         "Update_Entities", "Update_Audio", "Update_Particles", "Update_Volumetrics",
-        "Update_Particles_Buffer", "Update_Volumetrics_Buffer", "Update_Audio_Listener"
+        "Update_ParticlesBuffer", "Update_VolumetricsBuffer", "Update_Audio_Listener",
+        "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_LoadTextures",
+        "Update_Particles_Integrate", "Update_Particles_Collision", "Update_Particles_Compact"
     };
 
     struct Span {

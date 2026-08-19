@@ -782,11 +782,11 @@ void engine::Renderer::drawFrame() {
         vkDeviceWaitIdle(device);
         createPostProcessDescriptorSets();
     }
+    double currentTime = glfwGetTime();
     if (settingsManager->getSettings()->fpsLimit > 14.1f) {
         PROFILER_ZONE(profiler, profiler::Zone::Throttle);
         double frameDuration = 1.0 / static_cast<double>(settingsManager->getSettings()->fpsLimit);
         double targetTime = lastFrameTime + frameDuration;
-        double currentTime = glfwGetTime();
         double remainingTime = targetTime - currentTime;
         if (remainingTime > 0.002) {
             std::this_thread::sleep_for(std::chrono::duration<double>(remainingTime - 0.002));
@@ -795,6 +795,8 @@ void engine::Renderer::drawFrame() {
             std::this_thread::yield();
         }
     }
+    deltaTime = static_cast<float>(currentTime) - lastFrameTime;
+    lastFrameTime = static_cast<float>(currentTime);
     VkFence frameFences[] = { inFlightFences[currentFrame], inFlightComputeFences[currentFrame] };
     {
         PROFILER_ZONE(profiler, profiler::Zone::WaitFences);
@@ -806,8 +808,6 @@ void engine::Renderer::drawFrame() {
         PROFILER_ZONE(profiler, profiler::Zone::Acquire);
         result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
     }
-    deltaTime = static_cast<float>(glfwGetTime()) - lastFrameTime;
-    lastFrameTime = static_cast<float>(glfwGetTime());
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         recreateSwapChain();
         return;
@@ -1071,11 +1071,11 @@ void engine::Renderer::recordCommandBuffer(
             }
         }
         {
-            PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Buffer);
+            PROFILER_ZONE(profiler, profiler::Zone::Update_ParticlesBuffer);
             particleManager->updateParticleBuffer(currentFrame);
         }
         {
-            PROFILER_ZONE(profiler, profiler::Zone::Update_Volumetrics_Buffer);
+            PROFILER_ZONE(profiler, profiler::Zone::Update_VolumetricsBuffer);
             volumetricManager->updateVolumetricBuffer(currentFrame);
         }
         if (entityManager->getCamera()) {

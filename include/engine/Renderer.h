@@ -62,6 +62,7 @@ namespace engine {
         class VolumetricManager* getVolumetricManager() { return volumetricManager; }
         class LightManager* getLightManager() { return lightManager; }
         class IrradianceManager* getIrradianceManager() { return irradianceManager; }
+        class profiler::Profiler* getProfiler() { return profiler; }
 
         void toggleLockCursor(bool lock);
         bool isPaused() const { return paused; }

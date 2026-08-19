@@ -9,6 +9,7 @@
 #include <engine/LightManager.h>
 #include <engine/SIMD.h>
 #include <engine/ThreadPool.h>
+#include <engine/Profiler.h>
 #include <cstring>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -667,7 +668,9 @@ void engine::EntityManager::loadTextures() {
 }
 
 void engine::EntityManager::updateAll(float deltaTime) {
+    profiler::Profiler* profiler = renderer->getProfiler();
     if (spatialGridDirty) {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_SpatialGrid);
         auto updateTransforms = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
             entity->updateWorldTransform(parentWorld);
             for (Entity* child : entity->getChildren()) {
@@ -680,6 +683,7 @@ void engine::EntityManager::updateAll(float deltaTime) {
         rebuildSpatialGrid();
         spatialGridDirty = false;
     } else {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_DynamicColliders);
         updateDynamicColliders();
     }
     
@@ -694,21 +698,27 @@ void engine::EntityManager::updateAll(float deltaTime) {
             self(self, child, entity->getWorldTransform());
         }
     };
-    for (Entity* rootEntity : rootEntities) {
-        traverse(traverse, rootEntity, glm::mat4(1.0f));
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_Update);
+        for (Entity* rootEntity : rootEntities) {
+            traverse(traverse, rootEntity, glm::mat4(1.0f));
+        }
     }
-
     const size_t animCount = animatedToUpdate.size();
-    if (animCount > 1) {
-        ThreadPool::global().parallel_for_chunks(0, animCount, 1, [&](size_t b, size_t e, size_t) {
-            for (size_t i = b; i < e; ++i) {
-                animatedToUpdate[i]->updateAnimation(deltaTime);
-            }
-        });
-    } else if (animCount == 1) {
-        animatedToUpdate[0]->updateAnimation(deltaTime);
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_Animations);
+        if (animCount > 1) {
+            ThreadPool::global().parallel_for_chunks(0, animCount, 1, [&](size_t b, size_t e, size_t) {
+                for (size_t i = b; i < e; ++i) {
+                    animatedToUpdate[i]->updateAnimation(deltaTime);
+                }
+            });
+        } else if (animCount == 1) {
+            animatedToUpdate[0]->updateAnimation(deltaTime);
+        }
     }
     if (textureLoadDirty) {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_LoadTextures);
         loadTextures();
         textureLoadDirty = false;
     }
