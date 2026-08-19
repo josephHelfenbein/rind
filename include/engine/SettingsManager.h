@@ -14,7 +14,7 @@
 #include <engine/TextureManager.h>
 #include <engine/UIManager.h>
 #include <engine/InputManager.h>
-#include <engine/io.h>
+#include <engine/IO.h>
 
 namespace engine {
     class SettingsManager {
@@ -633,39 +633,7 @@ namespace engine {
         };
 
         static std::filesystem::path getConfigFilePath(const std::string& location) {
-            std::filesystem::path configDir;
-
-#if defined(_WIN32)
-            // Windows: %APPDATA%\{game}\config.json
-            const char* appdata = std::getenv("APPDATA");
-            if (appdata) {
-                configDir = std::filesystem::path(appdata) / location;
-            } else {
-                configDir = std::filesystem::path(".") / location;
-            }
-#elif defined(__APPLE__)
-            // macOS: ~/Library/Application Support/{game}/config.json
-            const char* home = std::getenv("HOME");
-            if (home) {
-                configDir = std::filesystem::path(home) / "Library" / "Application Support" / location;
-            } else {
-                configDir = std::filesystem::path(".") / location;
-            }
-#else
-            // Linux/Unix: ~/.config/{game}/config.json
-            const char* xdgConfig = std::getenv("XDG_CONFIG_HOME");
-            if (xdgConfig) {
-                configDir = std::filesystem::path(xdgConfig) / location;
-            } else {
-                const char* home = std::getenv("HOME");
-                if (home) {
-                    configDir = std::filesystem::path(home) / ".config" / location;
-                } else {
-                    configDir = std::filesystem::path(".") / location;
-                }
-            }
-#endif
-            return configDir / "config.json";
+            return engine::getConfigDirectory(location) / "config.json";
         }
 
         static float parseFloat(const std::string& json, const std::string& key, float defaultValue) {

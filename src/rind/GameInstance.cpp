@@ -19,12 +19,12 @@
 #include <engine/IrradianceManager.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
-#ifdef NDEBUG
+#ifndef NDEBUG
 #include <engine/Profiler.h>
 #endif
 #include <engine/Camera.h>
 #include <engine/Collider.h>
-#include <engine/io.h>
+#include <engine/IO.h>
 
 #include <audio/audio_registry.h>
 #include <font/font_registry.h>
@@ -653,8 +653,8 @@ rind::GameInstance::GameInstance() {
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     volumetricManager = std::make_unique<engine::VolumetricManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get());
-#ifdef NDEBUG
-    profiler = std::make_unique<engine::profiler::Profiler>(renderer.get());
+#ifndef NDEBUG
+    profiler = std::make_unique<engine::profiler::Profiler>(renderer.get(), "rind");
 #endif
 
     // hand the consumer's embedded asset registries to the engine managers before Renderer::run()

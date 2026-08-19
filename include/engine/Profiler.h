@@ -18,11 +18,22 @@ enum class Zone : uint8_t {
 };
 };
 
-#ifdef NDEBUG
+#ifndef NDEBUG // debug build
 
 #include <array>
 #include <string_view>
 #include <engine/Renderer.h>
+#include <engine/IO.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#elif __APPLE__
+#include <unistd.h>
+#include <pthread.h>
+#else // linux
+#include <unistd.h>
+#include <sys/syscall.h>
+#endif
 
 namespace engine {
 namespace profiler {
@@ -60,7 +71,9 @@ namespace profiler {
             #elif __APPLE__
             return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
             #else // linux
-            return rdtsc() * 1000000000 / get_cpu_frequency();
+            timespec ts;
+            clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+            return static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + ts.tv_nsec;
             #endif
         }
     }
@@ -69,13 +82,62 @@ namespace profiler {
 
     class Profiler {
     public:
-        Profiler(Renderer* renderer) {
-            renderer->registerProfiler(this);
-        }
+        Profiler(Renderer* renderer, std::string_view profileLocation)
+            : profileLocation(profileLocation) {
+                renderer->registerProfiler(this);
+            }
 
         static constexpr size_t kMaxFrames = 120;
 
-        std::array<FrameZones, kMaxFrames> dumpFrames() const { return ring; }
+        void dumpFrames() const {
+            const size_t oldest = (currentFrameIndex + 1) % kMaxFrames;
+            if (ring[oldest].endNs == 0) return; // ring not full
+
+            std::filesystem::path path = getConfigDirectory(profileLocation) / "profile.json";
+            
+            std::string out;
+            // estimated 128 chars per zone, 256 chars for header
+            out.reserve(kMaxFrames * static_cast<size_t>(Zone::Count) * 128 + 256);
+            out += "{\"displayTimeUnit\":\"ns\",\"traceEvents\":[\n";
+            auto us = [](uint64_t ns) { return static_cast<double>(ns) / 1000.0; };
+            auto meta = [&](const char* name, int pid, uint64_t tid, const char* value) {
+                char buf[256];
+                out.append(buf, std::snprintf(buf, sizeof(buf),
+                    "{\"ph\":\"M\",\"pid\":%d,\"tid\":%llu,\"name\":\"%s\",\"args\":{\"name\":\"%s\"}},\n",
+                    pid, tid, name, value
+                ));
+            };
+            auto slice = [&](std::string_view name, int pid, uint64_t tid, const char* cat, double ts, double dur) {
+                char buf[256];
+                out.append(buf, std::snprintf(buf, sizeof(buf),
+                    "{\"ph\":\"X\",\"pid\":%d,\"tid\":%llu,\"cat\":\"%s\",\"ts\":%.3f,\"dur\":%.3f,\"name\":\"%.*s\"},\n",
+                    pid, tid, cat, ts, dur, static_cast<int>(name.size()), name.data()
+                ));
+            };
+            meta("process_name", processId, 1, "Rind");
+            meta("thread_name", processId, threadId, "CPU Main");
+
+            const uint64_t baseNs = ring[oldest].startNs;
+
+            for (size_t i = 0; i < kMaxFrames; ++i) {
+                const FrameZones& frame = ring[(oldest + i) % kMaxFrames];
+                if (frame.endNs == 0) continue;
+                const uint64_t frameStartNs = frame.startNs - baseNs;
+                char fname[32];
+                std::snprintf(fname, sizeof(fname), "Frame %zu", i);
+                slice(fname, processId, threadId, "frame", us(frameStartNs), us(frame.endNs));
+                for (size_t z = 0; z < static_cast<size_t>(Zone::Count); ++z) {
+                    const Span& span = frame.zones[z];
+                    if (span.endNs == 0) continue;
+                    slice(kZoneNames[z], processId, threadId, "cpu", us(frameStartNs + span.startNs), us(span.endNs));
+                }
+            }
+            if (out.ends_with(",\n")) { // trim comma
+                out.resize(out.size() - 2);
+            }
+            out += "\n]}\n";
+            engine::writeFile(path, out);
+        }
 
         struct ScopedFrame {
             ScopedFrame(Profiler* profiler) : profiler(profiler) {
@@ -118,6 +180,32 @@ namespace profiler {
     private:
         std::array<FrameZones, kMaxFrames> ring{};
         size_t currentFrameIndex = 0;
+        std::string profileLocation;
+        int processId = currentProcessId();
+        uint64_t threadId = currentThreadId();
+
+        inline uint64_t currentThreadId() {
+            thread_local const uint64_t tid = []() -> uint64_t {
+                #ifdef _WIN32
+                return static_cast<uint64_t>(GetCurrentThreadId());
+                #elif __APPLE__
+                uint64_t t = 0;
+                pthread_threadid_np(nullptr, &t);
+                return t;
+                #else // linux
+                return static_cast<uint64_t>(::syscall(SYS_gettid));
+                #endif
+            }();
+            return tid;
+        }
+
+        inline int currentProcessId() {
+            #ifdef _WIN32
+            return GetCurrentProcessId();
+            #else // linux / macOS
+            return ::getpid();
+            #endif
+        }
     };
 
     template <Zone Z>

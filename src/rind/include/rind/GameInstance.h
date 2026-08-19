@@ -18,7 +18,7 @@ namespace engine {
     class IrradianceManager;
     class AudioManager;
     class SettingsManager;
-    #ifdef NDEBUG
+    #ifndef NDEBUG
     namespace profiler {
         class Profiler;
     }
@@ -49,7 +49,7 @@ namespace rind {
         std::unique_ptr<engine::IrradianceManager> irradianceManager;
         std::unique_ptr<engine::AudioManager> audioManager;
         std::unique_ptr<engine::SettingsManager> settingsManager;
-        #ifdef NDEBUG
+        #ifndef NDEBUG
         std::unique_ptr<engine::profiler::Profiler> profiler;
         #endif
 

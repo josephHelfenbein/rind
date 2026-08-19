@@ -12,7 +12,7 @@
 #include <engine/Camera.h>
 #include <engine/LightManager.h>
 #include <engine/IrradianceManager.h>
-#include <engine/io.h>
+#include <engine/IO.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
 #include <engine/Platform.h>
@@ -260,6 +260,17 @@ void engine::Renderer::mainLoop() {
                 }
             }
         });
+    #ifndef NDEBUG
+    inputManager->registerCallback("engineProfilerDump",
+        [this](const std::vector<InputEvent>& events) {
+            for (const auto& e : events) {
+                if (e.type != InputEvent::Type::KeyPress) continue;
+                if (e.keyEvent.key == GLFW_KEY_F9) {
+                    profiler->dumpFrames();
+                }
+            }
+        });
+    #endif
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (onFrameBegin) onFrameBegin();

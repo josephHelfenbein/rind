@@ -45,7 +45,7 @@ namespace engine {
         void registerVolumetricManager(class VolumetricManager* volumetricManager) { this->volumetricManager = volumetricManager; }
         void registerLightManager(class LightManager* lightManager) { this->lightManager = lightManager; }
         void registerIrradianceManager(class IrradianceManager* irradianceManager) { this->irradianceManager = irradianceManager; }
-        #ifdef NDEBUG
+        #ifndef NDEBUG
         void registerProfiler(class profiler::Profiler* profiler) { this->profiler = profiler; }
         #endif
 

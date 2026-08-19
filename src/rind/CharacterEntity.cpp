@@ -3,7 +3,7 @@
 #include <engine/EntityManager.h>
 #include <engine/Collider.h>
 #include <engine/SpatialGrid.h>
-#include <engine/io.h>
+#include <engine/IO.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
 #include <limits>
