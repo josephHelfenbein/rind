@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <vector>
+#include <optional>
 #include <unordered_map>
 #include <engine/ModelManager.h>
 
@@ -11,7 +12,14 @@ namespace engine {
 
     class SpatialGrid {
     public:
-        SpatialGrid(float cellSize = 10.0f);
+        SpatialGrid(float cellSize = 2.0f, glm::vec3 mapSize = glm::vec3(100.0f)) {
+                invCellSize = 1.0f / cellSize;
+                maxCells = glm::uvec3(glm::ceil(mapSize * invCellSize));
+                mapCenter = glm::vec3(maxCells) * 0.5f;
+                dynamicCells.resize(maxCells.x * maxCells.y * maxCells.z);
+                staticCells.resize(maxCells.x * maxCells.y * maxCells.z);
+                std::for_each(dynamicCells.begin(), dynamicCells.end(), [](auto& v) { v.reserve(4); });
+            }
 
         struct Candidates {
             std::vector<Collider*> colliders;
@@ -30,47 +38,42 @@ namespace engine {
         };
 
         void clear();
-        void insert(Collider* collider, const AABB& aabb);
+        void insert(Collider* collider);
         void remove(Collider* collider);
 
-        void update(Collider* collider, const AABB& aabb);
+        void update(Collider* collider);
 
         void query(const AABB& aabb, Candidates& out, float margin = 0.0f) const;
 
         void rebuild(const std::vector<Collider*>& colliders);
-
-        void setCellSize(float size) { cellSize = size; invCellSize = 1.0f / size; }
-        float getCellSize() const { return cellSize; }
         
     private:
-        struct CellCoord {
-            int x, y, z;
-            bool operator==(const CellCoord& other) const {
-                return x == other.x && y == other.y && z == other.z;
-            }
-        };
-        
-        struct CellCoordHash {
-            size_t operator()(const CellCoord& coord) const {
-                return static_cast<size_t>(coord.x) * 73856093UL ^
-                       static_cast<size_t>(coord.y) * 19349663UL ^
-                       static_cast<size_t>(coord.z) * 83492791UL;
-            }
-        };
+        glm::uvec3 getCellPos(glm::vec3 coord) const {
+            glm::vec3 local = coord * invCellSize + mapCenter;
+            glm::uvec3 cell(glm::floor(local));
+            cell = glm::clamp(cell, glm::uvec3(0), maxCells - glm::uvec3(1));
+            return cell;
+        }
 
-        CellCoord getCell(const glm::vec3& pos) const;
-        void getCellRange(const AABB& aabb, CellCoord& minCell, CellCoord& maxCell) const;
+        size_t getCellIndex(glm::vec3 pos) const {
+            const auto c = getCellPos(pos);
+            return c.x + c.y * maxCells.x + c.z * maxCells.x * maxCells.y;
+        }
 
-        struct CellEntry {
-            Collider* collider;
-            AABB aabb;
-        };
+        size_t getCellIndex(glm::uvec3 validCell) const { // assume bounds validation
+            return validCell.x + validCell.y * maxCells.x + validCell.z * maxCells.x * maxCells.y;
+        }
 
-        float cellSize;
+        std::pair<glm::uvec3, glm::uvec3> getCellRange(const AABB& aabb) const;
+
         float invCellSize;
-        std::unordered_map<CellCoord, std::vector<CellEntry>, CellCoordHash> dynamicCells;
-        std::unordered_map<Collider*, std::vector<CellCoord>> dynamicColliderCells;
-        std::unordered_map<CellCoord, std::vector<CellEntry>, CellCoordHash> staticCells;
-        std::unordered_map<Collider*, std::vector<CellCoord>> staticColliderCells;
+        glm::uvec3 maxCells;
+        glm::vec3 mapCenter;
+        std::unordered_map<Collider*, std::vector<size_t>> dynamicColliderCells;
+        std::unordered_map<Collider*, std::vector<size_t>> staticColliderCells;
+        // 55*25*55 size / 2.0 cell size = 28*13*28 cells
+        // 2 * (28*13*28 * (24B per vector + 8B ptr * (4 reserved / 2 (only dynamic))) + 24B per vector) = ~815KB
+        std::vector<std::vector<Collider*>> dynamicCells;
+        std::vector<std::vector<Collider*>> staticCells;
     };
 }

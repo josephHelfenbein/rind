@@ -641,7 +641,7 @@ rind::GameInstance::GameInstance() {
     scenes.emplace_back(std::make_unique<engine::Scene>(titleScreenScene));
     scenes.emplace_back(std::make_unique<engine::Scene>(mainGameScene));
 
-    entityManager = std::make_unique<engine::EntityManager>(renderer.get());
+    entityManager = std::make_unique<engine::EntityManager>(renderer.get(), 2.0f, glm::vec3(55.0f, 25.0f, 55.0f));
     lightManager = std::make_unique<engine::LightManager>(renderer.get());
     irradianceManager = std::make_unique<engine::IrradianceManager>(renderer.get());
     inputManager = std::make_unique<engine::InputManager>(renderer.get());

@@ -169,7 +169,11 @@ struct std::hash<engine::Entity> {
 namespace engine {
     class EntityManager {
     public:
-        EntityManager(engine::Renderer* renderer);
+        EntityManager(
+            engine::Renderer* renderer,
+            float spatialGridCellSize = 2.0f,
+            glm::vec3 spatialGridMapSize = glm::vec3(100.0f)
+        );
         ~EntityManager();
         
         std::unordered_map<std::string, Entity*>& getEntities() { return entities; }
@@ -245,7 +249,7 @@ namespace engine {
         std::vector<Collider*> dynamicColliders;
         std::vector<Entity*> pendingDeletions;
         std::vector<std::pair<std::string, Entity*>> pendingAdditions;
-        SpatialGrid spatialGrid{10.0f};
+        SpatialGrid spatialGrid;
         bool spatialGridDirty = true;
         bool textureLoadDirty = false;
 

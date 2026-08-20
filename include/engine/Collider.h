@@ -67,6 +67,7 @@ namespace engine {
         }
         bool getIsDynamic() const { return isDynamic; }
         void setIsDynamic(bool dynamic) {
+            if (isDynamic == dynamic) return;
             if (dynamic && !isDynamic) {
                 getEntityManager()->addDynamicCollider(this);
             } else if (!dynamic && isDynamic) {

@@ -45,7 +45,7 @@ void engine::EntityManager::updateDynamicColliders() {
     for (Collider* c : dynamicColliders) {
         const uint32_t gen = c->getTransformGeneration();
         if (gen == c->lastGridGeneration) continue;
-        spatialGrid.update(c, c->getWorldAABB());
+        spatialGrid.update(c);
         c->lastGridGeneration = gen;
     }
 }
@@ -432,9 +432,12 @@ void engine::Entity::setTextures(const std::vector<std::string>& textures) {
     getEntityManager()->markTexturesDirty();
 }
 
-engine::EntityManager::EntityManager(engine::Renderer* renderer) : renderer(renderer) {
-    renderer->registerEntityManager(this);
-}
+engine::EntityManager::EntityManager(
+    engine::Renderer* renderer,
+    float spatialGridCellSize,
+    glm::vec3 spatialGridMapSize) : renderer(renderer), spatialGrid(spatialGridCellSize, spatialGridMapSize) {
+        renderer->registerEntityManager(this);
+    }
 
 engine::EntityManager::~EntityManager() {
     clear();

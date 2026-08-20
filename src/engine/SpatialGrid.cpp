@@ -2,147 +2,98 @@
 #include <engine/Collider.h>
 #include <engine/SIMD.h>
 #include <algorithm>
-
-engine::SpatialGrid::SpatialGrid(float cellSize)
-    : cellSize(cellSize), invCellSize(1.0f / cellSize) {}
+#include <utility>
 
 void engine::SpatialGrid::clear() {
-    dynamicCells.clear();
+    for (auto& cell : dynamicCells) { cell.clear(); }
+    for (auto& cell : staticCells) { cell.clear(); }
     dynamicColliderCells.clear();
-    staticCells.clear();
     staticColliderCells.clear();
 }
 
-engine::SpatialGrid::CellCoord engine::SpatialGrid::getCell(const glm::vec3& pos) const {
-    return {
-        static_cast<int>(std::floor(pos.x * invCellSize)),
-        static_cast<int>(std::floor(pos.y * invCellSize)),
-        static_cast<int>(std::floor(pos.z * invCellSize))
-    };
+std::pair<glm::uvec3, glm::uvec3> engine::SpatialGrid::getCellRange(const AABB& aabb) const {
+    auto minCell = getCellPos(aabb.min);
+    auto maxCell = getCellPos(aabb.max);
+    return std::make_pair(minCell, maxCell);
 }
 
-void engine::SpatialGrid::getCellRange(const AABB& aabb, CellCoord& minCell, CellCoord& maxCell) const {
-    minCell = getCell(aabb.min);
-    maxCell = getCell(aabb.max);
-}
-
-void engine::SpatialGrid::insert(Collider* collider, const AABB& aabb) {
-    CellCoord minCell, maxCell;
-    getCellRange(aabb, minCell, maxCell);
+void engine::SpatialGrid::insert(Collider* collider) {
+    const AABB& aabb = collider->getWorldAABB();
+    const auto& [minCell, maxCell] = getCellRange(aabb);
     
     bool isDynamic = collider->getIsDynamic();
     auto& cells = isDynamic ? dynamicCells : staticCells;
     auto& colliderCells = isDynamic ? dynamicColliderCells : staticColliderCells;
     
-    std::vector<CellCoord>& occupiedCells = colliderCells[collider];
+    std::vector<size_t>& occupiedCells = colliderCells[collider];
     occupiedCells.clear();
-    
-    const int maxCellsTotal = 512;
-    int rangeX = maxCell.x - minCell.x;
-    int rangeY = maxCell.y - minCell.y;
-    int rangeZ = maxCell.z - minCell.z;
-    int totalCells = (rangeX + 1) * (rangeY + 1) * (rangeZ + 1);
-    
-    if (totalCells > maxCellsTotal) {
-        occupiedCells.push_back(minCell);
-        occupiedCells.push_back(maxCell);
-        occupiedCells.push_back(CellCoord{(minCell.x + maxCell.x) / 2, (minCell.y + maxCell.y) / 2, (minCell.z + maxCell.z) / 2});
-        for (const auto& coord : occupiedCells) {
-            cells[coord].push_back(CellEntry{collider, aabb});
-        }
-        return;
-    }
 
-    for (int x = minCell.x; x <= maxCell.x; ++x) {
-        for (int y = minCell.y; y <= maxCell.y; ++y) {
-            for (int z = minCell.z; z <= maxCell.z; ++z) {
-                CellCoord coord{x, y, z};
-                cells[coord].push_back(CellEntry{collider, aabb});
-                occupiedCells.push_back(coord);
+    for (size_t x = minCell.x; x <= maxCell.x; ++x) {
+        for (size_t y = minCell.y; y <= maxCell.y; ++y) {
+            for (size_t z = minCell.z; z <= maxCell.z; ++z) {
+                glm::uvec3 cellCoord{x, y, z};
+                size_t index = getCellIndex(cellCoord);
+                cells[index].push_back(collider);
+                occupiedCells.push_back(index);
             }
         }
     }
 }
 
 void engine::SpatialGrid::remove(Collider* collider) {
-    auto it = dynamicColliderCells.find(collider);
-    if (it != dynamicColliderCells.end()) {
-        for (const CellCoord& coord : it->second) {
-            auto cellIt = dynamicCells.find(coord);
-            if (cellIt != dynamicCells.end()) {
-                auto& vec = cellIt->second;
-                std::erase_if(vec, [collider](const CellEntry& e) { return e.collider == collider; });
-                if (vec.empty()) {
-                    dynamicCells.erase(cellIt);
-                }
+    if (!collider) return;
+    auto deleteIt = [](std::vector<std::vector<Collider*>>& cells, std::unordered_map<Collider*, std::vector<size_t>>& colliderCells, Collider* collider) {
+        auto it = colliderCells.find(collider);
+        if (it != colliderCells.end()) {
+            for (size_t i = 0; i < it->second.size(); ++i) {
+                size_t cellIndex = it->second[i];
+                auto& vec = cells[cellIndex];
+                std::erase_if(vec, [collider](Collider* c) { return c == collider; });
             }
+            colliderCells.erase(it);
         }
-        dynamicColliderCells.erase(it);
-        return;
-    }
-    
-    it = staticColliderCells.find(collider);
-    if (it != staticColliderCells.end()) {
-        for (const CellCoord& coord : it->second) {
-            auto cellIt = staticCells.find(coord);
-            if (cellIt != staticCells.end()) {
-                auto& vec = cellIt->second;
-                std::erase_if(vec, [collider](const CellEntry& e) { return e.collider == collider; });
-                if (vec.empty()) {
-                    staticCells.erase(cellIt);
-                }
-            }
-        }
-        staticColliderCells.erase(it);
-    }
+    };
+    deleteIt(dynamicCells, dynamicColliderCells, collider);
+    deleteIt(staticCells, staticColliderCells, collider);
 }
 
-void engine::SpatialGrid::update(Collider* collider, const AABB& aabb) {
+void engine::SpatialGrid::update(Collider* collider) {
     remove(collider);
-    insert(collider, aabb);
+    insert(collider);
 }
 
 void engine::SpatialGrid::query(const AABB& aabb, Candidates& out, float margin) const {
     out.clear();
-    CellCoord minCell, maxCell;
-    getCellRange(aabb, minCell, maxCell);
+    const auto& [minCell, maxCell] = getCellRange(aabb);
 
-    const int maxCellsPerAxis = 150;
-    int rangeX = std::min(maxCell.x - minCell.x, maxCellsPerAxis);
-    int rangeY = std::min(maxCell.y - minCell.y, maxCellsPerAxis);
-    int rangeZ = std::min(maxCell.z - minCell.z, maxCellsPerAxis);
+    size_t rangeX = static_cast<size_t>(maxCell.x - minCell.x);
+    size_t rangeY = static_cast<size_t>(maxCell.y - minCell.y);
+    size_t rangeZ = static_cast<size_t>(maxCell.z - minCell.z);
+    const size_t totalCells = (rangeX + 1) * (rangeY + 1) * (rangeZ + 1);
 
-    const std::unordered_map<CellCoord, std::vector<CellEntry>, CellCoordHash>* grids[2] = { &dynamicCells, &staticCells };
-
-    const size_t totalCells = static_cast<size_t>(rangeX + 1) * static_cast<size_t>(rangeY + 1) * static_cast<size_t>(rangeZ + 1);
+    // 2 grids
+    const std::vector<std::vector<Collider*>>* grids[2] = { &dynamicCells, &staticCells };
 
     if (totalCells == 1) {
         // single-cell fast path
-        CellCoord coord{minCell.x, minCell.y, minCell.z};
         for (const auto* cells : grids) {
-            auto it = cells->find(coord);
-            if (it == cells->end()) continue;
-            const auto& vec = it->second;
-            for (const CellEntry& e : vec) {
-                out.colliders.push_back(e.collider);
-                out.minX.push_back(e.aabb.min.x); out.minY.push_back(e.aabb.min.y); out.minZ.push_back(e.aabb.min.z);
-                out.maxX.push_back(e.aabb.max.x); out.maxY.push_back(e.aabb.max.y); out.maxZ.push_back(e.aabb.max.z);
+            const auto& vec = (*cells)[getCellIndex(minCell)];
+            for (const auto& c : vec) {
+                out.colliders.push_back(c);
+                out.minX.push_back(c->getWorldAABB().min.x); out.minY.push_back(c->getWorldAABB().min.y); out.minZ.push_back(c->getWorldAABB().min.z);
+                out.maxX.push_back(c->getWorldAABB().max.x); out.maxY.push_back(c->getWorldAABB().max.y); out.maxZ.push_back(c->getWorldAABB().max.z);
             }
         }
         out.intersects.resize(out.colliders.size());
     } else {
         // multi-cell path
-        for (int x = minCell.x; x <= minCell.x + rangeX; ++x) {
-            for (int y = minCell.y; y <= minCell.y + rangeY; ++y) {
-                for (int z = minCell.z; z <= minCell.z + rangeZ; ++z) {
-                    CellCoord coord{x, y, z};
+        for (size_t x = minCell.x; x <= maxCell.x; ++x) {
+            for (size_t y = minCell.y; y <= maxCell.y; ++y) {
+                for (size_t z = minCell.z; z <= maxCell.z; ++z) {
                     for (const auto* cells : grids) {
-                        auto it = cells->find(coord);
-                        if (it != cells->end()) {
-                            const auto& vec = it->second;
-                            for (const CellEntry& e : vec) {
-                                out.colliders.push_back(e.collider);
-                            }
+                        const auto& vec = (*cells)[getCellIndex(glm::uvec3{x, y, z})];
+                        for (const auto& c : vec) {
+                            out.colliders.push_back(c);
                         }
                     }
                 }
@@ -180,16 +131,12 @@ void engine::SpatialGrid::query(const AABB& aabb, Candidates& out, float margin)
 }
 
 void engine::SpatialGrid::rebuild(const std::vector<Collider*>& colliders) {
-    dynamicCells.clear();
+    for (auto& cell : dynamicCells) { cell.clear(); }
     dynamicColliderCells.clear();
     
     for (Collider* collider : colliders) {
-        if (collider->getIsDynamic()) {
-            AABB aabb = collider->getWorldAABB();
-            insert(collider, aabb);
-        } else if (staticColliderCells.find(collider) == staticColliderCells.end()) {
-            AABB aabb = collider->getWorldAABB();
-            insert(collider, aabb);
+        if (collider->getIsDynamic() || staticColliderCells.find(collider) == staticColliderCells.end()) {
+            insert(collider);
         }
     }
 }
