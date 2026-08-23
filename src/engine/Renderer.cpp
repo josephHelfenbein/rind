@@ -1402,125 +1402,128 @@ void engine::Renderer::recordCommandBuffer(
         bool renderingBlocked = false;
         VkRenderingInfo renderingInfo{};
         VkRenderingAttachmentInfo swapColor{};
-        if (usesRendering) {
-            renderingInfo = {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = {
-                    .offset = {0, 0},
-                    .extent = swapChainExtent
-                },
-                .layerCount = 1
-            };
-            if (node.passInfo->usesSwapchain) {
-                swapColor = {
-                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = swapChainImageViews[imageIndex],
-                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                    .clearValue = { .color = {0.0f, 0.0f, 0.0f, 1.0f} }
-                };
-                renderingInfo.colorAttachmentCount = 1;
-                renderingInfo.pColorAttachments = &swapColor;
-            } else {
-                renderingInfo.colorAttachmentCount = static_cast<uint32_t>(node.passInfo->colorAttachments.size());
-                renderingInfo.pColorAttachments = node.passInfo->colorAttachments.data();
-                renderingInfo.pDepthAttachment = node.passInfo->hasDepthAttachment ? &node.passInfo->depthAttachment.value() : nullptr;
-                if (node.passInfo->images.has_value()) {
-                    bool foundAttachmentExtent = false;
-                    uint32_t attachmentWidth = 0;
-                    uint32_t attachmentHeight = 0;
-                    for (const auto& image : *node.passInfo->images) {
-                        const bool isAttachment =
-                            (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0 ||
-                            (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
-                        if (!isAttachment) {
-                            continue;
-                        }
-                        uint32_t imageWidth = image.allocatedWidth;
-                        uint32_t imageHeight = image.allocatedHeight;
-                        if (imageWidth == 0 || imageHeight == 0) {
-                            const VkExtent2D renderExtent = node.passInfo->ignoreResolutionScale ? swapChainExtent : getRenderExtent();
-                            const uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
-                            imageWidth = image.width == 0 ? std::max(1u, renderExtent.width / divider) : image.width;
-                            imageHeight = image.height == 0 ? std::max(1u, renderExtent.height / divider) : image.height;
-                        }
-                        if (!foundAttachmentExtent) {
-                            attachmentWidth = imageWidth;
-                            attachmentHeight = imageHeight;
-                            foundAttachmentExtent = true;
-                        } else {
-                            attachmentWidth = std::min(attachmentWidth, imageWidth);
-                            attachmentHeight = std::min(attachmentHeight, imageHeight);
-                        }
-                    }
-                    if (foundAttachmentExtent) {
-                        renderingInfo.renderArea.extent = {
-                            .width = attachmentWidth,
-                            .height = attachmentHeight
-                        };
-                    }
-                }
-            }
 
-            const bool hasColorAttachments = renderingInfo.colorAttachmentCount > 0 && renderingInfo.pColorAttachments != nullptr;
-            const bool hasDepthAttachment = renderingInfo.pDepthAttachment != nullptr;
-            if (!hasColorAttachments && !hasDepthAttachment) {
-                renderingBlocked = true;
-            }
-
-            bool hasInvalidAttachment = false;
-            if (!renderingBlocked && hasColorAttachments) {
-                for (uint32_t i = 0; i < renderingInfo.colorAttachmentCount; ++i) {
-                    if (renderingInfo.pColorAttachments[i].imageView == VK_NULL_HANDLE) {
-                        hasInvalidAttachment = true;
-                        break;
-                    }
-                }
-            }
-            if (!renderingBlocked && !hasInvalidAttachment && hasDepthAttachment && renderingInfo.pDepthAttachment->imageView == VK_NULL_HANDLE) {
-                hasInvalidAttachment = true;
-            }
-            if (hasInvalidAttachment) {
-                renderingBlocked = true;
-            }
-
-            if (!renderingBlocked) {
-                fpCmdBeginRendering(commandBuffer, &renderingInfo);
-                beganRendering = true;
-                VkViewport viewport = {
-                    .x = static_cast<float>(renderingInfo.renderArea.offset.x),
-                    .y = static_cast<float>(renderingInfo.renderArea.offset.y),
-                    .width = static_cast<float>(renderingInfo.renderArea.extent.width),
-                    .height = static_cast<float>(renderingInfo.renderArea.extent.height),
-                    .minDepth = 0.0f,
-                    .maxDepth = 1.0f
-                };
-                VkRect2D scissor = {
-                    .offset = renderingInfo.renderArea.offset,
-                    .extent = renderingInfo.renderArea.extent
-                };
-                vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-                vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-            }
-        }
-
-        const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
-        const bool passCannotRender = usesRendering && !beganRendering;
-        
-        if (passIsInactive || passCannotRender || skipDraw) {
-            // no gpu work
-        } else {
+        {
             PROFILER_GPU_ZONE(profiler, commandBuffer, static_cast<uint16_t>(nodeIdx), isComputeQueue);
-            if (node.customRenderFunc) {
-                node.customRenderFunc(this, commandBuffer, currentFrame);
-            } else if (!node.computeShaders.empty() && !node.usesRendering) {
-                dispatchComputePass(commandBuffer, node);
-            } else if (node.is2D) {
-                draw2DPass(commandBuffer, node);
+            if (usesRendering) {
+                renderingInfo = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                    .renderArea = {
+                        .offset = {0, 0},
+                        .extent = swapChainExtent
+                    },
+                    .layerCount = 1
+                };
+                if (node.passInfo->usesSwapchain) {
+                    swapColor = {
+                        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                        .imageView = swapChainImageViews[imageIndex],
+                        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                        .clearValue = { .color = {0.0f, 0.0f, 0.0f, 1.0f} }
+                    };
+                    renderingInfo.colorAttachmentCount = 1;
+                    renderingInfo.pColorAttachments = &swapColor;
+                } else {
+                    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(node.passInfo->colorAttachments.size());
+                    renderingInfo.pColorAttachments = node.passInfo->colorAttachments.data();
+                    renderingInfo.pDepthAttachment = node.passInfo->hasDepthAttachment ? &node.passInfo->depthAttachment.value() : nullptr;
+                    if (node.passInfo->images.has_value()) {
+                        bool foundAttachmentExtent = false;
+                        uint32_t attachmentWidth = 0;
+                        uint32_t attachmentHeight = 0;
+                        for (const auto& image : *node.passInfo->images) {
+                            const bool isAttachment =
+                                (image.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0 ||
+                                (image.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+                            if (!isAttachment) {
+                                continue;
+                            }
+                            uint32_t imageWidth = image.allocatedWidth;
+                            uint32_t imageHeight = image.allocatedHeight;
+                            if (imageWidth == 0 || imageHeight == 0) {
+                                const VkExtent2D renderExtent = node.passInfo->ignoreResolutionScale ? swapChainExtent : getRenderExtent();
+                                const uint32_t divider = image.resolutionDivider > 0 ? image.resolutionDivider : 1;
+                                imageWidth = image.width == 0 ? std::max(1u, renderExtent.width / divider) : image.width;
+                                imageHeight = image.height == 0 ? std::max(1u, renderExtent.height / divider) : image.height;
+                            }
+                            if (!foundAttachmentExtent) {
+                                attachmentWidth = imageWidth;
+                                attachmentHeight = imageHeight;
+                                foundAttachmentExtent = true;
+                            } else {
+                                attachmentWidth = std::min(attachmentWidth, imageWidth);
+                                attachmentHeight = std::min(attachmentHeight, imageHeight);
+                            }
+                        }
+                        if (foundAttachmentExtent) {
+                            renderingInfo.renderArea.extent = {
+                                .width = attachmentWidth,
+                                .height = attachmentHeight
+                            };
+                        }
+                    }
+                }
+
+                const bool hasColorAttachments = renderingInfo.colorAttachmentCount > 0 && renderingInfo.pColorAttachments != nullptr;
+                const bool hasDepthAttachment = renderingInfo.pDepthAttachment != nullptr;
+                if (!hasColorAttachments && !hasDepthAttachment) {
+                    renderingBlocked = true;
+                }
+
+                bool hasInvalidAttachment = false;
+                if (!renderingBlocked && hasColorAttachments) {
+                    for (uint32_t i = 0; i < renderingInfo.colorAttachmentCount; ++i) {
+                        if (renderingInfo.pColorAttachments[i].imageView == VK_NULL_HANDLE) {
+                            hasInvalidAttachment = true;
+                            break;
+                        }
+                    }
+                }
+                if (!renderingBlocked && !hasInvalidAttachment && hasDepthAttachment && renderingInfo.pDepthAttachment->imageView == VK_NULL_HANDLE) {
+                    hasInvalidAttachment = true;
+                }
+                if (hasInvalidAttachment) {
+                    renderingBlocked = true;
+                }
+
+                if (!renderingBlocked) {
+                    fpCmdBeginRendering(commandBuffer, &renderingInfo);
+                    beganRendering = true;
+                    VkViewport viewport = {
+                        .x = static_cast<float>(renderingInfo.renderArea.offset.x),
+                        .y = static_cast<float>(renderingInfo.renderArea.offset.y),
+                        .width = static_cast<float>(renderingInfo.renderArea.extent.width),
+                        .height = static_cast<float>(renderingInfo.renderArea.extent.height),
+                        .minDepth = 0.0f,
+                        .maxDepth = 1.0f
+                    };
+                    VkRect2D scissor = {
+                        .offset = renderingInfo.renderArea.offset,
+                        .extent = renderingInfo.renderArea.extent
+                    };
+                    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+                    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+                }
             }
-            if (beganRendering) {
-                fpCmdEndRendering(commandBuffer);
+
+            const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
+            const bool passCannotRender = usesRendering && !beganRendering;
+            
+            if (passIsInactive || passCannotRender || skipDraw) {
+                // no gpu work
+            } else {
+                if (node.customRenderFunc) {
+                    node.customRenderFunc(this, commandBuffer, currentFrame);
+                } else if (!node.computeShaders.empty() && !node.usesRendering) {
+                    dispatchComputePass(commandBuffer, node);
+                } else if (node.is2D) {
+                    draw2DPass(commandBuffer, node);
+                }
+                if (beganRendering) {
+                    fpCmdEndRendering(commandBuffer);
+                }
             }
         }
 
