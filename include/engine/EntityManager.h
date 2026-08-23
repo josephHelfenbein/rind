@@ -179,7 +179,6 @@ namespace engine {
         std::unordered_map<std::string, Entity*>& getEntities() { return entities; }
 
         void addEntity(const std::string& name, Entity* entity);
-        void removeEntity(const std::string& name);
         void unregisterEntity(const std::string& name);
         void clear();
 

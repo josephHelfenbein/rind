@@ -175,6 +175,7 @@ void engine::Renderer::initVulkan() {
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+    setupGpuProfiling();
     createSwapChain(VK_NULL_HANDLE);
     createImageViews();
     createMainTextureSampler();
@@ -813,6 +814,7 @@ void engine::Renderer::drawFrame() {
         PROFILER_ZONE(profiler, profiler::Zone::WaitFences);
         vkWaitForFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences, VK_TRUE, UINT64_MAX);
     }
+    PROFILER_GPU_RESET(profiler);
     uint32_t imageIndex;
     VkResult result;
     {
@@ -1167,7 +1169,7 @@ void engine::Renderer::recordCommandBuffer(
             });
             swapChainImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         }
-        const bool isComputeQueue = (queueClass == NodeQueueClass::Compute);
+        const uint8_t isComputeQueue = (queueClass == NodeQueueClass::Compute) ? 1 : 0;
         if (node.usePassManagedTransitions && node.passInfo->images.has_value()) {
             const VkPipelineStageFlags2 shaderReadStages = isComputeQueue
                 ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
@@ -1506,15 +1508,20 @@ void engine::Renderer::recordCommandBuffer(
         const bool passIsInactive = node.passInfo && !node.passInfo->isActive;
         const bool passCannotRender = usesRendering && !beganRendering;
         
-        if (node.customRenderFunc) {
-            node.customRenderFunc(this, commandBuffer, currentFrame);
-        } else if (!node.computeShaders.empty() && !node.usesRendering) {
-            dispatchComputePass(commandBuffer, node);
-        } else if (node.is2D) {
-            draw2DPass(commandBuffer, node);
-        }
-        if (beganRendering) {
-            fpCmdEndRendering(commandBuffer);
+        if (passIsInactive || passCannotRender || skipDraw) {
+            // no gpu work
+        } else {
+            PROFILER_GPU_ZONE(profiler, commandBuffer, static_cast<uint16_t>(nodeIdx), isComputeQueue);
+            if (node.customRenderFunc) {
+                node.customRenderFunc(this, commandBuffer, currentFrame);
+            } else if (!node.computeShaders.empty() && !node.usesRendering) {
+                dispatchComputePass(commandBuffer, node);
+            } else if (node.is2D) {
+                draw2DPass(commandBuffer, node);
+            }
+            if (beganRendering) {
+                fpCmdEndRendering(commandBuffer);
+            }
         }
 
         if (!postBarriers.empty()) {
@@ -1825,6 +1832,28 @@ void engine::Renderer::createLogicalDevice() {
     if (hasDeviceExtension(physicalDevice, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) {
         enabledExtensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     }
+
+#ifndef NDEBUG
+    fpGetPhysicalDeviceCalibrateableTimeDomains = reinterpret_cast<PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR>(vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCalibrateableTimeDomainsKHR"));
+    if (!fpGetPhysicalDeviceCalibrateableTimeDomains) {
+        fpGetPhysicalDeviceCalibrateableTimeDomains = reinterpret_cast<PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR>(vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCalibrateableTimeDomainsEXT"));
+    }
+
+    enabledExtensions.push_back(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
+    VkTimeDomainKHR hostDomain;
+    #ifdef _WIN32
+    hostDomain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR;
+    #else // linux/macOS
+    hostDomain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR;
+    #endif
+    uint32_t timeDomainCount = 0;
+    fpGetPhysicalDeviceCalibrateableTimeDomains(physicalDevice, &timeDomainCount, nullptr);
+    std::vector<VkTimeDomainKHR> timeDomains(timeDomainCount);
+    fpGetPhysicalDeviceCalibrateableTimeDomains(physicalDevice, &timeDomainCount, timeDomains.data());
+    const bool hasDeviceTimeDomain = std::find(timeDomains.begin(), timeDomains.end(), VK_TIME_DOMAIN_DEVICE_KHR) != timeDomains.end();
+    const bool hasHostTimeDomain = std::find(timeDomains.begin(), timeDomains.end(), hostDomain) != timeDomains.end();
+    profiler->setCalibratedTimestampsSupported(hasDeviceTimeDomain && hasHostTimeDomain, hostDomain);
+#endif
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
     createInfo.ppEnabledExtensionNames = enabledExtensions.data();
     if (enableValidationLayers) {
@@ -1836,6 +1865,17 @@ void engine::Renderer::createLogicalDevice() {
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create logical device!");
     }
+
+#ifndef NDEBUG
+    fpGetCalibratedTimestamps = reinterpret_cast<PFN_vkGetCalibratedTimestampsKHR>(vkGetDeviceProcAddr(device, "vkGetCalibratedTimestampsKHR"));
+    if (!fpGetCalibratedTimestamps) {
+        fpGetCalibratedTimestamps = reinterpret_cast<PFN_vkGetCalibratedTimestampsKHR>(vkGetDeviceProcAddr(device, "vkGetCalibratedTimestampsEXT"));
+    }
+    if (!fpGetPhysicalDeviceCalibrateableTimeDomains || !fpGetCalibratedTimestamps) {
+        throw std::runtime_error("Calibrated timestamps not available: vkGetPhysicalDeviceCalibrateableTimeDomains/vkGetCalibratedTimestamps missing (KHR and EXT)");
+    }
+#endif
+
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
     uint32_t computeFamilyIndex = indices.computeFamily.value_or(indices.graphicsFamily.value());
@@ -1852,6 +1892,27 @@ void engine::Renderer::createLogicalDevice() {
     if (!fpCmdBeginRendering || !fpCmdEndRendering) {
         throw std::runtime_error("Dynamic rendering not available: vkCmdBeginRendering/End missing (core and KHR)");
     }
+}
+
+void engine::Renderer::setupGpuProfiling() {
+#ifndef NDEBUG
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
+
+    profiler->setupGpuProfiling(
+        device,
+        physicalDeviceProperties.limits.timestampPeriod,
+        queueFamilies,
+        indices.graphicsFamily,
+        indices.computeFamily,
+        hasAsyncComputeQueue
+    );
+#endif
 }
 
 void engine::Renderer::applyScreenMode() {

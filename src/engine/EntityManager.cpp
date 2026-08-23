@@ -524,15 +524,6 @@ void engine::EntityManager::processPendingAdditions() {
     }
 }
 
-void engine::EntityManager::removeEntity(const std::string& name) {
-    auto it = entities.find(name);
-    if (it != entities.end()) {
-        Entity* entity = it->second;
-        unregisterEntity(name);
-        delete entity;
-    }
-}
-
 void engine::EntityManager::unregisterEntity(const std::string& name) {
     auto it = entities.find(name);
     if (it != entities.end()) {
@@ -549,8 +540,7 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
         }
         if (entity->getType() == Entity::EntityType::Collider || entity->getType() == Entity::EntityType::Trigger) {
             Collider* collider = static_cast<Collider*>(entity);
-            spatialGrid.remove(collider);
-            std::erase(colliders, collider);
+            removeCollider(collider);
         }
         entities.erase(it);
     }
@@ -758,7 +748,7 @@ void engine::EntityManager::processPendingDeletions() {
     std::swap(rootsTraversalBuffer, pendingDeletions);
     for (Entity* entity : rootsTraversalBuffer) {
         if (entity) {
-            removeEntity(entity->getName());
+            delete entity;
         }
     }
 }

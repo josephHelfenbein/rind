@@ -206,6 +206,9 @@ namespace engine {
         void setHoveredObject(UIObject* obj) { hoveredObject = obj; }
         PFN_vkCmdBeginRendering getFpCmdBeginRendering() const { return fpCmdBeginRendering; }
         PFN_vkCmdEndRendering getFpCmdEndRendering() const { return fpCmdEndRendering; }
+        #ifndef NDEBUG
+        PFN_vkGetCalibratedTimestampsKHR getFpGetCalibratedTimestamps() const { return fpGetCalibratedTimestamps; }
+        #endif
         float getDeltaTime() const { return deltaTime; }
         class TextObject* getFPSCounter() const { return fpsCounter; }
         void setFPSCounter(class TextObject* fpsCounter) { this->fpsCounter = fpsCounter; }
@@ -236,7 +239,8 @@ namespace engine {
         static constexpr float fadeDurationSeconds = 0.08f;
         void updateFade();
 
-        const int MAX_FRAMES_IN_FLIGHT = 2;
+        #define MAX_GPU_FRAMES_IN_FLIGHT 2
+        const int MAX_FRAMES_IN_FLIGHT = MAX_GPU_FRAMES_IN_FLIGHT;
         uint32_t currentFrame = 0;
         const std::vector<const char*> validationLayers = {
             "VK_LAYER_KHRONOS_validation"
@@ -277,6 +281,10 @@ namespace engine {
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;
         PFN_vkCmdEndRendering fpCmdEndRendering = nullptr;
+        #ifndef NDEBUG
+        PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR fpGetPhysicalDeviceCalibrateableTimeDomains = nullptr;
+        PFN_vkGetCalibratedTimestampsKHR fpGetCalibratedTimestamps = nullptr;
+        #endif
 
         float deltaTime = 0.0f;
         float lastFrameTime = 0.0f;
@@ -417,7 +425,7 @@ namespace engine {
         VkResult createDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
         void destroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
         void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-
+        void setupGpuProfiling();
 
         static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
             std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
