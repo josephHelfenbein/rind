@@ -2,9 +2,9 @@
 #
 #   embed_asset_category(TARGET <tgt> CATEGORY <name> DIRECTORY <dir>
 #                        EXTENSIONS <ext...> [RECURSIVE ON|OFF])
-#       Globs assets, runs embed_asset.py + generate_registry.py, and attaches
-#       the generated .cpp files to <tgt>. Adds the generated registry header
-#       directory to <tgt>'s include path
+#       Globs assets, runs the EmbedAssets host tool (embed + registry modes), and
+#       attaches the generated .cpp files to <tgt>. Adds the generated registry
+#       header directory to <tgt>'s include path
 #
 #   rind_engine_compile_shaders(TARGET <tgt> SOURCE_DIR <dir> OUT_DIR <dir>
 #                               OUTPUT_LIST <var>)
@@ -23,7 +23,13 @@ set(_RIND_ENGINE_CMAKE_INCLUDED TRUE)
 
 set(RIND_ENGINE_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
+if(NOT TARGET rind_bin2c)
+    add_executable(rind_bin2c "${RIND_ENGINE_CMAKE_DIR}/EmbedAssets.cpp")
+    set_target_properties(rind_bin2c PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/host-tools")
+endif()
 
 function(rind_engine_compile_shaders)
     cmake_parse_arguments(RCS "" "TARGET;SOURCE_DIR;OUT_DIR;OUTPUT_LIST" "" ${ARGN})
@@ -129,13 +135,12 @@ function(embed_asset_category)
 
         add_custom_command(
             OUTPUT ${OUT_CPP} ${OUT_H}
-            COMMAND ${Python3_EXECUTABLE}
-                ${RIND_ENGINE_CMAKE_DIR}/embed_asset.py
+            COMMAND $<TARGET_FILE:rind_bin2c>
                 ${ASSET_FILE}
                 ${CATEGORY_DIR}
                 ${ASSET_NAME}
                 ${EA_CATEGORY}
-            DEPENDS ${ASSET_FILE} ${RIND_ENGINE_CMAKE_DIR}/embed_asset.py
+            DEPENDS ${ASSET_FILE} rind_bin2c
             COMMENT "Embedding ${EA_CATEGORY}: ${ASSET_NAME}"
             VERBATIM
         )
@@ -153,12 +158,12 @@ function(embed_asset_category)
 
     add_custom_command(
         OUTPUT ${REGISTRY_H}
-        COMMAND ${Python3_EXECUTABLE}
-            ${RIND_ENGINE_CMAKE_DIR}/generate_registry.py
+        COMMAND $<TARGET_FILE:rind_bin2c>
+            --registry
             ${EA_CATEGORY}
             ${CATEGORY_DIR}
             ${CATEGORY_NAMES}
-        DEPENDS ${CATEGORY_HEADERS} ${RIND_ENGINE_CMAKE_DIR}/generate_registry.py
+        DEPENDS ${CATEGORY_HEADERS} rind_bin2c
         COMMENT "Generating ${EA_CATEGORY} registry for ${EA_TARGET}"
         VERBATIM
     )
