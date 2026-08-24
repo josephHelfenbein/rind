@@ -40,6 +40,15 @@ namespace engine {
             std::string prevAnimation = "";
             float blendFactor = 1.0f; // 0.0 - 1.0
         };
+        struct EntityVkObjects {
+            std::vector<VkDescriptorSet> descriptorSets;
+            std::vector<VkDescriptorSet> shadowDescriptorSets;
+            std::vector<VkBuffer> uniformBuffers;
+            std::vector<VkDeviceMemory> uniformBuffersMemory;
+            std::vector<void*> uniformBuffersMapped;
+            size_t uniformBufferStride = 0;
+            std::string shader;
+        };
         Entity(
             EntityManager* entityManager,
             const std::string& name,
@@ -76,20 +85,52 @@ namespace engine {
         const glm::mat4& getWorldTransform() const { return worldTransform; }
         uint32_t getTransformGeneration() const { return transformGeneration; }
         glm::vec3 getWorldPosition() const;
-        const std::string& getShader() const { return shader; }
+        const std::string& getShader() const { return vkObjects.shader; }
 
         const std::vector<std::string>& getTextures() const { return textures; }
         void setTextures(const std::vector<std::string>& textures);
-        const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
-        void setDescriptorSets(const std::vector<VkDescriptorSet>& sets) { descriptorSets = sets; }
-        const std::vector<VkDescriptorSet>& getShadowDescriptorSets() const { return shadowDescriptorSets; }
-        void setShadowDescriptorSets(const std::vector<VkDescriptorSet>& sets) { shadowDescriptorSets = sets; }
+        const std::vector<VkDescriptorSet>& getDescriptorSets() const { return vkObjects.descriptorSets; }
+        void setDescriptorSets(const std::vector<VkDescriptorSet>& sets) { vkObjects.descriptorSets = sets; }
+        const std::vector<VkDescriptorSet>& getShadowDescriptorSets() const { return vkObjects.shadowDescriptorSets; }
+        void setShadowDescriptorSets(const std::vector<VkDescriptorSet>& sets) { vkObjects.shadowDescriptorSets = sets; }
 
-        std::vector<VkBuffer>& getUniformBuffers() { return uniformBuffers; }
-        std::vector<VkDeviceMemory>& getUniformBuffersMemory() { return uniformBuffersMemory; }
-        std::vector<void*>& getUniformBuffersMapped() { return uniformBuffersMapped; }
+        std::vector<VkBuffer>& getUniformBuffers() { return vkObjects.uniformBuffers; }
+        std::vector<VkDeviceMemory>& getUniformBuffersMemory() { return vkObjects.uniformBuffersMemory; }
+        std::vector<void*>& getUniformBuffersMapped() { return vkObjects.uniformBuffersMapped; }
+        void destroyUniformBuffers();
+        void clearUniformBuffers() {
+            for (size_t i{}; i < vkObjects.uniformBuffers.size(); ++i) {
+                if (vkObjects.uniformBuffers[i] != nullptr) {
+                    vkObjects.uniformBuffers[i] = nullptr;
+                }
+                if (i < vkObjects.uniformBuffersMapped.size() && vkObjects.uniformBuffersMapped[i] != nullptr) {
+                    vkObjects.uniformBuffersMapped[i] = nullptr;
+                }
+                if (i < vkObjects.uniformBuffersMemory.size() && vkObjects.uniformBuffersMemory[i] != nullptr) {
+                    vkObjects.uniformBuffersMemory[i] = nullptr;
+                }
+            }
+            vkObjects.uniformBuffers.clear();
+            vkObjects.uniformBuffersMemory.clear();
+            vkObjects.uniformBuffersMapped.clear();
+            vkObjects.uniformBufferStride = 0;
+        }
+        void clearDescriptorSets() {
+            clearUniformBuffers();
+            for (size_t i{}; i < vkObjects.descriptorSets.size(); ++i) {
+                if (vkObjects.descriptorSets[i] != nullptr) {
+                    vkObjects.descriptorSets[i] = nullptr;
+                }
+            }
+            for (size_t i{}; i < vkObjects.shadowDescriptorSets.size(); ++i) {
+                if (vkObjects.shadowDescriptorSets[i] != nullptr) {
+                    vkObjects.shadowDescriptorSets[i] = nullptr;
+                }
+            }
+            vkObjects.descriptorSets.clear();
+            vkObjects.shadowDescriptorSets.clear();
+        }
         void ensureUniformBuffers(Renderer* renderer, GraphicsShader* shader);
-        void destroyUniformBuffers(Renderer* renderer);
 
         EntityManager* getEntityManager() const { return entityManager; }
 
@@ -119,18 +160,12 @@ namespace engine {
     private:
         std::string name;
         EntityType type;
-        std::string shader;
         glm::mat4 transform;
         glm::mat4 worldTransform;
         std::vector<std::string> textures;
         bool isMovable;
 
-        std::vector<VkDescriptorSet> descriptorSets;
-        std::vector<VkDescriptorSet> shadowDescriptorSets;
-        std::vector<VkBuffer> uniformBuffers;
-        std::vector<VkDeviceMemory> uniformBuffersMemory;
-        std::vector<void*> uniformBuffersMapped;
-        size_t uniformBufferStride = 0;
+        EntityVkObjects vkObjects;
 
         EntityManager* entityManager;
 
@@ -237,6 +272,27 @@ namespace engine {
         }
         void processPendingDeletions();
         void processPendingAdditions();
+        void appendToVkObjectDeletions(Entity::EntityVkObjects&& objects) {
+            pendingVkObjectDeletions.push_back(std::move(objects));
+        }
+        void destroyUniformBuffers(VkDevice device, const Entity::EntityVkObjects& vkObjects) {
+            if (device == VK_NULL_HANDLE) return;
+            for (size_t i = 0; i < vkObjects.uniformBuffers.size(); ++i) {
+                if (i < vkObjects.uniformBuffersMapped.size() && vkObjects.uniformBuffersMapped[i] != nullptr) {
+                    if (i < vkObjects.uniformBuffersMemory.size() && vkObjects.uniformBuffersMemory[i] != VK_NULL_HANDLE) {
+                        vkUnmapMemory(device, vkObjects.uniformBuffersMemory[i]);
+                    }
+                }
+                if (vkObjects.uniformBuffers[i] != VK_NULL_HANDLE) {
+                    vkDestroyBuffer(device, vkObjects.uniformBuffers[i], nullptr);
+                }
+                if (i < vkObjects.uniformBuffersMemory.size() && vkObjects.uniformBuffersMemory[i] != VK_NULL_HANDLE) {
+                    vkFreeMemory(device, vkObjects.uniformBuffersMemory[i], nullptr);
+                }
+            }
+        }
+
+        void deletePendingVkObjects();
 
     private:
         engine::Renderer* renderer;
@@ -248,6 +304,7 @@ namespace engine {
         std::vector<Collider*> dynamicColliders;
         std::vector<Entity*> pendingDeletions;
         std::vector<std::pair<std::string, Entity*>> pendingAdditions;
+        std::vector<Entity::EntityVkObjects> pendingVkObjectDeletions;
         SpatialGrid spatialGrid;
         bool spatialGridDirty = true;
         bool textureLoadDirty = false;

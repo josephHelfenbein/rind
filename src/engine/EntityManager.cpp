@@ -10,6 +10,7 @@
 #include <engine/SIMD.h>
 #include <engine/ThreadPool.h>
 #include <engine/Profiler.h>
+#include <engine/WorkManager.h>
 #include <cstring>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -58,35 +59,16 @@ engine::Entity::Entity(
     std::vector<std::string> textures,
     bool isMovable,
     const EntityType& type
-) : entityManager(entityManager), name(name), shader(shader), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable), type(type) {
+) : entityManager(entityManager), name(name), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable), type(type) {
+        vkObjects.shader = shader;
         entityManager->addEntity(name, this);
     }
 
 engine::Entity::~Entity() {
-    Renderer* renderer = entityManager ? entityManager->getRenderer() : nullptr;
-    if (renderer) {
-        VkDevice device = renderer->getDevice();
-        ShaderManager* shaderManager = renderer->getShaderManager();
-        if (device != VK_NULL_HANDLE && shaderManager) {
-            if (!descriptorSets.empty() && !shader.empty()) {
-                GraphicsShader* entityShader = shaderManager->getGraphicsShader(shader);
-                if (entityShader && entityShader->descriptorPool != VK_NULL_HANDLE) {
-                    vkFreeDescriptorSets(device, entityShader->descriptorPool,
-                        static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data());
-                }
-            }
-            if (!shadowDescriptorSets.empty()) {
-                GraphicsShader* shadowShader = shaderManager->getGraphicsShader("shadow");
-                if (shadowShader && shadowShader->descriptorPool != VK_NULL_HANDLE) {
-                    vkFreeDescriptorSets(device, shadowShader->descriptorPool,
-                        static_cast<uint32_t>(shadowDescriptorSets.size()), shadowDescriptorSets.data());
-                }
-            }
-        }
-    }
-    descriptorSets.clear();
-    shadowDescriptorSets.clear();
-    destroyUniformBuffers(renderer);
+    Renderer* renderer = entityManager->getRenderer();
+    if (!renderer) return;
+    entityManager->appendToVkObjectDeletions(std::move(vkObjects));
+    clearDescriptorSets();
     for (auto& child : children) {
         delete child;
     }
@@ -140,23 +122,23 @@ void engine::Entity::setIsMovable(bool isMovable) {
 
 void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* shader) {
     if (shader->config.vertexBitBindings <= 0) {
-        destroyUniformBuffers(renderer);
+        destroyUniformBuffers();
         return;
     }
     const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
     const size_t requiredStride = static_cast<size_t>(shader->config.vertexBitBindings);
     if (requiredStride == 0 || frames == 0) {
-        destroyUniformBuffers(renderer);
+        destroyUniformBuffers();
         return;
     }
-    if (uniformBufferStride == requiredStride && uniformBuffers.size() == frames * requiredStride) {
+    if (vkObjects.uniformBufferStride == requiredStride && vkObjects.uniformBuffers.size() == frames * requiredStride) {
         return;
     }
-    destroyUniformBuffers(renderer);
-    uniformBufferStride = requiredStride;
-    uniformBuffers.resize(frames * requiredStride, VK_NULL_HANDLE);
-    uniformBuffersMemory.resize(frames * requiredStride, VK_NULL_HANDLE);
-    uniformBuffersMapped.resize(frames * requiredStride, nullptr);
+    destroyUniformBuffers();
+    vkObjects.uniformBufferStride = requiredStride;
+    vkObjects.uniformBuffers.resize(frames * requiredStride, VK_NULL_HANDLE);
+    vkObjects.uniformBuffersMemory.resize(frames * requiredStride, VK_NULL_HANDLE);
+    vkObjects.uniformBuffersMapped.resize(frames * requiredStride, nullptr);
     constexpr size_t MAX_JOINTS = 128;
     constexpr size_t JOINT_MATRIX_UBO_SIZE = MAX_JOINTS * sizeof(glm::mat4);
     
@@ -165,47 +147,21 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
     for (size_t frame = 0; frame < frames; ++frame) {
         for (size_t binding = 0; binding < requiredStride; ++binding) {
             const size_t index = frame * requiredStride + binding;
-            std::tie(uniformBuffers[index], uniformBuffersMemory[index]) = renderer->createBuffer(
+            std::tie(vkObjects.uniformBuffers[index], vkObjects.uniformBuffersMemory[index]) = renderer->createBuffer(
                 JOINT_MATRIX_UBO_SIZE,
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
-            if (vkMapMemory(renderer->getDevice(), uniformBuffersMemory[index], 0, JOINT_MATRIX_UBO_SIZE, 0, &uniformBuffersMapped[index]) == VK_SUCCESS) {
-                memcpy(uniformBuffersMapped[index], identityMatrices.data(), JOINT_MATRIX_UBO_SIZE);
+            if (vkMapMemory(renderer->getDevice(), vkObjects.uniformBuffersMemory[index], 0, JOINT_MATRIX_UBO_SIZE, 0, &vkObjects.uniformBuffersMapped[index]) == VK_SUCCESS) {
+                memcpy(vkObjects.uniformBuffersMapped[index], identityMatrices.data(), JOINT_MATRIX_UBO_SIZE);
             }
         }
     }
 }
 
-void engine::Entity::destroyUniformBuffers(Renderer* renderer) {
-    VkDevice device = renderer->getDevice();
-    if (device == VK_NULL_HANDLE) {
-        uniformBuffers.clear();
-        uniformBuffersMemory.clear();
-        uniformBuffersMapped.clear();
-        uniformBufferStride = 0;
-        return;
-    }
-    for (size_t i = 0; i < uniformBuffers.size(); ++i) {
-        if (i < uniformBuffersMapped.size() && uniformBuffersMapped[i] != nullptr) {
-            if (i < uniformBuffersMemory.size() && uniformBuffersMemory[i] != VK_NULL_HANDLE) {
-                vkUnmapMemory(device, uniformBuffersMemory[i]);
-            }
-            uniformBuffersMapped[i] = nullptr;
-        }
-        if (uniformBuffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-            uniformBuffers[i] = VK_NULL_HANDLE;
-        }
-        if (i < uniformBuffersMemory.size() && uniformBuffersMemory[i] != VK_NULL_HANDLE) {
-            vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
-            uniformBuffersMemory[i] = VK_NULL_HANDLE;
-        }
-    }
-    uniformBuffers.clear();
-    uniformBuffersMemory.clear();
-    uniformBuffersMapped.clear();
-    uniformBufferStride = 0;
+void engine::Entity::destroyUniformBuffers() {
+    entityManager->destroyUniformBuffers(entityManager->getRenderer()->getDevice(), vkObjects);
+    clearUniformBuffers();
 }
 
 void engine::Entity::playAnimation(const std::string& animationName, bool loop, float speed) {
@@ -742,7 +698,6 @@ bool engine::EntityManager::hasRenderable3D() {
 void engine::EntityManager::processPendingDeletions() {
     if (pendingDeletions.empty()) return;
     renderable3DCacheDirty = true;
-    vkDeviceWaitIdle(renderer->getDevice());
     static thread_local std::vector<Entity*> rootsTraversalBuffer;
     rootsTraversalBuffer.clear();
     std::swap(rootsTraversalBuffer, pendingDeletions);
@@ -751,6 +706,29 @@ void engine::EntityManager::processPendingDeletions() {
             delete entity;
         }
     }
+}
+
+void engine::EntityManager::deletePendingVkObjects() {
+    VkDevice device = renderer->getDevice();
+    ShaderManager* shaderManager = renderer->getShaderManager();
+    for (auto& objects : pendingVkObjectDeletions) {
+        if (!objects.descriptorSets.empty() && !objects.shader.empty()) {
+            GraphicsShader* entityShader = shaderManager->getGraphicsShader(objects.shader);
+            if (entityShader && entityShader->descriptorPool != VK_NULL_HANDLE) {
+                vkFreeDescriptorSets(device, entityShader->descriptorPool,
+                    static_cast<uint32_t>(objects.descriptorSets.size()), objects.descriptorSets.data());
+            }
+        }
+        if (!objects.shadowDescriptorSets.empty()) {
+            GraphicsShader* shadowShader = shaderManager->getGraphicsShader("shadow");
+            if (shadowShader && shadowShader->descriptorPool != VK_NULL_HANDLE) {
+                vkFreeDescriptorSets(device, shadowShader->descriptorPool,
+                    static_cast<uint32_t>(objects.shadowDescriptorSets.size()), objects.shadowDescriptorSets.data());
+            }
+        }
+        destroyUniformBuffers(device, objects);
+    }
+    pendingVkObjectDeletions.clear();
 }
 
 void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {

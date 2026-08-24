@@ -815,6 +815,10 @@ void engine::Renderer::drawFrame() {
         vkWaitForFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences, VK_TRUE, UINT64_MAX);
     }
     PROFILER_GPU_RESET(profiler);
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::ClearVulkanObjects);
+        entityManager->deletePendingVkObjects();
+    }
     uint32_t imageIndex;
     VkResult result;
     {
@@ -1404,7 +1408,7 @@ void engine::Renderer::recordCommandBuffer(
         VkRenderingAttachmentInfo swapColor{};
 
         {
-            PROFILER_GPU_ZONE(profiler, commandBuffer, static_cast<uint16_t>(nodeIdx), isComputeQueue);
+            PROFILER_GPU_ZONE(profiler, commandBuffer, static_cast<uint8_t>(nodeIdx), isComputeQueue);
             if (usesRendering) {
                 renderingInfo = {
                     .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,

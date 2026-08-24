@@ -45,6 +45,7 @@ namespace engine {
         void registerVolumetricManager(class VolumetricManager* volumetricManager) { this->volumetricManager = volumetricManager; }
         void registerLightManager(class LightManager* lightManager) { this->lightManager = lightManager; }
         void registerIrradianceManager(class IrradianceManager* irradianceManager) { this->irradianceManager = irradianceManager; }
+        void registerWorkManager(class WorkManager* workManager) { this->workManager = workManager; }
         #ifndef NDEBUG
         void registerProfiler(class profiler::Profiler* profiler) { this->profiler = profiler; }
         #endif
@@ -62,6 +63,7 @@ namespace engine {
         class VolumetricManager* getVolumetricManager() { return volumetricManager; }
         class LightManager* getLightManager() { return lightManager; }
         class IrradianceManager* getIrradianceManager() { return irradianceManager; }
+        class WorkManager* getWorkManager() { return workManager; }
         class profiler::Profiler* getProfiler() { return profiler; }
 
         void toggleLockCursor(bool lock);
@@ -226,6 +228,7 @@ namespace engine {
         };
         HdrState hdrState{};
         bool hdrSupported = false;
+        static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
         const HdrState& getHdrState() const { return hdrState; }
         void setHdrPaperWhiteNits(float nits) { hdrState.paperWhiteNits = nits; }
@@ -239,8 +242,6 @@ namespace engine {
         static constexpr float fadeDurationSeconds = 0.08f;
         void updateFade();
 
-        #define MAX_GPU_FRAMES_IN_FLIGHT 2
-        const int MAX_FRAMES_IN_FLIGHT = MAX_GPU_FRAMES_IN_FLIGHT;
         uint32_t currentFrame = 0;
         const std::vector<const char*> validationLayers = {
             "VK_LAYER_KHRONOS_validation"
@@ -378,6 +379,7 @@ namespace engine {
         class VolumetricManager* volumetricManager;
         class LightManager* lightManager;
         class IrradianceManager* irradianceManager;
+        class WorkManager* workManager;
         class profiler::Profiler* profiler = nullptr; // registered in debug builds
 
         UIObject* hoveredObject = nullptr;

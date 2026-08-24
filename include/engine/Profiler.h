@@ -10,11 +10,15 @@ enum class Zone : uint8_t {
     // root
     Cleanup, Throttle, WaitFences, Acquire, BuildGraph, Update, Record, Submit, Present,
     // children
-    Cleanup_Deletions, Cleanup_Additions, Cleanup_ShadowMaps, Cleanup_Irradiance,
+    Cleanup_Deletions, Cleanup_Additions, Cleanup_ShadowMaps, Cleanup_Irradiance, ClearVulkanObjects,
     Update_Entities, Update_Audio, Update_Particles, Update_Volumetrics,
     Update_ParticlesBuffer, Update_VolumetricsBuffer, Update_Audio_Listener,
     Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_LoadTextures,
     Update_Particles_Integrate, Update_Particles_Collision, Update_Particles_Compact,
+    Count
+};
+
+enum class OffloadZone : uint8_t {
     Count
 };
 
@@ -24,6 +28,7 @@ enum class Zone : uint8_t {
 #ifndef NDEBUG // debug build
 
 #include <array>
+#include <atomic>
 #include <string_view>
 #include <engine/Renderer.h>
 #include <engine/IO.h>
@@ -45,14 +50,18 @@ namespace profiler {
     // parent-child relationship defined by underscore prefixes
     inline constexpr std::array<std::string_view, static_cast<size_t>(Zone::Count)> kZoneNames = {
         "Cleanup", "Throttle", "WaitFences", "Acquire", "BuildGraph", "Update", "Record", "Submit", "Present",
-        "Cleanup_Deletions", "Cleanup_Additions", "Cleanup_ShadowMaps", "Cleanup_Irradiance",
+        "Cleanup_Deletions", "Cleanup_Additions", "Cleanup_ShadowMaps", "Cleanup_Irradiance", "ClearVulkanObjects",
         "Update_Entities", "Update_Audio", "Update_Particles", "Update_Volumetrics",
         "Update_ParticlesBuffer", "Update_VolumetricsBuffer", "Update_Audio_Listener",
         "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_LoadTextures",
         "Update_Particles_Integrate", "Update_Particles_Collision", "Update_Particles_Compact"
     };
 
-    static constexpr size_t kMaxGpuSpans = 256;
+    inline constexpr std::array<std::string_view, static_cast<size_t>(OffloadZone::Count)> kOffloadZoneNames = {
+    };
+
+    static constexpr size_t kMaxGpuSpans = 255;
+    static constexpr size_t kMaxOffloadEvents = 32;
 
     struct Span {
         uint32_t startNs = 0;
@@ -60,17 +69,22 @@ namespace profiler {
     };
 
     struct GpuSpan {
-        uint16_t nodeIdx = 0;
-        uint16_t subIdx = 0;
+        uint8_t nodeIdx = 0;
+        uint8_t subIdx = 0;
         uint8_t queue = 0; // 0 = graphics, 1 = compute
         Span span;
     };
 
+    struct OffloadEvent {
+        Span span;
+        OffloadZone zone;
+    };
+
     struct GpuFrameSlot {
         size_t ringIdx = SIZE_MAX;
-        uint16_t passCount = 0;
+        uint8_t passCount = 0;
         bool pending = false;
-        std::array<uint16_t, profiler::kMaxGpuSpans> node{};
+        std::array<uint8_t, profiler::kMaxGpuSpans> node{};
         std::array<uint8_t, profiler::kMaxGpuSpans> queue{};
     };
 
@@ -78,8 +92,10 @@ namespace profiler {
         uint64_t startNs = 0;
         uint32_t endNs = 0;
         std::array<Span, size_t(Zone::Count)> zones{};
-        uint16_t gpuSpanCount = 0;
+        uint8_t gpuSpanCount = 0;
+        uint8_t offloadEventCount = 0;
         std::array<GpuSpan, kMaxGpuSpans> gpuSpans{};
+        std::array<OffloadEvent, kMaxOffloadEvents> offloadEvents{};
     };
 
     namespace Clock {
@@ -119,6 +135,7 @@ namespace profiler {
     }
 
     template <Zone Z> class ScopedZone;
+    template <OffloadZone Z> class ScopedOffloadZone;
 
     class Profiler {
     public:
@@ -130,8 +147,10 @@ namespace profiler {
         static constexpr size_t kMaxFrames = 120;
 
         void dumpFrames() const {
-            const size_t oldest = (currentFrameIndex + 1) % kMaxFrames;
-            if (ring[oldest].endNs == 0) return; // ring not full
+            const size_t frameIdx = currentFrameIndex.load(std::memory_order_acquire);
+            const auto& copy = ring;
+            const size_t oldest = (frameIdx + 1) % kMaxFrames;
+            if (copy[oldest].endNs == 0) return; // ring not full
 
             std::filesystem::path path = getConfigDirectory(profileLocation) / "profile.json";
             
@@ -156,13 +175,14 @@ namespace profiler {
             };
             meta("process_name", processId, 1, "Rind");
             meta("thread_name", processId, threadId, "CPU Main");
+            meta("thread_name", processId, offloadThreadId, "CPU Offload");
             meta("thread_name", processId, 100000000, "GPU Graphics");
             meta("thread_name", processId, 100000001, "GPU Compute");
 
-            const uint64_t baseNs = ring[oldest].startNs;
+            const uint64_t baseNs = copy[oldest].startNs;
 
             for (size_t i = 0; i < kMaxFrames; ++i) {
-                const FrameZones& frame = ring[(oldest + i) % kMaxFrames];
+                const FrameZones& frame = copy[(oldest + i) % kMaxFrames];
                 if (frame.endNs == 0) continue;
                 const uint64_t frameStartNs = frame.startNs - baseNs;
                 char fname[32];
@@ -177,6 +197,11 @@ namespace profiler {
                     const GpuSpan& span = frame.gpuSpans[g];
                     if (span.span.endNs == 0) continue;
                     slice(nodeName(span.nodeIdx), processId, 100000000 + span.queue, "gpu", us(frameStartNs + span.span.startNs), us(span.span.endNs));
+                }
+                for (size_t o = 0; o < frame.offloadEventCount; ++o) {
+                    const OffloadEvent& event = frame.offloadEvents[o];
+                    if (event.span.endNs == 0) continue;
+                    slice(kOffloadZoneNames[static_cast<size_t>(event.zone)], processId, offloadThreadId, "cpu", us(frameStartNs + event.span.startNs), us(event.span.endNs));
                 }
             }
             if (out.ends_with(",\n")) { // trim comma
@@ -200,31 +225,34 @@ namespace profiler {
         [[nodiscard]] ScopedFrame scopedFrame() { beginFrame(); return {this}; }
 
         void beginFrame() {
-            currentFrameIndex = (currentFrameIndex + 1) % kMaxFrames;
-            auto& frame = ring[currentFrameIndex];
+            size_t frameIdx = (currentFrameIndex.load(std::memory_order_release) + 1) % kMaxFrames;
+            currentFrameIndex.store(frameIdx, std::memory_order_release);
+            auto& frame = ring[frameIdx];
             frame.startNs = Clock::Now();
             frame.endNs = 0;
             frame.zones.fill(Span{0, 0});
+            frame.offloadEvents.fill(OffloadEvent{Span{0, 0}, OffloadZone::Count});
+            frame.offloadEventCount = 0;
             frame.gpuSpans.fill(GpuSpan{0, 0, 0, Span{0, 0}});
             frame.gpuSpanCount = 0;
         }
 
         void endFrame() {
-            auto& frame = ring[currentFrameIndex];
+            auto& frame = ring[currentFrameIndex.load(std::memory_order_relaxed)];
             frame.endNs = static_cast<uint32_t>(Clock::Now() - frame.startNs);
         }
 
         template <Zone Z>
         void zoneEnter() {
             const auto now = Clock::Now();
-            auto& frame = ring[currentFrameIndex];
+            auto& frame = ring[currentFrameIndex.load(std::memory_order_relaxed)];
             frame.zones[size_t(Z)].startNs = static_cast<uint32_t>(now - frame.startNs);
         }
 
         template <Zone Z>
         void zoneExit() {
             const auto now = Clock::Now();
-            auto& frame = ring[currentFrameIndex];
+            auto& frame = ring[currentFrameIndex.load(std::memory_order_relaxed)];
             const auto startNs = frame.zones[size_t(Z)].startNs;
             frame.zones[size_t(Z)].endNs = static_cast<uint32_t>(now - startNs - frame.startNs);
         }
@@ -234,8 +262,6 @@ namespace profiler {
             auto& frame = ring[ringIndex];
             if (frame.gpuSpanCount < kMaxGpuSpans) {
                 frame.gpuSpans[frame.gpuSpanCount++] = span;
-            } else {
-                droppedGpuSpans++;
             }
         }
 
@@ -259,7 +285,7 @@ namespace profiler {
             VkQueryPoolCreateInfo queryPoolCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
                 .queryType = VK_QUERY_TYPE_TIMESTAMP,
-                .queryCount = 2 * profiler::kMaxGpuSpans * MAX_GPU_FRAMES_IN_FLIGHT,
+                .queryCount = 2 * profiler::kMaxGpuSpans * Renderer::MAX_FRAMES_IN_FLIGHT,
             };
             vkCreateQueryPool(device, &queryPoolCreateInfo, nullptr, &gpuQueryPool);
         }
@@ -277,14 +303,11 @@ namespace profiler {
             slot.pending = true;
         }
 
-        int gpuZoneBegin(VkCommandBuffer cmd, uint16_t nodeIdx, uint8_t queue) {
+        int gpuZoneBegin(VkCommandBuffer cmd, uint8_t nodeIdx, uint8_t queue) {
             if (!gfxTsEnabled || (queue == 1 && !cmpTsEnabled)) return -1;
             auto& slot = gpuFrameSlots[renderer->getCurrentFrameIndex()];
-            if (slot.passCount >= kMaxGpuSpans) {
-                droppedGpuSpans++;
-                return -1;
-            }
-            const uint16_t passIdx = slot.passCount++;
+            if (slot.passCount >= kMaxGpuSpans) return -1;
+            const uint8_t passIdx = slot.passCount++;
             slot.node[passIdx] = nodeIdx;
             slot.queue[passIdx] = queue;
             const uint32_t base = renderer->getCurrentFrameIndex() * 2 * kMaxGpuSpans;
@@ -299,7 +322,7 @@ namespace profiler {
         }
 
         struct ScopedGpuZone {
-            ScopedGpuZone(Profiler* profiler, VkCommandBuffer cmd, uint16_t nodeIdx, uint8_t queue)
+            ScopedGpuZone(Profiler* profiler, VkCommandBuffer cmd, uint8_t nodeIdx, uint8_t queue)
                 : profiler(profiler), cmd(cmd) {
                     if (profiler) {
                         passIdx = profiler->gpuZoneBegin(cmd, nodeIdx, queue);
@@ -327,7 +350,7 @@ namespace profiler {
             };
             const uint64_t frameOrigin = ring[slot.ringIdx].startNs;
 
-            for (uint16_t p = 0; p < slot.passCount; ++p) {
+            for (uint8_t p = 0; p < slot.passCount; ++p) {
                 const uint64_t mask = (slot.queue[p] == 0) ? gfxTsMask : cmpTsMax;
                 const uint64_t startNs = gpuToCpuNs(r[2 * p] & mask);
                 const uint64_t endNs = gpuToCpuNs(r[2 * p + 1] & mask);
@@ -371,25 +394,41 @@ namespace profiler {
             hostDomain = domain;
         }
 
+        template<OffloadZone Z>
+        void addOffloadSpan(uint64_t startTs, uint64_t endTs) { // called by offload thread
+            auto& frame = ring[currentFrameIndex.load(std::memory_order_acquire)];
+            if (frame.offloadEventCount < kMaxOffloadEvents) {
+                Span span{
+                    .startNs = static_cast<uint32_t>(startTs - frame.startNs),
+                    .endNs = static_cast<uint32_t>(endTs - startTs)
+                };
+                frame.offloadEvents[frame.offloadEventCount++] = OffloadEvent{span, Z};
+            }
+        }
+
+        void registerOffloadThreadId() { // called by offload thread
+            offloadThreadId = currentThreadId();
+        }
+
     private:
         std::array<FrameZones, kMaxFrames> ring{};
-        std::array<GpuFrameSlot, MAX_GPU_FRAMES_IN_FLIGHT> gpuFrameSlots;
+        std::array<GpuFrameSlot, Renderer::MAX_FRAMES_IN_FLIGHT> gpuFrameSlots;
         VkQueryPool gpuQueryPool = VK_NULL_HANDLE;
         float gpuTsPeriod = 0.0f; // ns per tick
         uint64_t gfxTsMask = 0; // (1<<validBits)-1 per queue family
         uint64_t cmpTsMax = 0;
         bool gfxTsEnabled = false; // graphics queue supports timestamp queries
         bool cmpTsEnabled = false; // compute queue supports timestamp queries
-        size_t droppedGpuSpans = 0;
         uint64_t calibrationGpuTicks = 0;
         uint64_t calibrationHostNs = 0;
         bool calibratedTimestampsSupported = false;
         VkTimeDomainKHR hostDomain = VK_TIME_DOMAIN_MAX_ENUM_KHR;
         Renderer* renderer;
-        size_t currentFrameIndex = 0;
+        std::atomic<size_t> currentFrameIndex{};
         std::string profileLocation;
         int processId = currentProcessId();
         uint64_t threadId = currentThreadId();
+        uint64_t offloadThreadId{};
 
         inline uint64_t currentThreadId() {
             thread_local const uint64_t tid = []() -> uint64_t {
@@ -414,7 +453,7 @@ namespace profiler {
             #endif
         }
 
-        std::string_view nodeName(uint16_t i) const {
+        std::string_view nodeName(uint8_t i) const {
             const auto& graph = renderer->getShaderManager()->getRenderGraph();
             return i < graph.size() ? std::string_view(graph[i].name) : "unknown";
         }
@@ -437,6 +476,26 @@ namespace profiler {
         Profiler* profiler;
     };
 
+    template <OffloadZone Z>
+    class ScopedOffloadZone {
+    public:
+        explicit ScopedOffloadZone(Profiler* profiler) : profiler(profiler) {
+            if (profiler) {
+                startTs = Clock::Now();
+            }
+        }
+
+        ~ScopedOffloadZone() {
+            if (profiler) {
+                profiler->addOffloadSpan<Z>(startTs, Clock::Now());
+            }
+        }
+
+    private:
+        Profiler* profiler;
+        uint64_t startTs{};
+    };
+
 namespace {
 
     #define PROFILER_CONCAT_(a,b) a##b
@@ -457,6 +516,13 @@ namespace {
         ::engine::profiler::Profiler::ScopedGpuZone \
             PROFILER_CONCAT(prof_gpu_zone_, __LINE__){ (profiler), (cmd), (nodeIdx), (queue) }
 
+    #define PROFILER_OFFLOAD_ZONE(profiler, Z) \
+        ::engine::profiler::ScopedOffloadZone<Z> \
+            PROFILER_CONCAT(prof_zone_, __LINE__) { (profiler) }
+
+    #define PROFILER_REGISTER_OFFLOAD(profiler) \
+        do { if (profiler) profiler->registerOffloadThreadId(); } while (0)
+
 };
 };
 };
@@ -473,6 +539,12 @@ namespace {
     do {} while (0)
 
 #define PROFILER_GPU_ZONE(profiler, cmd, nodeIdx, queue) \
+    do {} while (0)
+
+#define PROFILER_OFFLOAD_ZONE(profiler, Z) \
+    do {} while (0)
+
+#define PROFILER_REGISTER_OFFLOAD(profiler) \
     do {} while (0)
 
 namespace engine {
