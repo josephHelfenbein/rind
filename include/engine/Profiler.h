@@ -8,12 +8,14 @@ namespace profiler {
 // also update kZoneNames
 enum class Zone : uint8_t {
     // root
-    Cleanup, Throttle, WaitFences, Acquire, BuildGraph, Update, Record, Submit, Present,
+    Setup, Cleanup, Throttle, WaitFences, DeferredVulkan, Acquire, BuildGraph, Update, Record, Submit, Present,
     // children
-    Cleanup_Deletions, Cleanup_Additions, Cleanup_ShadowMaps, Cleanup_Irradiance, ClearVulkanObjects,
+    Setup_PollEvents, Setup_BeginLambda, Setup_ScreenMode, Setup_Input, Setup_Scene, Setup_Attachments,
+    Cleanup_Deletions, Cleanup_Additions, Cleanup_UI, Cleanup_ShadowMaps,
+    DeferredVulkan_ClearObjects, DeferredVulkan_PostProcess, DeferredVulkan_ShadowMaps, DeferredVulkan_GrowParticleBuffer, DeferredVulkan_GrowVolumetricBuffer, DeferredVulkan_Irradiance,
     Update_Entities, Update_Audio, Update_Particles, Update_Volumetrics,
     Update_ParticlesBuffer, Update_VolumetricsBuffer, Update_Audio_Listener,
-    Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_LoadTextures,
+    Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_CollisionCache, Update_Entities_LoadTextures,
     Update_Particles_Integrate, Update_Particles_Collision, Update_Particles_Compact,
     Count
 };
@@ -49,11 +51,13 @@ namespace profiler {
 
     // parent-child relationship defined by underscore prefixes
     inline constexpr std::array<std::string_view, static_cast<size_t>(Zone::Count)> kZoneNames = {
-        "Cleanup", "Throttle", "WaitFences", "Acquire", "BuildGraph", "Update", "Record", "Submit", "Present",
-        "Cleanup_Deletions", "Cleanup_Additions", "Cleanup_ShadowMaps", "Cleanup_Irradiance", "ClearVulkanObjects",
+        "Setup", "Cleanup", "Throttle", "WaitFences", "DeferredVulkan", "Acquire", "BuildGraph", "Update", "Record", "Submit", "Present",
+        "Setup_PollEvents", "Setup_BeginLambda", "Setup_ScreenMode", "Setup_Input", "Setup_Scene", "Setup_Attachments",
+        "Cleanup_Deletions", "Cleanup_Additions", "Cleanup_UI", "Cleanup_ShadowMaps",
+        "DeferredVulkan_ClearObjects", "DeferredVulkan_PostProcess", "DeferredVulkan_ShadowMaps", "DeferredVulkan_GrowParticleBuffer", "DeferredVulkan_GrowVolumetricBuffer", "DeferredVulkan_Irradiance",
         "Update_Entities", "Update_Audio", "Update_Particles", "Update_Volumetrics",
         "Update_ParticlesBuffer", "Update_VolumetricsBuffer", "Update_Audio_Listener",
-        "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_LoadTextures",
+        "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_CollisionCache", "Update_Entities_LoadTextures",
         "Update_Particles_Integrate", "Update_Particles_Collision", "Update_Particles_Compact"
     };
 
@@ -185,9 +189,7 @@ namespace profiler {
                 const FrameZones& frame = copy[(oldest + i) % kMaxFrames];
                 if (frame.endNs == 0) continue;
                 const uint64_t frameStartNs = frame.startNs - baseNs;
-                char fname[32];
-                std::snprintf(fname, sizeof(fname), "Frame %zu", i);
-                slice(fname, processId, threadId, "frame", us(frameStartNs), us(frame.endNs));
+                slice("Frame", processId, threadId, "frame", us(frameStartNs), us(frame.endNs));
                 for (size_t z = 0; z < static_cast<size_t>(Zone::Count); ++z) {
                     const Span& span = frame.zones[z];
                     if (span.endNs == 0) continue;

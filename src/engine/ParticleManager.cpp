@@ -401,43 +401,12 @@ void engine::ParticleManager::spawnTrail(const glm::vec3& start, const glm::vec3
 }
 
 void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
-    VkDevice device = renderer->getDevice();
-    if (particles.count() > hardCap) {
+    if (particles.count() > maxParticles) {
         size_t toRemove = particles.count() - hardCap;
         particles.truncateFront(toRemove);
-    }
-    if (particles.count() > maxParticles) {
-        vkDeviceWaitIdle(device);
-        maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.count())), hardCap);
-        for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {
-            if (particleBuffersMapped[i] != nullptr && i < particleBufferMemory.size() && particleBufferMemory[i] != VK_NULL_HANDLE) {
-                vkUnmapMemory(device, particleBufferMemory[i]);
-                particleBuffersMapped[i] = nullptr;
-            }
+        if (particles.count() < hardCap) {
+            deferGrowParticleBuffer();
         }
-        for (size_t i = 0; i < particleBuffers.size(); ++i) {
-            vkDestroyBuffer(device, particleBuffers[i], nullptr);
-            vkFreeMemory(device, particleBufferMemory[i], nullptr);
-        }
-        particleBuffers.clear();
-        particleBufferMemory.clear();
-        particleBuffersMapped.clear();
-        particleBuffers.resize(renderer->getMaxFramesInFlight());
-        particleBufferMemory.resize(renderer->getMaxFramesInFlight());
-        particleBuffersMapped.resize(renderer->getMaxFramesInFlight(), nullptr);
-        for (size_t i = 0; i < particleBuffers.size(); ++i) {
-            VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
-            std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
-                bufferSize,
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            );
-            vkMapMemory(device, particleBufferMemory[i], 0, bufferSize, 0, &particleBuffersMapped[i]);
-        }
-        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
-        vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
-        createParticleDescriptorSets();
-        renderer->createComputeDescriptorSets();
     }
     ParticleGPU* gpuData = static_cast<ParticleGPU*>(particleBuffersMapped[currentFrame]);
     visibleCount = 0;
@@ -455,6 +424,44 @@ void engine::ParticleManager::updateParticleBuffer(uint32_t currentFrame) {
     for (size_t i = visibleCount; i < n; ++i) {
         gpuData[i] = gpuData[backIdx++];
     }
+}
+
+void engine::ParticleManager::dispatchGrowParticleBuffer() {
+    if (!pendingGrowBuffer) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_GrowParticleBuffer);
+    pendingGrowBuffer = false;
+    VkDevice device = renderer->getDevice();
+    maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.count())), hardCap);
+    for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {
+        if (particleBuffersMapped[i] != nullptr && i < particleBufferMemory.size() && particleBufferMemory[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, particleBufferMemory[i]);
+            particleBuffersMapped[i] = nullptr;
+        }
+    }
+    for (size_t i = 0; i < particleBuffers.size(); ++i) {
+        vkDestroyBuffer(device, particleBuffers[i], nullptr);
+        vkFreeMemory(device, particleBufferMemory[i], nullptr);
+    }
+    particleBuffers.clear();
+    particleBufferMemory.clear();
+    particleBuffersMapped.clear();
+    particleBuffers.resize(renderer->getMaxFramesInFlight());
+    particleBufferMemory.resize(renderer->getMaxFramesInFlight());
+    particleBuffersMapped.resize(renderer->getMaxFramesInFlight(), nullptr);
+    for (size_t i = 0; i < particleBuffers.size(); ++i) {
+        VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
+        std::tie(particleBuffers[i], particleBufferMemory[i]) = renderer->createBuffer(
+            bufferSize,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(device, particleBufferMemory[i], 0, bufferSize, 0, &particleBuffersMapped[i]);
+    }
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
+    vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
+    createParticleDescriptorSets();
+    renderer->createComputeDescriptorSets();
 }
 
 void engine::ParticleManager::renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame) {

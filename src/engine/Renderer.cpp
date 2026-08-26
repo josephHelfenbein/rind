@@ -200,7 +200,8 @@ void engine::Renderer::initVulkan() {
     uiManager->loadTextures();
     uiManager->loadFonts();
     entityManager->loadTextures();
-    lightManager->createAllShadowMaps();
+    lightManager->deferCreateAllShadowMaps();
+    lightManager->dispatchCreateAllShadowMaps();
     irradianceManager->createAllIrradianceMaps();
     createPostProcessDescriptorSets();
     createCommandBuffers();
@@ -233,6 +234,7 @@ void engine::Renderer::updateFade() {
     float now = static_cast<float>(glfwGetTime());
     float dt = now - fadeLastTime;
     fadeLastTime = now;
+    if (fadeState == FadeState::Idle) return;
     if (dt > fadeDurationSeconds) dt = fadeDurationSeconds;
     float step = dt / fadeDurationSeconds;
     if (fadeState == FadeState::FadingOut) {
@@ -273,26 +275,6 @@ void engine::Renderer::mainLoop() {
         });
     #endif
     while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-        if (onFrameBegin) onFrameBegin();
-        if (pendingScreenModeApply) {
-            pendingScreenModeApply = false;
-            applyScreenMode();
-            recreateSwapChain();
-        }
-        processInput(window);
-        updateFade();
-        if (sceneManager->hasPendingSceneChange()) {
-            if (fadeState == FadeState::Idle || fadeState == FadeState::FadingIn) {
-                fadeState = FadeState::FadingOut;
-            }
-            if (fadeState == FadeState::FadingOut && fadeAmount >= 1.0f) {
-                sceneManager->processPendingSceneChange();
-                fadeState = FadeState::FadingIn;
-                fadeLastTime = static_cast<float>(glfwGetTime());
-            }
-        }
-        uiManager->processPendingRemovals();
         drawFrame();
     }
     vkDeviceWaitIdle(device);
@@ -756,42 +738,58 @@ void engine::Renderer::drawFrame() {
         }
         return false;
     };
-    if (shouldRebuildAttachments()) {
-        recreateSwapChain();
-        return;
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Setup);
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Setup_PollEvents);
+            glfwPollEvents();
+        }
+        if (onFrameBegin) {
+            PROFILER_ZONE(profiler, profiler::Zone::Setup_BeginLambda);
+            onFrameBegin();
+        }
+        if (pendingScreenModeApply) {
+            PROFILER_ZONE(profiler, profiler::Zone::Setup_ScreenMode);
+            pendingScreenModeApply = false;
+            applyScreenMode();
+            recreateSwapChain();
+        }
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Setup_Input);
+            processInput(window);
+        }
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Setup_Scene);
+            updateFade();
+            if (sceneManager->hasPendingSceneChange()) {
+                if (fadeState == FadeState::Idle || fadeState == FadeState::FadingIn) {
+                    fadeState = FadeState::FadingOut;
+                }
+                if (fadeState == FadeState::FadingOut && fadeAmount >= 1.0f) {
+                    sceneManager->processPendingSceneChange();
+                    fadeState = FadeState::FadingIn;
+                    fadeLastTime = static_cast<float>(glfwGetTime());
+                }
+            }
+        }
+        {
+            PROFILER_ZONE(profiler, profiler::Zone::Setup_Attachments);
+            if (shouldRebuildAttachments()) {
+                recreateSwapChain();
+                return;
+            }
+        }
     }
     {
         PROFILER_ZONE(profiler, profiler::Zone::Cleanup);
-        {
-            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Deletions);
-            entityManager->processPendingDeletions();
-        }
-        {
-            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Additions);
-            entityManager->processPendingAdditions();
-        }
+        entityManager->processPendingDeletions();
+        entityManager->processPendingAdditions();
+        uiManager->processPendingRemovals();
         if (shadowMapRecreationPending) {
             PROFILER_ZONE(profiler, profiler::Zone::Cleanup_ShadowMaps);
-            lightManager->createAllShadowMaps();
-            vkDeviceWaitIdle(device);
-            createPostProcessDescriptorSets();
+            lightManager->deferCreateAllShadowMaps();
+            deferCreatePostProcessDescriptorSets();
             shadowMapRecreationPending = false;
-        }
-        if (irradianceManager->needsIrradianceBaking()) {
-            PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Irradiance);
-            entityManager->loadTextures();
-            irradianceManager->createAllIrradianceMaps();
-            VkCommandBuffer cmdBuffer = beginSingleTimeCommands();
-            irradianceManager->bakeIrradianceMaps(cmdBuffer);
-            irradianceManager->recordIrradianceReadback(cmdBuffer);
-            endSingleTimeCommands(cmdBuffer);
-            irradianceManager->processIrradianceSH();
-            irradianceManager->setIrradianceBakingPending(false);
-            for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-                irradianceManager->updateIrradianceProbesUBO(i);
-            }
-            vkDeviceWaitIdle(device);
-            createPostProcessDescriptorSets();
         }
     }
     double currentTime = glfwGetTime();
@@ -816,8 +814,31 @@ void engine::Renderer::drawFrame() {
     }
     PROFILER_GPU_RESET(profiler);
     {
-        PROFILER_ZONE(profiler, profiler::Zone::ClearVulkanObjects);
+        PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan);
         entityManager->deletePendingVkObjects();
+        lightManager->dispatchCreateAllShadowMaps();   
+        particleManager->dispatchGrowParticleBuffer();
+        volumetricManager->dispatchGrowVolumetricBuffer();
+        if (irradianceManager->needsIrradianceBaking()) {
+            PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_Irradiance);
+            entityManager->loadTextures();
+            irradianceManager->createAllIrradianceMaps();
+            VkCommandBuffer cmdBuffer = beginSingleTimeCommands();
+            irradianceManager->bakeIrradianceMaps(cmdBuffer);
+            irradianceManager->recordIrradianceReadback(cmdBuffer);
+            endSingleTimeCommands(cmdBuffer);
+            irradianceManager->processIrradianceSH();
+            irradianceManager->setIrradianceBakingPending(false);
+            for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+                irradianceManager->updateIrradianceProbesUBO(i);
+            }
+            deferCreatePostProcessDescriptorSets();
+        }
+        if (pendingCreatePostProcessDescriptorSets) {
+            PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_PostProcess);
+            pendingCreatePostProcessDescriptorSets = false;
+            createPostProcessDescriptorSets();
+        }
     }
     uint32_t imageIndex;
     VkResult result;

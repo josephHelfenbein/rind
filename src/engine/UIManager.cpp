@@ -5,6 +5,7 @@
 #include <engine/InputManager.h>
 #include <engine/AudioManager.h>
 #include <engine/PushConstants.h>
+#include <engine/Profiler.h>
 #include <algorithm>
 #include <utility>
 #include <limits>
@@ -402,6 +403,9 @@ void engine::UIManager::removeObjectDeferred(const std::string& name) {
 }
 
 void engine::UIManager::processPendingRemovals() {
+    if (pendingRemovals.empty()) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::Cleanup_UI);
     for (const auto& name : pendingRemovals) {
         removeObject(name);
     }

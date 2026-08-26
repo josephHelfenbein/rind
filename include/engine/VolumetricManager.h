@@ -97,6 +97,8 @@ namespace engine {
 
         void updateAll(float deltaTime);
         void renderVolumetrics(VkCommandBuffer commandBuffer, uint32_t currentFrame);
+        void deferGrowVolumetricBuffer() { pendingGrowBuffer = true; }
+        void dispatchGrowVolumetricBuffer();
 
         uint32_t getVisibleVolumetrics() const { return visibleVolumetrics; }
 
@@ -108,6 +110,7 @@ namespace engine {
         std::vector<VkDeviceMemory> volumetricBufferMemory;
         std::vector<void*> volumetricBuffersMapped;
         std::vector<VkDescriptorSet> descriptorSets;
+        bool pendingGrowBuffer = false;
 
         uint32_t visibleVolumetrics = 0;
         uint32_t maxVolumetrics = 100;

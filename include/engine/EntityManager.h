@@ -63,7 +63,7 @@ namespace engine {
 
         virtual void update(float deltaTime) {}
 
-        void updateWorldTransform(const glm::mat4& parentWorld);
+        bool updateWorldTransform(const glm::mat4& parentWorld);
 
         void addChild(Entity* child);
         void removeChild(Entity* child);
@@ -314,6 +314,7 @@ namespace engine {
         bool computeHasRenderable3D() const;
 
         std::vector<Entity*> animatedToUpdate;
+        std::vector<Collider*> collidersToWarm;
 
         Camera* camera = nullptr;
 

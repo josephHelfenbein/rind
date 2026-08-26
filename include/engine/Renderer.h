@@ -183,6 +183,7 @@ namespace engine {
         void refreshDescriptorSets();
         void resetPostProcessDescriptorPools();
         void resetPerObjectDescriptorPools();
+        void deferCreatePostProcessDescriptorSets() { pendingCreatePostProcessDescriptorSets = true; }
         void createPostProcessDescriptorSets();
         void createComputeDescriptorSets();
         void dispatchComputePass(VkCommandBuffer commandBuffer, RenderNode& node);
@@ -278,6 +279,7 @@ namespace engine {
         uint32_t currentScreenMode = 0;
         bool pendingScreenModeApply = false;
         uint32_t lastNonFullscreenMode = 0;
+        bool pendingCreatePostProcessDescriptorSets = false;
         void toggleFullscreen();
 
         PFN_vkCmdBeginRendering fpCmdBeginRendering = nullptr;

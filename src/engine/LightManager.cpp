@@ -7,6 +7,7 @@
 #include <engine/EntityManager.h>
 #include <engine/ShaderManager.h>
 #include <engine/SettingsManager.h>
+#include <engine/Profiler.h>
 #include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -900,8 +901,11 @@ void engine::LightManager::reorderLights() {
     }
 }
 
-void engine::LightManager::createAllShadowMaps() {
-    vkDeviceWaitIdle(renderer->getDevice());
+void engine::LightManager::dispatchCreateAllShadowMaps() {
+    if (!pendingCreateShadowMaps) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_ShadowMaps);
+    pendingCreateShadowMaps = false;
     for (auto& light : lights) {
         light->createShadowMaps(renderer, true);
     }

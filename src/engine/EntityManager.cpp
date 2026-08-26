@@ -84,12 +84,17 @@ engine::Model* engine::Entity::getModel() const {
     return model;
 }
 
-void engine::Entity::updateWorldTransform(const glm::mat4& parentWorld) {
+bool engine::Entity::updateWorldTransform(const glm::mat4& parentWorld) {
     glm::mat4 newWorldTransform = parentWorld * transform;
-    if (std::memcmp(&newWorldTransform, &worldTransform, sizeof(glm::mat4)) != 0) {
-        worldTransform = newWorldTransform;
-        ++transformGeneration;
+    for (int col = 0; col < 4; ++col) {
+        const glm::vec4 diff = newWorldTransform[col] - worldTransform[col];
+        if (glm::dot(diff, diff) > 1e-6f) {
+            worldTransform = newWorldTransform;
+            ++transformGeneration;
+            return true;
+        }
     }
+    return false;
 }
 
 glm::vec3 engine::Entity::getWorldPosition() const {
@@ -446,11 +451,12 @@ static std::unordered_set<engine::Entity::EntityType> wontResetShadows = {
 };
 
 void engine::EntityManager::processPendingAdditions() {
+    if (pendingAdditions.empty()) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Additions);
     bool resetShadows = false;
-    if (!pendingAdditions.empty()) {
-        textureLoadDirty = true;
-        renderable3DCacheDirty = true;
-    }
+    textureLoadDirty = true;
+    renderable3DCacheDirty = true;
     for (const auto& [name, entity] : pendingAdditions) {
         entities[name] = entity;
         if (entities[name]->getIsMovable()) {
@@ -474,9 +480,8 @@ void engine::EntityManager::processPendingAdditions() {
     }
     pendingAdditions.clear();
     if (resetShadows) {
-        getRenderer()->getLightManager()->createAllShadowMaps();
-        vkDeviceWaitIdle(renderer->getDevice());
-        renderer->createPostProcessDescriptorSets();
+        getRenderer()->getLightManager()->deferCreateAllShadowMaps();
+        renderer->deferCreatePostProcessDescriptorSets();
     }
 }
 
@@ -504,18 +509,19 @@ void engine::EntityManager::unregisterEntity(const std::string& name) {
 
 void engine::EntityManager::clear() {
     renderable3DCacheDirty = true;
-    movableEntities.clear();
-    colliders.clear();
-    dynamicColliders.clear();
-    spatialGrid.clear();
-    entities.clear();
-    pendingDeletions.clear();
     pendingAdditions.clear();
+    processPendingDeletions();
     auto roots = std::move(rootEntities);
     rootEntities.clear();
     for (Entity* root : roots) {
         delete root;
     }
+    deletePendingVkObjects();
+    movableEntities.clear();
+    colliders.clear();
+    dynamicColliders.clear();
+    spatialGrid.clear();
+    entities.clear();
 }
 
 void engine::EntityManager::loadTextures() {
@@ -637,11 +643,18 @@ void engine::EntityManager::updateAll(float deltaTime) {
     }
     
     animatedToUpdate.clear();
+    collidersToWarm.clear();
     auto traverse = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
-        entity->updateWorldTransform(parentWorld);
+        const bool moved = entity->updateWorldTransform(parentWorld);
         entity->update(deltaTime);
         if (entity->isAnimated()) {
             animatedToUpdate.push_back(entity);
+        }
+        if (moved) {
+            const Entity::EntityType type = entity->getType();
+            if (type == Entity::EntityType::Collider || type == Entity::EntityType::Trigger) {
+                collidersToWarm.push_back(static_cast<Collider*>(entity));
+            }
         }
         for (Entity* child : entity->getChildren()) {
             self(self, child, entity->getWorldTransform());
@@ -664,6 +677,12 @@ void engine::EntityManager::updateAll(float deltaTime) {
             });
         } else if (animCount == 1) {
             animatedToUpdate[0]->updateAnimation(deltaTime);
+        }
+    }
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_CollisionCache);
+        for (Collider* collider : collidersToWarm) {
+            collider->getWorldAABB();
         }
     }
     if (textureLoadDirty) {
@@ -697,6 +716,8 @@ bool engine::EntityManager::hasRenderable3D() {
 
 void engine::EntityManager::processPendingDeletions() {
     if (pendingDeletions.empty()) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::Cleanup_Deletions);
     renderable3DCacheDirty = true;
     static thread_local std::vector<Entity*> rootsTraversalBuffer;
     rootsTraversalBuffer.clear();
@@ -709,6 +730,9 @@ void engine::EntityManager::processPendingDeletions() {
 }
 
 void engine::EntityManager::deletePendingVkObjects() {
+    if (pendingVkObjectDeletions.empty()) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_ClearObjects);
     VkDevice device = renderer->getDevice();
     ShaderManager* shaderManager = renderer->getShaderManager();
     for (auto& objects : pendingVkObjectDeletions) {

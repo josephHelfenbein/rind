@@ -34,9 +34,12 @@ namespace engine {
 
         void updateAll(float deltaTime);
         void renderParticles(VkCommandBuffer commandBuffer, uint32_t currentFrame);
+        void deferGrowParticleBuffer() { pendingGrowBuffer = true; }
+        void dispatchGrowParticleBuffer();
 
     private:
         static constexpr float kGravity = 9.81f;
+        bool pendingGrowBuffer = false;
 
         struct ParticleSoA {
             std::vector<float> posX, posY, posZ;

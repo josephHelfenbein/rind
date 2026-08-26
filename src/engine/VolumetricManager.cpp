@@ -5,6 +5,7 @@
 #include <engine/SettingsManager.h>
 #include <engine/PushConstants.h>
 #include <engine/Camera.h>
+#include <engine/Profiler.h>
 
 engine::Volumetric::Volumetric(
     const glm::mat4& initialTransform,
@@ -147,42 +148,12 @@ void engine::VolumetricManager::createVolumetricDescriptorSets() {
 }
 
 void engine::VolumetricManager::updateVolumetricBuffer(uint32_t currentFrame) {
-    VkDevice device = renderer->getDevice();
-    if (volumetrics.size() > hardCap) {
+    if (volumetrics.size() > maxVolumetrics) {
         size_t toRemove = volumetrics.size() - hardCap;
         volumetrics.erase(volumetrics.begin(), volumetrics.begin() + toRemove);
-    }
-    if (volumetrics.size() > maxVolumetrics) {
-        vkDeviceWaitIdle(device);
-        maxVolumetrics = std::min(std::max(maxVolumetrics * 2, static_cast<uint32_t>(volumetrics.size())), hardCap);
-        for (size_t i = 0; i < volumetricBuffersMapped.size(); ++i) {
-            if (volumetricBuffersMapped[i] != nullptr && i < volumetricBufferMemory.size() && volumetricBufferMemory[i] != VK_NULL_HANDLE) {
-                vkUnmapMemory(device, volumetricBufferMemory[i]);
-                volumetricBuffersMapped[i] = nullptr;
-            }
+        if (volumetrics.size() < hardCap) {
+            deferGrowVolumetricBuffer();
         }
-        for (size_t i = 0; i < volumetricBuffers.size(); ++i) {
-            vkDestroyBuffer(device, volumetricBuffers[i], nullptr);
-            vkFreeMemory(device, volumetricBufferMemory[i], nullptr);
-        }
-        volumetricBuffers.clear();
-        volumetricBufferMemory.clear();
-        volumetricBuffersMapped.clear();
-        volumetricBuffers.resize(renderer->getMaxFramesInFlight());
-        volumetricBufferMemory.resize(renderer->getMaxFramesInFlight());
-        volumetricBuffersMapped.resize(renderer->getMaxFramesInFlight(), nullptr);
-        for (size_t i = 0; i < volumetricBuffers.size(); ++i) {
-            VkDeviceSize bufferSize = maxVolumetrics * sizeof(VolumetricGPU);
-            std::tie(volumetricBuffers[i], volumetricBufferMemory[i]) = renderer->createBuffer(
-                bufferSize,
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            );
-            vkMapMemory(device, volumetricBufferMemory[i], 0, bufferSize, 0, &volumetricBuffersMapped[i]);
-        }
-        GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("volumetric");
-        vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
-        createVolumetricDescriptorSets();
     }
     VolumetricGPU* gpuData = static_cast<VolumetricGPU*>(volumetricBuffersMapped[currentFrame]);
     Camera* camera = renderer->getEntityManager()->getCamera();
@@ -195,6 +166,43 @@ void engine::VolumetricManager::updateVolumetricBuffer(uint32_t currentFrame) {
             gpuData[visibleVolumetrics++] = curr;
         }
     }
+}
+
+void engine::VolumetricManager::dispatchGrowVolumetricBuffer() {
+    if (!pendingGrowBuffer) return;
+    profiler::Profiler* profiler = renderer->getProfiler();
+    PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_GrowVolumetricBuffer);
+    pendingGrowBuffer = false;
+    VkDevice device = renderer->getDevice();
+    maxVolumetrics = std::min(std::max(maxVolumetrics * 2, static_cast<uint32_t>(volumetrics.size())), hardCap);
+    for (size_t i = 0; i < volumetricBuffersMapped.size(); ++i) {
+        if (volumetricBuffersMapped[i] != nullptr && i < volumetricBufferMemory.size() && volumetricBufferMemory[i] != VK_NULL_HANDLE) {
+            vkUnmapMemory(device, volumetricBufferMemory[i]);
+            volumetricBuffersMapped[i] = nullptr;
+        }
+    }
+    for (size_t i = 0; i < volumetricBuffers.size(); ++i) {
+        vkDestroyBuffer(device, volumetricBuffers[i], nullptr);
+        vkFreeMemory(device, volumetricBufferMemory[i], nullptr);
+    }
+    volumetricBuffers.clear();
+    volumetricBufferMemory.clear();
+    volumetricBuffersMapped.clear();
+    volumetricBuffers.resize(renderer->getMaxFramesInFlight());
+    volumetricBufferMemory.resize(renderer->getMaxFramesInFlight());
+    volumetricBuffersMapped.resize(renderer->getMaxFramesInFlight(), nullptr);
+    for (size_t i = 0; i < volumetricBuffers.size(); ++i) {
+        VkDeviceSize bufferSize = maxVolumetrics * sizeof(VolumetricGPU);
+        std::tie(volumetricBuffers[i], volumetricBufferMemory[i]) = renderer->createBuffer(
+            bufferSize,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+        vkMapMemory(device, volumetricBufferMemory[i], 0, bufferSize, 0, &volumetricBuffersMapped[i]);
+    }
+    GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("volumetric");
+    vkResetDescriptorPool(renderer->getDevice(), shader->descriptorPool, 0);
+    createVolumetricDescriptorSets();
 }
 
 void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer, uint32_t currentFrame) {

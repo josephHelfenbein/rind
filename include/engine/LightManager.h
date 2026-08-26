@@ -150,7 +150,8 @@ namespace engine {
         void updateLightsUBO(uint32_t frameIndex);
         void createShadowLightsBuffers();
         void updateShadowLightsBuffer(uint32_t frameIndex);
-        void createAllShadowMaps();
+        void deferCreateAllShadowMaps() { pendingCreateShadowMaps = true; }
+        void dispatchCreateAllShadowMaps();
         void renderShadows(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         std::vector<VkBuffer>& getLightsBuffers() { return lightsBuffers; }
         std::vector<VkBuffer>& getShadowLightsBuffers() { return shadowLightsBuffers; }
@@ -182,5 +183,6 @@ namespace engine {
         std::vector<VkBuffer> shadowLightsBuffers;
         std::vector<VkDeviceMemory> shadowLightsMemories;
         std::vector<void*> shadowLightsMapped;
+        bool pendingCreateShadowMaps = false;
     };
 }
