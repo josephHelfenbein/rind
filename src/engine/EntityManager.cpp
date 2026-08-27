@@ -623,17 +623,20 @@ void engine::EntityManager::loadTextures() {
 
 void engine::EntityManager::updateAll(float deltaTime) {
     profiler::Profiler* profiler = renderer->getProfiler();
-    if (spatialGridDirty) {
-        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_SpatialGrid);
-        auto updateTransforms = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
-            entity->updateWorldTransform(parentWorld);
-            for (Entity* child : entity->getChildren()) {
-                self(self, child, entity->getWorldTransform());
-            }
-        };
+    auto updateTransforms = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
+        entity->updateWorldTransform(parentWorld);
+        for (Entity* child : entity->getChildren()) {
+            self(self, child, entity->getWorldTransform());
+        }
+    };
+    {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_Transforms);
         for (Entity* rootEntity : rootEntities) {
             updateTransforms(updateTransforms, rootEntity, glm::mat4(1.0f));
         }
+    }
+    if (spatialGridDirty) {
+        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_SpatialGrid);
         rebuildSpatialGrid();
         spatialGridDirty = false;
     } else {
@@ -642,18 +645,10 @@ void engine::EntityManager::updateAll(float deltaTime) {
     }
     
     animatedToUpdate.clear();
-    collidersToWarm.clear();
-    auto traverse = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
-        const bool moved = entity->updateWorldTransform(parentWorld);
+    auto updateUpdates = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
         entity->update(deltaTime);
         if (entity->isAnimated()) {
             animatedToUpdate.push_back(entity);
-        }
-        if (moved) {
-            const Entity::EntityType type = entity->getType();
-            if (type == Entity::EntityType::Collider || type == Entity::EntityType::Trigger) {
-                collidersToWarm.push_back(static_cast<Collider*>(entity));
-            }
         }
         for (Entity* child : entity->getChildren()) {
             self(self, child, entity->getWorldTransform());
@@ -662,7 +657,7 @@ void engine::EntityManager::updateAll(float deltaTime) {
     {
         PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_Update);
         for (Entity* rootEntity : rootEntities) {
-            traverse(traverse, rootEntity, glm::mat4(1.0f));
+            updateUpdates(updateUpdates, rootEntity, glm::mat4(1.0f));
         }
     }
     const size_t animCount = animatedToUpdate.size();
@@ -676,12 +671,6 @@ void engine::EntityManager::updateAll(float deltaTime) {
             });
         } else if (animCount == 1) {
             animatedToUpdate[0]->updateAnimation(deltaTime);
-        }
-    }
-    {
-        PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_CollisionCache);
-        for (Collider* collider : collidersToWarm) {
-            collider->getWorldAABB();
         }
     }
     if (textureLoadDirty) {

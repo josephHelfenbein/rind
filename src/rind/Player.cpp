@@ -1175,6 +1175,7 @@ void rind::Player::damage(float amount) {
         getCollider()->setTransform(
             glm::scale(getCollider()->getTransform(), glm::vec3(0.35f))
         );
+        getCollider()->getWorldAABB();
         getEntityManager()->getRenderer()->refreshDescriptorSets();
         getEntityManager()->getRenderer()->getInputManager()->setUIFocused(true);
         getEntityManager()->getRenderer()->toggleLockCursor(false);

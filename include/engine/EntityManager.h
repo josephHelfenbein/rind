@@ -314,7 +314,6 @@ namespace engine {
         bool computeHasRenderable3D() const;
 
         std::vector<Entity*> animatedToUpdate;
-        std::vector<Collider*> collidersToWarm;
 
         Camera* camera = nullptr;
 

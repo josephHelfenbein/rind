@@ -15,12 +15,8 @@ enum class Zone : uint8_t {
     DeferredVulkan_ClearObjects, DeferredVulkan_PostProcess, DeferredVulkan_ShadowMaps, DeferredVulkan_GrowParticleBuffer, DeferredVulkan_GrowVolumetricBuffer, DeferredVulkan_Irradiance,
     Update_Entities, Update_Audio, Update_Particles, Update_Volumetrics,
     Update_ParticlesBuffer, Update_VolumetricsBuffer, Update_Audio_Listener,
-    Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_CollisionCache, Update_Entities_LoadTextures,
+    Update_Entities_Transforms, Update_Entities_SpatialGrid, Update_Entities_DynamicColliders, Update_Entities_Update, Update_Entities_Animations, Update_Entities_LoadTextures,
     Update_Particles_Integrate, Update_Particles_Collision, Update_Particles_Compact,
-    Count
-};
-
-enum class OffloadZone : uint8_t {
     Count
 };
 
@@ -57,15 +53,11 @@ namespace profiler {
         "DeferredVulkan_ClearObjects", "DeferredVulkan_PostProcess", "DeferredVulkan_ShadowMaps", "DeferredVulkan_GrowParticleBuffer", "DeferredVulkan_GrowVolumetricBuffer", "DeferredVulkan_Irradiance",
         "Update_Entities", "Update_Audio", "Update_Particles", "Update_Volumetrics",
         "Update_ParticlesBuffer", "Update_VolumetricsBuffer", "Update_Audio_Listener",
-        "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_CollisionCache", "Update_Entities_LoadTextures",
+        "Update_Entities_Transforms", "Update_Entities_SpatialGrid", "Update_Entities_DynamicColliders", "Update_Entities_Update", "Update_Entities_Animations", "Update_Entities_LoadTextures",
         "Update_Particles_Integrate", "Update_Particles_Collision", "Update_Particles_Compact"
     };
 
-    inline constexpr std::array<std::string_view, static_cast<size_t>(OffloadZone::Count)> kOffloadZoneNames = {
-    };
-
     static constexpr size_t kMaxGpuSpans = 255;
-    static constexpr size_t kMaxOffloadEvents = 32;
 
     struct Span {
         uint32_t startNs = 0;
@@ -77,11 +69,6 @@ namespace profiler {
         uint8_t subIdx = 0;
         uint8_t queue = 0; // 0 = graphics, 1 = compute
         Span span;
-    };
-
-    struct OffloadEvent {
-        Span span;
-        OffloadZone zone;
     };
 
     struct GpuFrameSlot {
@@ -97,9 +84,7 @@ namespace profiler {
         uint32_t endNs = 0;
         std::array<Span, size_t(Zone::Count)> zones{};
         uint8_t gpuSpanCount = 0;
-        uint8_t offloadEventCount = 0;
         std::array<GpuSpan, kMaxGpuSpans> gpuSpans{};
-        std::array<OffloadEvent, kMaxOffloadEvents> offloadEvents{};
     };
 
     namespace Clock {
@@ -139,7 +124,6 @@ namespace profiler {
     }
 
     template <Zone Z> class ScopedZone;
-    template <OffloadZone Z> class ScopedOffloadZone;
 
     class Profiler {
     public:
@@ -179,7 +163,6 @@ namespace profiler {
             };
             meta("process_name", processId, 1, "Rind");
             meta("thread_name", processId, threadId, "CPU Main");
-            meta("thread_name", processId, offloadThreadId, "CPU Offload");
             meta("thread_name", processId, 100000000, "GPU Graphics");
             meta("thread_name", processId, 100000001, "GPU Compute");
 
@@ -199,11 +182,6 @@ namespace profiler {
                     const GpuSpan& span = frame.gpuSpans[g];
                     if (span.span.endNs == 0) continue;
                     slice(nodeName(span.nodeIdx), processId, 100000000 + span.queue, "gpu", us(frameStartNs + span.span.startNs), us(span.span.endNs));
-                }
-                for (size_t o = 0; o < frame.offloadEventCount; ++o) {
-                    const OffloadEvent& event = frame.offloadEvents[o];
-                    if (event.span.endNs == 0) continue;
-                    slice(kOffloadZoneNames[static_cast<size_t>(event.zone)], processId, offloadThreadId, "cpu", us(frameStartNs + event.span.startNs), us(event.span.endNs));
                 }
             }
             if (out.ends_with(",\n")) { // trim comma
@@ -233,8 +211,6 @@ namespace profiler {
             frame.startNs = Clock::Now();
             frame.endNs = 0;
             frame.zones.fill(Span{0, 0});
-            frame.offloadEvents.fill(OffloadEvent{Span{0, 0}, OffloadZone::Count});
-            frame.offloadEventCount = 0;
             frame.gpuSpans.fill(GpuSpan{0, 0, 0, Span{0, 0}});
             frame.gpuSpanCount = 0;
         }
@@ -396,22 +372,6 @@ namespace profiler {
             hostDomain = domain;
         }
 
-        template<OffloadZone Z>
-        void addOffloadSpan(uint64_t startTs, uint64_t endTs) { // called by offload thread
-            auto& frame = ring[currentFrameIndex.load(std::memory_order_acquire)];
-            if (frame.offloadEventCount < kMaxOffloadEvents) {
-                Span span{
-                    .startNs = static_cast<uint32_t>(startTs - frame.startNs),
-                    .endNs = static_cast<uint32_t>(endTs - startTs)
-                };
-                frame.offloadEvents[frame.offloadEventCount++] = OffloadEvent{span, Z};
-            }
-        }
-
-        void registerOffloadThreadId() { // called by offload thread
-            offloadThreadId = currentThreadId();
-        }
-
     private:
         std::array<FrameZones, kMaxFrames> ring{};
         std::array<GpuFrameSlot, Renderer::MAX_FRAMES_IN_FLIGHT> gpuFrameSlots;
@@ -430,7 +390,6 @@ namespace profiler {
         std::string profileLocation;
         int processId = currentProcessId();
         uint64_t threadId = currentThreadId();
-        uint64_t offloadThreadId{};
 
         inline uint64_t currentThreadId() {
             thread_local const uint64_t tid = []() -> uint64_t {
@@ -478,26 +437,6 @@ namespace profiler {
         Profiler* profiler;
     };
 
-    template <OffloadZone Z>
-    class ScopedOffloadZone {
-    public:
-        explicit ScopedOffloadZone(Profiler* profiler) : profiler(profiler) {
-            if (profiler) {
-                startTs = Clock::Now();
-            }
-        }
-
-        ~ScopedOffloadZone() {
-            if (profiler) {
-                profiler->addOffloadSpan<Z>(startTs, Clock::Now());
-            }
-        }
-
-    private:
-        Profiler* profiler;
-        uint64_t startTs{};
-    };
-
 namespace {
 
     #define PROFILER_CONCAT_(a,b) a##b
@@ -518,13 +457,6 @@ namespace {
         ::engine::profiler::Profiler::ScopedGpuZone \
             PROFILER_CONCAT(prof_gpu_zone_, __LINE__){ (profiler), (cmd), (nodeIdx), (queue) }
 
-    #define PROFILER_OFFLOAD_ZONE(profiler, Z) \
-        ::engine::profiler::ScopedOffloadZone<Z> \
-            PROFILER_CONCAT(prof_zone_, __LINE__) { (profiler) }
-
-    #define PROFILER_REGISTER_OFFLOAD(profiler) \
-        do { if (profiler) profiler->registerOffloadThreadId(); } while (0)
-
 };
 };
 };
@@ -541,12 +473,6 @@ namespace {
     do {} while (0)
 
 #define PROFILER_GPU_ZONE(profiler, cmd, nodeIdx, queue) \
-    do {} while (0)
-
-#define PROFILER_OFFLOAD_ZONE(profiler, Z) \
-    do {} while (0)
-
-#define PROFILER_REGISTER_OFFLOAD(profiler) \
     do {} while (0)
 
 namespace engine {
