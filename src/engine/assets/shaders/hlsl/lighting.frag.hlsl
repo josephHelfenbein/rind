@@ -281,10 +281,6 @@ float4 main(VSOutput input) : SV_Target {
     for (uint i = 0; i < numLights; ++i) {
         PointLight light = lightsUBO.pointLights[i];
         float3 lightPos = light.positionRadius.xyz;
-        float lightRadius = light.positionRadius.w;
-        float3 lightColor = light.colorIntensity.rgb;
-        uint shadowIndex = light.shadowData.x;
-        float intensity = light.colorIntensity.w * 2.0;
         float3 toLight = lightPos - fragPos;
         float distance = length(toLight);
         if (distance < 0.001) {
@@ -297,18 +293,21 @@ float4 main(VSOutput input) : SV_Target {
             continue;
         }
         H = H / hLen;
-        float d2 = distance * distance;
+        float lightRadius = light.positionRadius.w;
+        float intensity = light.colorIntensity.w * 2.0;
         float r0 = lightRadius * 0.1;
         float r02 = r0 * r0;
         float ratio = distance / lightRadius;
         float ratio2 = ratio * ratio;
         float ratio4 = ratio2 * ratio2;
         float windowFalloff = saturate(1.0 - ratio4);
+        float d2 = distance * distance;
         float attenuation = (r02 / (d2 + r02)) * windowFalloff * windowFalloff;
         if (attenuation * intensity < 1e-5) {
             continue;
         }
 
+        float3 lightColor = light.colorIntensity.rgb;
         float3 radiance = lightColor * intensity * attenuation;
         float NdotL = max(dot(N, L), 0.0);
 
@@ -322,6 +321,7 @@ float4 main(VSOutput input) : SV_Target {
         float3 kD = (1.0 - F) * (1.0 - metallic);
         float3 diffuse = kD * albedoSample.rgb;
 
+        uint shadowIndex = light.shadowData.x;
         bool hasShadow = (shadowIndex != INVALID_SHADOW_INDEX && light.shadowData.y != 0 && shadowIndex < 64u);
         float shadow = hasShadow
             ? shadowTexture.SampleLevel(sampleSampler, float3(input.fragTexCoord, float(shadowIndex)), 0)

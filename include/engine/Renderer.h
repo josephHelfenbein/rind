@@ -45,7 +45,6 @@ namespace engine {
         void registerVolumetricManager(class VolumetricManager* volumetricManager) { this->volumetricManager = volumetricManager; }
         void registerLightManager(class LightManager* lightManager) { this->lightManager = lightManager; }
         void registerIrradianceManager(class IrradianceManager* irradianceManager) { this->irradianceManager = irradianceManager; }
-        void registerWorkManager(class WorkManager* workManager) { this->workManager = workManager; }
         #ifndef NDEBUG
         void registerProfiler(class profiler::Profiler* profiler) { this->profiler = profiler; }
         #endif
@@ -63,7 +62,6 @@ namespace engine {
         class VolumetricManager* getVolumetricManager() { return volumetricManager; }
         class LightManager* getLightManager() { return lightManager; }
         class IrradianceManager* getIrradianceManager() { return irradianceManager; }
-        class WorkManager* getWorkManager() { return workManager; }
         class profiler::Profiler* getProfiler() { return profiler; }
 
         void toggleLockCursor(bool lock);
@@ -381,7 +379,6 @@ namespace engine {
         class VolumetricManager* volumetricManager;
         class LightManager* lightManager;
         class IrradianceManager* irradianceManager;
-        class WorkManager* workManager;
         class profiler::Profiler* profiler = nullptr; // registered in debug builds
 
         UIObject* hoveredObject = nullptr;

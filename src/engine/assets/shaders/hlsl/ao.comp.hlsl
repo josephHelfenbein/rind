@@ -206,6 +206,12 @@ void main(uint3 globalID : SV_DispatchThreadID,
     uint width, height;
     outputTexture.GetDimensions(width, height);
     const float2 screenSize = float2(width, height);
+
+    if (globalID.x >= width || globalID.y >= height) return;
+    if (pc.flag == 0u) {
+        outputTexture[globalID.xy] = 1.0;
+        return;
+    }
     const float2 invScreenSize = 1.0 / screenSize;
 
     const int2 groupBase = int2(groupID.xy) * int(GROUP_SIZE);
@@ -228,12 +234,10 @@ void main(uint3 globalID : SV_DispatchThreadID,
 
     GroupMemoryBarrierWithGroupSync();
 
-    if (globalID.x >= width || globalID.y >= height) return;
-
     const uint2 centerLocal = uint2(localID.x + HALO, localID.y + HALO);
     const float centerDepth = tileRawDepth[centerLocal.y][centerLocal.x];
 
-    if (centerDepth >= 1.0 || pc.flag == 0u) {
+    if (centerDepth >= 1.0) {
         outputTexture[globalID.xy] = 1.0;
         return;
     }

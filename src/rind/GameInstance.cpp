@@ -21,7 +21,6 @@
 #include <engine/IrradianceManager.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
-#include <engine/WorkManager.h>
 #ifndef NDEBUG
 #include <engine/Profiler.h>
 #endif
@@ -656,11 +655,6 @@ rind::GameInstance::GameInstance() {
     particleManager = std::make_unique<engine::ParticleManager>(renderer.get());
     volumetricManager = std::make_unique<engine::VolumetricManager>(renderer.get());
     audioManager = std::make_unique<engine::AudioManager>(renderer.get());
-    std::thread workManager([renderer = renderer.get()](){
-        engine::WorkManager* workManager = new engine::WorkManager(renderer);
-        workManager->spinRead();
-    });
-    workManager.detach();
 #ifndef NDEBUG
     profiler = std::make_unique<engine::profiler::Profiler>(renderer.get(), "rind");
 #endif
@@ -716,7 +710,6 @@ rind::GameInstance::GameInstance() {
 }
 
 rind::GameInstance::~GameInstance() {
-    renderer->getWorkManager()->destroy();
     entityManager->clear();
     uiManager->clear();
     lightManager->clear();

@@ -479,7 +479,7 @@ void engine::ConvexHullCollider::buildConvexData(const std::vector<glm::vec3>& v
     outVerts.resize(verts.size());
     const size_t vcount = verts.size();
     if (vcount > 128) {
-        ThreadPool::global().parallel_for_chunks(0, vcount, 64, [&](size_t b, size_t e, size_t) {
+        ThreadPool::global().parallelForChunks(0, vcount, 64, [&](size_t b, size_t e, size_t) {
             for (size_t i = b; i < e; ++i) {
                 outVerts[i] = glm::vec3(transform * glm::vec4(verts[i], 1.0f));
             }

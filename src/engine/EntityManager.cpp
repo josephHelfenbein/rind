@@ -10,7 +10,6 @@
 #include <engine/SIMD.h>
 #include <engine/ThreadPool.h>
 #include <engine/Profiler.h>
-#include <engine/WorkManager.h>
 #include <cstring>
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -670,7 +669,7 @@ void engine::EntityManager::updateAll(float deltaTime) {
     {
         PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_Animations);
         if (animCount > 1) {
-            ThreadPool::global().parallel_for_chunks(0, animCount, 1, [&](size_t b, size_t e, size_t) {
+            ThreadPool::global().parallelForChunks(0, animCount, 1, [&](size_t b, size_t e, size_t) {
                 for (size_t i = b; i < e; ++i) {
                     animatedToUpdate[i]->updateAnimation(deltaTime);
                 }

@@ -115,7 +115,7 @@ void engine::TextureManager::init() {
 
     // parallel decode
     if (assetList.size() > 1) {
-        engine::ThreadPool::global().parallel_for_chunks(0, assetList.size(), 1,
+        engine::ThreadPool::global().parallelForChunks(0, assetList.size(), 1,
             [&](size_t b, size_t e, size_t) {
                 for (size_t i = b; i < e; ++i) decodeOne(i);
             });

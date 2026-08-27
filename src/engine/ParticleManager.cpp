@@ -509,7 +509,7 @@ void engine::ParticleManager::updateAll(float deltaTime) {
         PROFILER_ZONE(profiler, profiler::Zone::Update_Particles_Collision);
         // scalar collision for the subset of particles that need it
         if (count > 32) {
-            ThreadPool::global().parallel_for_chunks(0, count, 32, [&](size_t b, size_t e, size_t) {
+            ThreadPool::global().parallelForChunks(0, count, 32, [&](size_t b, size_t e, size_t) {
                 for (size_t i = b; i < e; ++i) {
                     collideOne(i, deltaTime);
                 }
