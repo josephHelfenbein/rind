@@ -25,13 +25,11 @@ namespace engine {
         glm::vec3 getWorldPosition() const { return glm::vec3(transform[3]); }
         void createCubemaps(Renderer* renderer);
         void bakeCubemap(Renderer* renderer, VkCommandBuffer commandBuffer);
-        void copyBakedToDynamic(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t frameIndex = 0);
-        void renderDynamicCubemap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame, uint32_t activeProbeLocalIndex = 0u, uint32_t activeProbeCount = 1u);
-        bool prepareDynamicCubemapForParticleCompute(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t frameIndex);
-        void finalizeDynamicCubemapAfterParticleCompute(VkCommandBuffer commandBuffer, uint32_t frameIndex);
+        VkImage getBakedCubemapImage() const { return bakedCubemapImage; }
+        bool isBakedImageReady() const { return bakedImageReady; }
+        void markDynamicImageReady(uint32_t frameIndex);
+        bool needsDynamicParticleUpdate(Renderer* renderer, uint32_t frameIndex);
         VkImageView getBakedCubemapView() const { return bakedCubemapView; }
-        VkImageView getDynamicCubemapStorageView(uint32_t frameIndex) const;
-        VkImageView getDynamicCubemapView(uint32_t frameIndex) const;
 
         IrradianceProbeData getProbeData() const;
 
@@ -49,11 +47,6 @@ namespace engine {
         VkDeviceMemory bakedCubemapMemory = VK_NULL_HANDLE;
         VkImageView bakedCubemapFaceViews[6] = { VK_NULL_HANDLE };
 
-        std::vector<VkImage> dynamicCubemapImages;
-        std::vector<VkImageView> dynamicCubemapViews;
-        std::vector<VkImageView> dynamicCubemapStorageViews;
-        std::vector<VkDeviceMemory> dynamicCubemapMemories;
-        std::vector<std::array<VkImageView, 6>> dynamicCubemapFaceViews;
 
         VkSampler cubemapSampler = VK_NULL_HANDLE;
 
@@ -62,7 +55,6 @@ namespace engine {
         bool hasImageMap = false;
         bool bakedImageReady = false;
         std::vector<uint8_t> dynamicImageReady;
-        std::vector<uint8_t> dynamicCubemapDirty;
         std::vector<size_t> lastParticleCount;
     };
 
@@ -102,17 +94,15 @@ namespace engine {
         VkBuffer getDynamicSHOutputBuffer(uint32_t frameIndex) const;
         uint32_t getDynamicComputeProbeCount(uint32_t frameIndex) const;
         void fillBakedProbeCubemapImageInfos(uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) const;
-        void fillDynamicProbeCubemapImageInfos(uint32_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) const;
+        void fillDynamicProbeCubemapImageInfos(uint32_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos);
         void fillDynamicProbeStorageImageInfos(uint32_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos);
         void buildActiveProbeFrame(uint32_t frameIndex);
         const ActiveProbeFrame* getActiveProbeFrame(uint32_t frameIndex) const;
         uint32_t getActiveProbeCount(uint32_t frameIndex) const;
         void prepareDynamicIrradianceCompute(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         void finalizeDynamicIrradianceCompute(VkCommandBuffer commandBuffer, uint32_t currentFrame);
-        void renderDynamicIrradianceGraphics(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         void dispatchDynamicIrradianceSH(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         void dispatchDynamicIrradianceSHReduce(VkCommandBuffer commandBuffer, uint32_t currentFrame);
-        void renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame);
         void bakeIrradianceMaps(VkCommandBuffer commandBuffer);
         void recordIrradianceReadback(VkCommandBuffer commandBuffer);
         void processIrradianceSH();
@@ -121,8 +111,17 @@ namespace engine {
 
         Renderer* getRenderer() const { return renderer; }
     private:
-        void ensureDummyProbeStorageImage();
-        void destroyDummyProbeStorageImage();
+        struct DynamicProbeImage {
+            VkImage image = VK_NULL_HANDLE;
+            VkDeviceMemory memory = VK_NULL_HANDLE;
+            VkImageView storageView = VK_NULL_HANDLE;
+            VkImageView cubeArrayView = VK_NULL_HANDLE;
+            VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        };
+        DynamicProbeImage& ensureDynamicProbeImage(uint32_t frameIndex);
+        void destroyDynamicProbeImages();
+        void copyBakedToDynamic(VkCommandBuffer commandBuffer, uint32_t frameIndex);
+        void transitionDynamicProbeImage(VkCommandBuffer commandBuffer, DynamicProbeImage& target, VkImageLayout newLayout);
         Renderer* renderer;
         std::vector<IrradianceProbe> irradianceProbes;
         bool irradianceBakingPending = false;
@@ -139,8 +138,7 @@ namespace engine {
         std::vector<VkDeviceMemory> dynamicSHOutputBuffersMemory;
         std::vector<VkBuffer> dynamicSHPartialBuffers;
         std::vector<VkDeviceMemory> dynamicSHPartialBuffersMemory;
-        VkImage dummyProbeStorageImage = VK_NULL_HANDLE;
-        VkDeviceMemory dummyProbeStorageMemory = VK_NULL_HANDLE;
-        VkImageView dummyProbeStorageView = VK_NULL_HANDLE;
+        std::vector<DynamicProbeImage> dynamicProbeImages;
+        static constexpr uint32_t dynamicProbeCubemapSize = 16u;
     };
 };

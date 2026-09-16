@@ -1151,7 +1151,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .config = {
                 .poolMultiplier = 1,
                 .computeBitBindings = 6,
-                .computeDescriptorCounts = { 1, kMaxIrradianceProbes, 1, 1, kMaxIrradianceProbes, 1 },
+                .computeDescriptorCounts = { 1, 1, 1, 1, kMaxIrradianceProbes, 1 },
                 .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -1294,7 +1294,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .config = {
                 .poolMultiplier = 1,
                 .computeBitBindings = 4,
-                .computeDescriptorCounts = { 1, kMaxIrradianceProbes, 1, 1 },
+                .computeDescriptorCounts = { 1, 1, 1, 1 },
                 .computeDescriptorTypes = {
                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,

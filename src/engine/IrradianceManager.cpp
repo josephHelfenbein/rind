@@ -26,13 +26,6 @@ void engine::IrradianceProbe::destroy() {
             vkDestroyImageView(device, bakedCubemapFaceViews[i], nullptr);
         }
     }
-    for (size_t frame = 0; frame < dynamicCubemapFaceViews.size(); ++frame) {
-        for (uint32_t i = 0; i < 6; ++i) {
-            if (dynamicCubemapFaceViews[frame][i] != VK_NULL_HANDLE) {
-                vkDestroyImageView(device, dynamicCubemapFaceViews[frame][i], nullptr);
-            }
-        }
-    }
     if (bakedCubemapView != VK_NULL_HANDLE) {
         vkDestroyImageView(device, bakedCubemapView, nullptr);
     }
@@ -42,31 +35,6 @@ void engine::IrradianceProbe::destroy() {
     if (bakedCubemapMemory != VK_NULL_HANDLE) {
         vkFreeMemory(device, bakedCubemapMemory, nullptr);
     }
-    for (VkImageView dynamicView : dynamicCubemapViews) {
-        if (dynamicView != VK_NULL_HANDLE) {
-            vkDestroyImageView(device, dynamicView, nullptr);
-        }
-    }
-    for (VkImageView storageView : dynamicCubemapStorageViews) {
-        if (storageView != VK_NULL_HANDLE) {
-            vkDestroyImageView(device, storageView, nullptr);
-        }
-    }
-    for (VkImage dynamicImage : dynamicCubemapImages) {
-        if (dynamicImage != VK_NULL_HANDLE) {
-            vkDestroyImage(device, dynamicImage, nullptr);
-        }
-    }
-    for (VkDeviceMemory dynamicMemory : dynamicCubemapMemories) {
-        if (dynamicMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device, dynamicMemory, nullptr);
-        }
-    }
-    dynamicCubemapFaceViews.clear();
-    dynamicCubemapViews.clear();
-    dynamicCubemapStorageViews.clear();
-    dynamicCubemapImages.clear();
-    dynamicCubemapMemories.clear();
     if (cubemapSampler != VK_NULL_HANDLE) {
         vkDestroySampler(device, cubemapSampler, nullptr);
     }
@@ -79,7 +47,6 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
     
     bakedImageReady = false;
     dynamicImageReady.clear();
-    dynamicCubemapDirty.clear();
     lastParticleCount.clear();
     
     std::tie(bakedCubemapImage, bakedCubemapMemory) = renderer->createImage(
@@ -119,60 +86,8 @@ void engine::IrradianceProbe::createCubemaps(Renderer* renderer) {
     }
     
     const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
-    dynamicCubemapImages.assign(framesInFlight, VK_NULL_HANDLE);
-    dynamicCubemapViews.assign(framesInFlight, VK_NULL_HANDLE);
-    dynamicCubemapStorageViews.assign(framesInFlight, VK_NULL_HANDLE);
-    dynamicCubemapMemories.assign(framesInFlight, VK_NULL_HANDLE);
-    dynamicCubemapFaceViews.assign(framesInFlight, {});
     dynamicImageReady.assign(framesInFlight, 0u);
-    dynamicCubemapDirty.assign(framesInFlight, 0u);
     lastParticleCount.assign(framesInFlight, 0u);
-
-    for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
-        std::tie(dynamicCubemapImages[frame], dynamicCubemapMemories[frame]) = renderer->createImage(
-            cubemapSize, cubemapSize,
-            1,
-            VK_SAMPLE_COUNT_1_BIT,
-            VK_FORMAT_R16G16B16A16_SFLOAT,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            6,
-            VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
-        );
-        dynamicCubemapViews[frame] = renderer->createImageView(
-            dynamicCubemapImages[frame],
-            VK_FORMAT_R16G16B16A16_SFLOAT,
-            VK_IMAGE_ASPECT_COLOR_BIT,
-            1,
-            VK_IMAGE_VIEW_TYPE_CUBE,
-            6
-        );
-        dynamicCubemapStorageViews[frame] = renderer->createImageView(
-            dynamicCubemapImages[frame],
-            VK_FORMAT_R16G16B16A16_SFLOAT,
-            VK_IMAGE_ASPECT_COLOR_BIT,
-            1,
-            VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-            6
-        );
-        for (uint32_t i = 0; i < 6; ++i) {
-            VkImageViewCreateInfo dynamicViewInfo = {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                .image = dynamicCubemapImages[frame],
-                .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-                .subresourceRange = {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = i,
-                    .layerCount = 1
-                }
-            };
-            vkCreateImageView(renderer->getDevice(), &dynamicViewInfo, nullptr, &dynamicCubemapFaceViews[frame][i]);
-        }
-    }
     
     cubemapSampler = renderer->createTextureSampler(
         VK_FILTER_LINEAR,
@@ -332,331 +247,32 @@ void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer co
     bakedImageReady = true;
 }
 
-void engine::IrradianceProbe::copyBakedToDynamic(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t frameIndex) {
-    if (!bakedImageReady) return;
-
-    if (dynamicCubemapImages.empty()) {
+void engine::IrradianceProbe::markDynamicImageReady(uint32_t frameIndex) {
+    if (dynamicImageReady.empty()) {
         return;
     }
-    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapImages.size());
-    VkImage dynamicCubemapImage = dynamicCubemapImages[frameIdx];
-    if (dynamicCubemapImage == VK_NULL_HANDLE) {
-        return;
-    }
-    const bool frameDynamicReady = frameIdx < dynamicImageReady.size() && dynamicImageReady[frameIdx] != 0u;
-    
-    VkImageLayout dynamicOldLayout = frameDynamicReady ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
-    VkAccessFlags dynamicSrcAccess = frameDynamicReady ? VK_ACCESS_SHADER_READ_BIT : 0;
-    VkPipelineStageFlags srcStage = frameDynamicReady
-        ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
-        : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    
-    VkImageMemoryBarrier bakedToTransferSrc = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = bakedCubemapImage,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        }
-    };
-    
-    VkImageMemoryBarrier dynamicToTransferDst = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = dynamicSrcAccess,
-        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .oldLayout = dynamicOldLayout,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dynamicCubemapImage,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        }
-    };
-    
-    std::array<VkImageMemoryBarrier, 2> preBarriers = { bakedToTransferSrc, dynamicToTransferDst };
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        srcStage,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        static_cast<uint32_t>(preBarriers.size()), preBarriers.data()
-    );
-    
-    VkImageCopy copyRegion = {
-        .srcSubresource = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .mipLevel = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        },
-        .srcOffset = { 0, 0, 0 },
-        .dstSubresource = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .mipLevel = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        },
-        .dstOffset = { 0, 0, 0 },
-        .extent = { cubemapSize, cubemapSize, 1 }
-    };
-    
-    vkCmdCopyImage(
-        commandBuffer,
-        bakedCubemapImage,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        dynamicCubemapImage,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &copyRegion
-    );
-    
-    VkImageMemoryBarrier bakedBackToShaderRead = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = bakedCubemapImage,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        }
-    };
-    
-    VkImageMemoryBarrier dynamicToShaderRead = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dynamicCubemapImage,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        }
-    };
-    
-    std::array<VkImageMemoryBarrier, 2> postBarriers = { bakedBackToShaderRead, dynamicToShaderRead };
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        static_cast<uint32_t>(postBarriers.size()), postBarriers.data()
-    );
-    
-    if (frameIdx < dynamicImageReady.size()) {
-        dynamicImageReady[frameIdx] = 1u;
-    }
+    dynamicImageReady[frameIndex % static_cast<uint32_t>(dynamicImageReady.size())] = 1u;
 }
 
-bool engine::IrradianceProbe::prepareDynamicCubemapForParticleCompute(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t frameIndex) {
-    if (dynamicCubemapImages.empty() || dynamicCubemapFaceViews.empty()) {
+bool engine::IrradianceProbe::needsDynamicParticleUpdate(Renderer* renderer, uint32_t frameIndex) {
+    if (dynamicImageReady.empty()) {
         return false;
     }
-    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapImages.size());
-    VkImage dynamicCubemapImage = dynamicCubemapImages[frameIdx];
-    if (dynamicCubemapImage == VK_NULL_HANDLE || frameIdx >= dynamicCubemapFaceViews.size()) {
+    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicImageReady.size());
+    if (dynamicImageReady[frameIdx] == 0u) {
         return false;
     }
-    if (frameIdx >= dynamicImageReady.size() || dynamicImageReady[frameIdx] == 0u) {
-        return false;
-    }
-
     ParticleManager* particleManager = renderer->getParticleManager();
     if (!particleManager) {
         return false;
     }
-
-    const uint32_t particleCount = particleManager->getParticleCount();
-    size_t currentParticleCount = static_cast<size_t>(particleCount);
-
+    const size_t currentParticleCount = static_cast<size_t>(particleManager->getParticleCount());
     const size_t slotLastCount = (frameIdx < lastParticleCount.size()) ? lastParticleCount[frameIdx] : 0u;
-    bool particlesChanged = (currentParticleCount > 0) || (currentParticleCount != slotLastCount);
     if (frameIdx < lastParticleCount.size()) {
         lastParticleCount[frameIdx] = currentParticleCount;
     }
-    
-    if (!particlesChanged) {
-        if (frameIdx < dynamicCubemapDirty.size()) {
-            dynamicCubemapDirty[frameIdx] = 0u;
-        }
-        return false;
-    }
-    
-    if (frameIdx < dynamicCubemapDirty.size()) {
-        dynamicCubemapDirty[frameIdx] = 1u;
-    }
-
-    const bool particlesNowEmpty = (particleCount == 0u);
-
-    VkImageMemoryBarrier toGeneral = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dynamicCubemapImage,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        }
-    };
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &toGeneral
-    );
-
-    if (particlesNowEmpty) {
-        // Run one compute/SH update on the frame particles disappear so stale SH does not linger.
-        return true;
-    }
-
-    return true;
-}
-
-void engine::IrradianceProbe::finalizeDynamicCubemapAfterParticleCompute(VkCommandBuffer commandBuffer, uint32_t frameIndex) {
-    if (dynamicCubemapImages.empty()) {
-        return;
-    }
-    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapImages.size());
-    if (frameIdx >= dynamicCubemapDirty.size() || dynamicCubemapDirty[frameIdx] == 0u) {
-        return;
-    }
-    VkImage dynamicCubemapImage = dynamicCubemapImages[frameIdx];
-    if (dynamicCubemapImage == VK_NULL_HANDLE) {
-        return;
-    }
-
-    VkImageMemoryBarrier toShaderRead = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = dynamicCubemapImage,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 6
-        }
-    };
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &toShaderRead
-    );
-}
-
-VkImageView engine::IrradianceProbe::getDynamicCubemapStorageView(uint32_t frameIndex) const {
-    if (dynamicCubemapStorageViews.empty()) {
-        return VK_NULL_HANDLE;
-    }
-    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapStorageViews.size());
-    return dynamicCubemapStorageViews[frameIdx];
-}
-
-VkImageView engine::IrradianceProbe::getDynamicCubemapView(uint32_t frameIndex) const {
-    if (dynamicCubemapViews.empty()) {
-        return VK_NULL_HANDLE;
-    }
-    const uint32_t frameIdx = frameIndex % static_cast<uint32_t>(dynamicCubemapViews.size());
-    return dynamicCubemapViews[frameIdx];
-}
-
-void engine::IrradianceProbe::renderDynamicCubemap(Renderer* renderer, VkCommandBuffer commandBuffer, uint32_t currentFrame, uint32_t activeProbeLocalIndex, uint32_t activeProbeCount) {
-    if (!prepareDynamicCubemapForParticleCompute(renderer, commandBuffer, currentFrame)) {
-        return;
-    }
-
-    ComputeShader* particleCompute = renderer->getShaderManager()->getComputeShader("particlesimple");
-    if (!particleCompute || particleCompute->descriptorSets.empty()) {
-        finalizeDynamicCubemapAfterParticleCompute(commandBuffer, currentFrame);
-        return;
-    }
-
-    const uint32_t dsIndex = std::min(currentFrame, static_cast<uint32_t>(particleCompute->descriptorSets.size() - 1));
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, particleCompute->pipeline);
-    vkCmdBindDescriptorSets(
-        commandBuffer,
-        VK_PIPELINE_BIND_POINT_COMPUTE,
-        particleCompute->pipelineLayout,
-        0,
-        1,
-        &particleCompute->descriptorSets[dsIndex],
-        0,
-        nullptr
-    );
-
-    SimpleParticlePC particlePC = {
-        .probePosition = glm::vec4(0.0f),
-        .particleSize = 0.15f,
-        .particleCount = renderer->getParticleManager() ? renderer->getParticleManager()->getParticleCount() : 0u,
-        .cubemapSize = cubemapSize,
-        .activeProbeCount = std::max(1u, activeProbeCount),
-        .layerBase = activeProbeLocalIndex * 6u,
-        .mappingOffset = 0u
-    };
-    vkCmdPushConstants(
-        commandBuffer,
-        particleCompute->pipelineLayout,
-        VK_SHADER_STAGE_COMPUTE_BIT,
-        0,
-        sizeof(SimpleParticlePC),
-        &particlePC
-    );
-
-    const uint32_t groupX = (cubemapSize + 7u) / 8u;
-    const uint32_t groupY = (cubemapSize + 7u) / 8u;
-    vkCmdDispatch(commandBuffer, groupX, groupY, 6u);
-
-    finalizeDynamicCubemapAfterParticleCompute(commandBuffer, currentFrame);
+    // also update on the frame particles disappear so stale contributions don't linger
+    return currentParticleCount > 0u || currentParticleCount != slotLastCount;
 }
 
 engine::IrradianceProbeData engine::IrradianceProbe::getProbeData() const {
@@ -723,7 +339,7 @@ engine::IrradianceManager::~IrradianceManager() {
     dynamicSHOutputBuffersMemory.clear();
     dynamicSHPartialBuffers.clear();
     dynamicSHPartialBuffersMemory.clear();
-    destroyDummyProbeStorageImage();
+    destroyDynamicProbeImages();
     irradianceProbes.clear();
 }
 
@@ -742,47 +358,197 @@ void engine::IrradianceManager::clear() {
     std::fill(activeProbeFrameBuilt.begin(), activeProbeFrameBuilt.end(), 0u);
 }
 
-void engine::IrradianceManager::ensureDummyProbeStorageImage() {
-    if (dummyProbeStorageView != VK_NULL_HANDLE && dummyProbeStorageImage != VK_NULL_HANDLE && dummyProbeStorageMemory != VK_NULL_HANDLE) {
-        return;
+engine::IrradianceManager::DynamicProbeImage& engine::IrradianceManager::ensureDynamicProbeImage(uint32_t frameIndex) {
+    const uint32_t framesInFlight = std::max(1u, renderer->getFramesInFlight());
+    if (dynamicProbeImages.size() < framesInFlight) {
+        dynamicProbeImages.resize(framesInFlight);
+    }
+    DynamicProbeImage& target = dynamicProbeImages[frameIndex % framesInFlight];
+    if (target.image != VK_NULL_HANDLE) {
+        return target;
     }
 
-    std::tie(dummyProbeStorageImage, dummyProbeStorageMemory) = renderer->createImage(
-        1,
-        1,
+    const uint32_t layerCount = kMaxIrradianceProbes * 6u;
+    std::tie(target.image, target.memory) = renderer->createImage(
+        dynamicProbeCubemapSize, dynamicProbeCubemapSize,
         1,
         VK_SAMPLE_COUNT_1_BIT,
         VK_FORMAT_R16G16B16A16_SFLOAT,
         VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        6,
-        0
+        layerCount,
+        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
     );
-
-    dummyProbeStorageView = renderer->createImageView(
-        dummyProbeStorageImage,
+    target.storageView = renderer->createImageView(
+        target.image,
         VK_FORMAT_R16G16B16A16_SFLOAT,
         VK_IMAGE_ASPECT_COLOR_BIT,
         1,
         VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-        6
+        layerCount
     );
+    target.cubeArrayView = renderer->createImageView(
+        target.image,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        1,
+        VK_IMAGE_VIEW_TYPE_CUBE_ARRAY,
+        layerCount
+    );
+    target.layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    return target;
 }
 
-void engine::IrradianceManager::destroyDummyProbeStorageImage() {
+void engine::IrradianceManager::destroyDynamicProbeImages() {
     VkDevice device = renderer->getDevice();
-    if (dummyProbeStorageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(device, dummyProbeStorageView, nullptr);
-        dummyProbeStorageView = VK_NULL_HANDLE;
+    for (DynamicProbeImage& target : dynamicProbeImages) {
+        if (target.cubeArrayView != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, target.cubeArrayView, nullptr);
+        }
+        if (target.storageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, target.storageView, nullptr);
+        }
+        if (target.image != VK_NULL_HANDLE) {
+            vkDestroyImage(device, target.image, nullptr);
+        }
+        if (target.memory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, target.memory, nullptr);
+        }
     }
-    if (dummyProbeStorageImage != VK_NULL_HANDLE) {
-        vkDestroyImage(device, dummyProbeStorageImage, nullptr);
-        dummyProbeStorageImage = VK_NULL_HANDLE;
+    dynamicProbeImages.clear();
+}
+
+void engine::IrradianceManager::transitionDynamicProbeImage(VkCommandBuffer commandBuffer, DynamicProbeImage& target, VkImageLayout newLayout) {
+    if (target.image == VK_NULL_HANDLE || target.layout == newLayout) {
+        return;
     }
-    if (dummyProbeStorageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, dummyProbeStorageMemory, nullptr);
-        dummyProbeStorageMemory = VK_NULL_HANDLE;
+    auto accessFor = [](VkImageLayout layout) -> VkAccessFlags {
+        switch (layout) {
+            case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: return VK_ACCESS_SHADER_READ_BIT;
+            case VK_IMAGE_LAYOUT_GENERAL: return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_ACCESS_TRANSFER_WRITE_BIT;
+            default: return 0;
+        }
+    };
+    auto stageFor = [](VkImageLayout layout) -> VkPipelineStageFlags {
+        switch (layout) {
+            case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            case VK_IMAGE_LAYOUT_GENERAL: return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_PIPELINE_STAGE_TRANSFER_BIT;
+            default: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        }
+    };
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = accessFor(target.layout),
+        .dstAccessMask = accessFor(newLayout),
+        .oldLayout = target.layout,
+        .newLayout = newLayout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = target.image,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = kMaxIrradianceProbes * 6u
+        }
+    };
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        stageFor(target.layout),
+        stageFor(newLayout),
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+    target.layout = newLayout;
+}
+
+void engine::IrradianceManager::copyBakedToDynamic(VkCommandBuffer commandBuffer, uint32_t frameIndex) {
+    const uint32_t slotCount = std::min(static_cast<uint32_t>(irradianceProbes.size()), kMaxIrradianceProbes);
+    std::vector<uint32_t> slots;
+    slots.reserve(slotCount);
+    for (uint32_t slot = 0u; slot < slotCount; ++slot) {
+        if (irradianceProbes[slot].isBakedImageReady()) {
+            slots.push_back(slot);
+        }
+    }
+    if (slots.empty()) {
+        return;
+    }
+
+    DynamicProbeImage& target = ensureDynamicProbeImage(frameIndex);
+    transitionDynamicProbeImage(commandBuffer, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    auto bakedBarrier = [&](uint32_t slot, VkImageLayout oldLayout, VkImageLayout newLayout, VkAccessFlags srcAccess, VkAccessFlags dstAccess) {
+        return VkImageMemoryBarrier{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = srcAccess,
+            .dstAccessMask = dstAccess,
+            .oldLayout = oldLayout,
+            .newLayout = newLayout,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = irradianceProbes[slot].getBakedCubemapImage(),
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 6
+            }
+        };
+    };
+
+    std::vector<VkImageMemoryBarrier> barriers;
+    barriers.reserve(slots.size());
+    for (uint32_t slot : slots) {
+        barriers.push_back(bakedBarrier(slot, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT));
+    }
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, static_cast<uint32_t>(barriers.size()), barriers.data());
+
+    for (uint32_t slot : slots) {
+        VkImageCopy copyRegion = {
+            .srcSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 6
+            },
+            .srcOffset = { 0, 0, 0 },
+            .dstSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = 0,
+                .baseArrayLayer = slot * 6u,
+                .layerCount = 6
+            },
+            .dstOffset = { 0, 0, 0 },
+            .extent = { dynamicProbeCubemapSize, dynamicProbeCubemapSize, 1 }
+        };
+        vkCmdCopyImage(
+            commandBuffer,
+            irradianceProbes[slot].getBakedCubemapImage(),
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            target.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &copyRegion
+        );
+    }
+
+    barriers.clear();
+    for (uint32_t slot : slots) {
+        barriers.push_back(bakedBarrier(slot, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT));
+    }
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, static_cast<uint32_t>(barriers.size()), barriers.data());
+
+    transitionDynamicProbeImage(commandBuffer, target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    for (uint32_t slot : slots) {
+        irradianceProbes[slot].markDynamicImageReady(frameIndex);
     }
 }
 
@@ -1085,72 +851,26 @@ void engine::IrradianceManager::fillBakedProbeCubemapImageInfos(uint32_t count, 
     }
 }
 
-void engine::IrradianceManager::fillDynamicProbeCubemapImageInfos(uint32_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) const {
-    const size_t startIndex = imageInfos.size();
+void engine::IrradianceManager::fillDynamicProbeCubemapImageInfos(uint32_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
     if (count == 0u) {
         return;
     }
-
-    VkImageView fallbackView = VK_NULL_HANDLE;
-    if (TextureManager* textureManager = renderer->getTextureManager()) {
-        Texture* fallbackTex = textureManager->getTexture("fallback_shadow_cube");
-        if (fallbackTex) {
-            fallbackView = fallbackTex->imageView;
-        }
-    }
-    for (const IrradianceProbe& probe : irradianceProbes) {
-        fallbackView = probe.getDynamicCubemapView(frameIndex);
-        if (fallbackView != VK_NULL_HANDLE) {
-            break;
-        }
-    }
-
-    imageInfos.resize(startIndex + count, {
+    imageInfos.resize(imageInfos.size() + count, {
         .sampler = VK_NULL_HANDLE,
-        .imageView = fallbackView,
+        .imageView = ensureDynamicProbeImage(frameIndex).cubeArrayView,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     });
-
-    const uint32_t writeCount = std::min(count, static_cast<uint32_t>(irradianceProbes.size()));
-    for (uint32_t i = 0u; i < writeCount; ++i) {
-        VkImageView probeView = irradianceProbes[i].getDynamicCubemapView(frameIndex);
-        if (probeView != VK_NULL_HANDLE) {
-            imageInfos[startIndex + i].imageView = probeView;
-        }
-    }
 }
 
 void engine::IrradianceManager::fillDynamicProbeStorageImageInfos(uint32_t frameIndex, uint32_t count, std::vector<VkDescriptorImageInfo>& imageInfos) {
-    const size_t startIndex = imageInfos.size();
     if (count == 0u) {
         return;
     }
-
-    VkImageView fallbackView = VK_NULL_HANDLE;
-    for (const IrradianceProbe& probe : irradianceProbes) {
-        fallbackView = probe.getDynamicCubemapStorageView(frameIndex);
-        if (fallbackView != VK_NULL_HANDLE) {
-            break;
-        }
-    }
-    if (fallbackView == VK_NULL_HANDLE) {
-        ensureDummyProbeStorageImage();
-        fallbackView = dummyProbeStorageView;
-    }
-
-    imageInfos.resize(startIndex + count, {
+    imageInfos.resize(imageInfos.size() + count, {
         .sampler = VK_NULL_HANDLE,
-        .imageView = fallbackView,
+        .imageView = ensureDynamicProbeImage(frameIndex).storageView,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL
     });
-
-    const uint32_t writeCount = std::min(count, static_cast<uint32_t>(irradianceProbes.size()));
-    for (uint32_t i = 0u; i < writeCount; ++i) {
-        VkImageView probeView = irradianceProbes[i].getDynamicCubemapStorageView(frameIndex);
-        if (probeView != VK_NULL_HANDLE) {
-            imageInfos[startIndex + i].imageView = probeView;
-        }
-    }
 }
 
 void engine::IrradianceManager::updateIrradianceProbesUBO(uint32_t frameIndex) {
@@ -1202,9 +922,7 @@ void engine::IrradianceManager::recordIrradianceReadback(VkCommandBuffer command
     }
 
     for (uint32_t frame = 0; frame < framesInFlight; ++frame) {
-        for (auto& probe : probes) {
-            probe.copyBakedToDynamic(renderer, commandBuffer, frame);
-        }
+        copyBakedToDynamic(commandBuffer, frame);
 
         const uint32_t frameSlot = frame % framesInFlight;
         ActiveProbeFrame& frameData = activeProbeFrames[frameSlot];
@@ -1259,14 +977,19 @@ void engine::IrradianceManager::prepareDynamicIrradianceCompute(VkCommandBuffer 
     const uint32_t computeCapacity = std::min(maxActiveProbesPerFrame, static_cast<uint32_t>(frameData.computeIndices.size()));
     for (uint32_t i = 0u; i < activeEnd && frameData.computeCount < computeCapacity; ++i) {
         const uint32_t probeIndex = frameData.indices[i];
-        if (probeIndex >= probes.size()) {
+        // Probes past kMaxIrradianceProbes have no layers in the shared dynamic image.
+        if (probeIndex >= probes.size() || probeIndex >= kMaxIrradianceProbes) {
             continue;
         }
-        if (!probes[probeIndex].prepareDynamicCubemapForParticleCompute(renderer, commandBuffer, currentFrame)) {
+        if (!probes[probeIndex].needsDynamicParticleUpdate(renderer, currentFrame)) {
             continue;
         }
         frameData.computeIndices[frameData.computeCount] = probeIndex;
         ++frameData.computeCount;
+    }
+
+    if (frameData.computeCount > 0u) {
+        transitionDynamicProbeImage(commandBuffer, ensureDynamicProbeImage(currentFrame), VK_IMAGE_LAYOUT_GENERAL);
     }
 
     if (frameSlot >= activeProbeIndexBuffersMapped.size() || activeProbeIndexBuffersMapped[frameSlot] == nullptr) {
@@ -1279,38 +1002,14 @@ void engine::IrradianceManager::prepareDynamicIrradianceCompute(VkCommandBuffer 
 }
 
 void engine::IrradianceManager::finalizeDynamicIrradianceCompute(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
-    const ActiveProbeFrame* frameData = getActiveProbeFrame(currentFrame);
-    if (!frameData) {
+    if (dynamicProbeImages.empty()) {
         return;
     }
-    std::vector<IrradianceProbe>& probes = getIrradianceProbes();
-    const uint32_t computeEnd = getDynamicComputeProbeCount(currentFrame);
-    for (uint32_t i = 0u; i < computeEnd; ++i) {
-        const uint32_t probeIndex = frameData->computeIndices[i];
-        if (probeIndex >= probes.size()) {
-            continue;
-        }
-        probes[probeIndex].finalizeDynamicCubemapAfterParticleCompute(commandBuffer, currentFrame);
-    }
-}
-
-void engine::IrradianceManager::renderDynamicIrradianceGraphics(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
-    buildActiveProbeFrame(currentFrame);
-
-    const ActiveProbeFrame* frameData = getActiveProbeFrame(currentFrame);
-    if (!frameData) {
+    DynamicProbeImage& target = dynamicProbeImages[currentFrame % static_cast<uint32_t>(dynamicProbeImages.size())];
+    if (target.image == VK_NULL_HANDLE || target.layout != VK_IMAGE_LAYOUT_GENERAL) {
         return;
     }
-
-    std::vector<IrradianceProbe>& probes = getIrradianceProbes();
-    const uint32_t activeEnd = getActiveProbeCount(currentFrame);
-    for (uint32_t i = 0u; i < activeEnd; ++i) {
-        const uint32_t probeIndex = frameData->indices[i];
-        if (probeIndex >= probes.size()) {
-            continue;
-        }
-        probes[probeIndex].renderDynamicCubemap(renderer, commandBuffer, currentFrame, i, activeEnd);
-    }
+    transitionDynamicProbeImage(commandBuffer, target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void engine::IrradianceManager::dispatchDynamicIrradianceSH(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
@@ -1445,12 +1144,6 @@ void engine::IrradianceManager::dispatchDynamicIrradianceSHReduce(VkCommandBuffe
         1, &outputToRead,
         0, nullptr
     );
-}
-
-void engine::IrradianceManager::renderDynamicIrradiance(VkCommandBuffer commandBuffer, uint32_t currentFrame) {
-    renderDynamicIrradianceGraphics(commandBuffer, currentFrame);
-    dispatchDynamicIrradianceSH(commandBuffer, currentFrame);
-    dispatchDynamicIrradianceSHReduce(commandBuffer, currentFrame);
 }
 
 void engine::IrradianceManager::processIrradianceSH() {

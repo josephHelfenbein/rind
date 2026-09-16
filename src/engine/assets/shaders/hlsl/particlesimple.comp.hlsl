@@ -22,8 +22,8 @@ struct IrradianceProbesUBO {
 [[vk::binding(0)]]
 StructuredBuffer<ParticleData> particles;
 
-[[vk::binding(1)]]
-RWTexture2DArray<float4> outputCubemaps[kMaxIrradianceProbes];
+[[vk::binding(1), vk::image_format("rgba16f")]]
+RWTexture2DArray<float4> outputCubemaps; // kMaxIrradianceProbes * 6 layers
 
 [[vk::binding(2)]]
 StructuredBuffer<uint> activeProbeIndices;
@@ -190,7 +190,7 @@ void main(uint3 dispatchId : SV_DispatchThreadID,
     }
 
     if (inBounds) {
-        const int3 pixelCoord = int3(dispatchId.xy, mappedFace);
-        outputCubemaps[mappedProbeIndex][pixelCoord] = outColor;
+        const uint3 pixelCoord = uint3(dispatchId.xy, mappedProbeIndex * 6u + mappedFace);
+        outputCubemaps[pixelCoord] = outColor;
     }
 }

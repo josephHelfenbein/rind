@@ -1802,6 +1802,7 @@ void engine::Renderer::createLogicalDevice() {
         queueCreateInfos.push_back(queueCreateInfo);
     }
     VkPhysicalDeviceFeatures deviceFeatures = {
+        .imageCubeArray = VK_TRUE,
         .independentBlend = VK_TRUE,
         .sampleRateShading = VK_TRUE,
         .samplerAnisotropy = VK_TRUE,
@@ -4168,7 +4169,7 @@ int engine::Renderer::rateDeviceSuitability(VkPhysicalDevice device) {
     }
     if (!deviceFeatures.samplerAnisotropy || !deviceFeatures.fragmentStoresAndAtomics ||
         !deviceFeatures.shaderStorageImageReadWithoutFormat || !deviceFeatures.shaderStorageImageWriteWithoutFormat ||
-        !deviceFeatures.independentBlend) {
+        !deviceFeatures.independentBlend || !deviceFeatures.imageCubeArray) {
         return 0;
     }
     int score = 0;

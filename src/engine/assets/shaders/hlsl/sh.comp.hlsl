@@ -10,7 +10,7 @@ static const uint kMaxIrradianceProbes = 64u;
 RWStructuredBuffer<SHOutput> outputSH;
 
 [[vk::binding(1)]]
-TextureCube<float4> inputCubemaps[kMaxIrradianceProbes];
+TextureCubeArray<float4> inputCubemaps; // one cube per probe slot
 
 [[vk::binding(2)]]
 SamplerState cubemapSampler;
@@ -87,7 +87,7 @@ void main(
         float v = (float(y) + 0.5f) * invSize * 2.0f - 1.0f;
 
         float3 dir = cubemapTexelToDirection(face, u, v);
-        float4 color = inputCubemaps[probeIndex].SampleLevel(cubemapSampler, dir, 0.0f);
+        float4 color = inputCubemaps.SampleLevel(cubemapSampler, float4(dir, float(probeIndex)), 0.0f);
         if (!any(isnan(color.rgb))) {
             float solidAngle = texelSolidAngle(u, v, invSize);
 
