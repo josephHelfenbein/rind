@@ -748,9 +748,13 @@ void engine::EntityManager::deletePendingVkObjects(bool force) {
     ShaderManager* shaderManager = renderer->getShaderManager();
     const size_t requiredFenceWaits = renderer->getMaxFramesInFlight();
     size_t kept = 0;
-    for (auto& pending : pendingVkObjectDeletions) {
+    for (size_t i = 0; i < pendingVkObjectDeletions.size(); ++i) {
+        auto& pending = pendingVkObjectDeletions[i];
         if (!force && ++pending.fenceWaitsSeen < requiredFenceWaits) {
-            pendingVkObjectDeletions[kept++] = std::move(pending);
+            if (kept != i) {
+                pendingVkObjectDeletions[kept] = std::move(pending);
+            }
+            ++kept;
             continue;
         }
         auto& objects = pending.objects;
