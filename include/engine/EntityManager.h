@@ -273,7 +273,7 @@ namespace engine {
         void processPendingDeletions();
         void processPendingAdditions();
         void appendToVkObjectDeletions(Entity::EntityVkObjects&& objects) {
-            pendingVkObjectDeletions.push_back(std::move(objects));
+            pendingVkObjectDeletions.push_back({ std::move(objects), 0u });
         }
         void destroyUniformBuffers(VkDevice device, const Entity::EntityVkObjects& vkObjects) {
             if (device == VK_NULL_HANDLE) return;
@@ -292,7 +292,7 @@ namespace engine {
             }
         }
 
-        void deletePendingVkObjects();
+        void deletePendingVkObjects(bool force = false);
 
     private:
         engine::Renderer* renderer;
@@ -304,7 +304,11 @@ namespace engine {
         std::vector<Collider*> dynamicColliders;
         std::vector<Entity*> pendingDeletions;
         std::vector<std::pair<std::string, Entity*>> pendingAdditions;
-        std::vector<Entity::EntityVkObjects> pendingVkObjectDeletions;
+        struct PendingVkObjectDeletion {
+            Entity::EntityVkObjects objects;
+            uint32_t fenceWaitsSeen = 0;
+        };
+        std::vector<PendingVkObjectDeletion> pendingVkObjectDeletions;
         SpatialGrid spatialGrid;
         bool spatialGridDirty = true;
         bool textureLoadDirty = false;

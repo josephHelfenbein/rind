@@ -431,6 +431,7 @@ void engine::ParticleManager::dispatchGrowParticleBuffer() {
     profiler::Profiler* profiler = renderer->getProfiler();
     PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_GrowParticleBuffer);
     pendingGrowBuffer = false;
+    renderer->waitForInFlightFrames();
     VkDevice device = renderer->getDevice();
     maxParticles = std::min(std::max(maxParticles * 2, static_cast<uint32_t>(particles.count())), hardCap);
     for (size_t i = 0; i < particleBuffersMapped.size(); ++i) {

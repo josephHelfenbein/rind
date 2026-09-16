@@ -3905,6 +3905,18 @@ void engine::Renderer::createSyncObjects() {
     createPresentSemaphores();
 }
 
+void engine::Renderer::waitForInFlightFrames() {
+    std::vector<VkFence> fences;
+    fences.reserve(inFlightFences.size() + inFlightComputeFences.size());
+    fences.insert(fences.end(), inFlightFences.begin(), inFlightFences.end());
+    if (hasAsyncComputeQueue) {
+        fences.insert(fences.end(), inFlightComputeFences.begin(), inFlightComputeFences.end());
+    }
+    if (!fences.empty()) {
+        vkWaitForFences(device, static_cast<uint32_t>(fences.size()), fences.data(), VK_TRUE, UINT64_MAX);
+    }
+}
+
 void engine::Renderer::createPresentSemaphores() {
     for (VkSemaphore sem : renderFinishedSemaphores) {
         if (sem != VK_NULL_HANDLE) vkDestroySemaphore(device, sem, nullptr);

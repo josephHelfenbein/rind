@@ -107,7 +107,7 @@ void engine::VolumetricManager::createVolumetricDescriptorSets() {
         VkDescriptorImageInfo depthImageInfo = {
             .sampler = VK_NULL_HANDLE,
             .imageView = depthImageView,
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
         };
         VkDescriptorImageInfo samplerInfo = {
             .sampler = renderer->getMainTextureSampler(),
@@ -173,6 +173,7 @@ void engine::VolumetricManager::dispatchGrowVolumetricBuffer() {
     profiler::Profiler* profiler = renderer->getProfiler();
     PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_GrowVolumetricBuffer);
     pendingGrowBuffer = false;
+    renderer->waitForInFlightFrames();
     VkDevice device = renderer->getDevice();
     maxVolumetrics = std::min(std::max(maxVolumetrics * 2, static_cast<uint32_t>(volumetrics.size())), hardCap);
     for (size_t i = 0; i < volumetricBuffersMapped.size(); ++i) {

@@ -183,6 +183,7 @@ namespace engine {
         void deferCreatePostProcessDescriptorSets() { pendingCreatePostProcessDescriptorSets = true; }
         void createPostProcessDescriptorSets();
         void createComputeDescriptorSets();
+        void waitForInFlightFrames();
         void dispatchComputePass(VkCommandBuffer commandBuffer, RenderNode& node);
         VkImageView getPassImageView(const std::string& shaderName, const std::string& attachmentName);
 

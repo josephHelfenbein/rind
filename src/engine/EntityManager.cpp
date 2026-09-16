@@ -524,7 +524,7 @@ void engine::EntityManager::clear() {
     for (Entity* root : roots) {
         delete root;
     }
-    deletePendingVkObjects();
+    deletePendingVkObjects(true);
     movableEntities.clear();
     colliders.clear();
     dynamicColliders.clear();
@@ -740,13 +740,20 @@ void engine::EntityManager::processPendingDeletions() {
     }
 }
 
-void engine::EntityManager::deletePendingVkObjects() {
+void engine::EntityManager::deletePendingVkObjects(bool force) {
     if (pendingVkObjectDeletions.empty()) return;
     profiler::Profiler* profiler = renderer->getProfiler();
     PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_ClearObjects);
     VkDevice device = renderer->getDevice();
     ShaderManager* shaderManager = renderer->getShaderManager();
-    for (auto& objects : pendingVkObjectDeletions) {
+    const uint32_t requiredFenceWaits = static_cast<uint32_t>(renderer->getMaxFramesInFlight());
+    size_t kept = 0;
+    for (auto& pending : pendingVkObjectDeletions) {
+        if (!force && ++pending.fenceWaitsSeen < requiredFenceWaits) {
+            pendingVkObjectDeletions[kept++] = std::move(pending);
+            continue;
+        }
+        auto& objects = pending.objects;
         if (!objects.descriptorSets.empty() && !objects.shader.empty()) {
             GraphicsShader* entityShader = shaderManager->getGraphicsShader(objects.shader);
             if (entityShader && entityShader->descriptorPool != VK_NULL_HANDLE) {
@@ -763,7 +770,7 @@ void engine::EntityManager::deletePendingVkObjects() {
         }
         destroyUniformBuffers(device, objects);
     }
-    pendingVkObjectDeletions.clear();
+    pendingVkObjectDeletions.resize(kept);
 }
 
 void engine::EntityManager::renderEntities(VkCommandBuffer commandBuffer, uint32_t currentFrame, bool DEBUG_RENDER_LOGS) {
