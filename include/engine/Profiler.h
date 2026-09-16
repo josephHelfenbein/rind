@@ -268,6 +268,14 @@ namespace profiler {
             vkCreateQueryPool(device, &queryPoolCreateInfo, nullptr, &gpuQueryPool);
         }
 
+        void destroyGpuProfiling(VkDevice device) {
+            if (gpuQueryPool != VK_NULL_HANDLE) {
+                vkDestroyQueryPool(device, gpuQueryPool, nullptr);
+                gpuQueryPool = VK_NULL_HANDLE;
+            }
+            calibratedTimestampsSupported = false;
+        }
+
         void gpuFrameReset() {
             if (!calibratedTimestampsSupported) return;
             auto& slot = gpuFrameSlots[renderer->getCurrentFrameIndex()];

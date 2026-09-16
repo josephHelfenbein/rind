@@ -9,7 +9,7 @@ Texture2D<float> gBufferDepth;
 [[vk::binding(2)]]
 Texture2D<float4> gBufferNormal;
 
-[[vk::binding(3)]]
+[[vk::binding(3), vk::image_format("r8")]]
 RWTexture2DArray<float> outputTexture;
 
 struct PointLight {

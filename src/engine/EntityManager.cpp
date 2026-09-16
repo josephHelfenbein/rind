@@ -130,7 +130,16 @@ void engine::Entity::ensureUniformBuffers(Renderer* renderer, GraphicsShader* sh
         return;
     }
     const size_t frames = static_cast<size_t>(renderer->getFramesInFlight());
-    const size_t requiredStride = static_cast<size_t>(shader->config.vertexBitBindings);
+    size_t requiredStride = 0;
+    for (size_t binding = 0; binding < static_cast<size_t>(shader->config.vertexBitBindings); ++binding) {
+        const VkDescriptorType type = binding < shader->config.vertexDescriptorTypes.size()
+            ? shader->config.vertexDescriptorTypes[binding]
+            : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        if (type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) continue;
+        requiredStride += (shader->config.vertexDescriptorCounts.size() == static_cast<size_t>(shader->config.vertexBitBindings))
+            ? std::max(shader->config.vertexDescriptorCounts[binding], 1u)
+            : 1u;
+    }
     if (requiredStride == 0 || frames == 0) {
         destroyUniformBuffers();
         return;
@@ -597,22 +606,36 @@ void engine::EntityManager::loadTextures() {
             continue;
         }
         entity->ensureUniformBuffers(renderer, shader);
-        entity->setDescriptorSets(shader->createDescriptorSets(renderer, texturePtrs, entity->getUniformBuffers()));
+        auto buildShadowShaderBuffers = [&]() -> std::vector<VkBuffer> {
+            std::vector<VkBuffer> interleavedBuffers;
+            LightManager* lightManager = renderer->getLightManager();
+            if (!lightManager) return interleavedBuffers;
+            lightManager->createShadowLightsBuffers();
+            auto& entityBuffers = entity->getUniformBuffers();
+            auto& shadowLightsBuffers = lightManager->getShadowLightsBuffers();
+            const size_t framesInFlight = std::min(entityBuffers.size(), shadowLightsBuffers.size());
+            interleavedBuffers.reserve(framesInFlight * 2);
+            for (size_t frame = 0; frame < framesInFlight; ++frame) {
+                interleavedBuffers.push_back(entityBuffers[frame]);
+                interleavedBuffers.push_back(shadowLightsBuffers[frame]);
+            }
+            return interleavedBuffers;
+        };
+        if (shader->name == "shadow") {
+            std::vector<VkBuffer> shadowShaderBuffers = buildShadowShaderBuffers();
+            if (shadowShaderBuffers.empty()) {
+                std::cout << std::format("Error: Shadow buffers unavailable for Entity {}. Skipping descriptor set creation.\n", name);
+                continue;
+            }
+            entity->setDescriptorSets(shader->createDescriptorSets(renderer, texturePtrs, shadowShaderBuffers));
+        } else {
+            entity->setDescriptorSets(shader->createDescriptorSets(renderer, texturePtrs, entity->getUniformBuffers()));
+        }
         if (entity->getCastShadow() && !entity->getUniformBuffers().empty()) {
             GraphicsShader* shadowShader = renderer->getShaderManager()->getGraphicsShader("shadow");
-            LightManager* lightManager = renderer->getLightManager();
-            if (shadowShader && lightManager && entity->getShadowDescriptorSets().empty()) {
-                lightManager->createShadowLightsBuffers();
-                auto& entityBuffers = entity->getUniformBuffers();
-                auto& shadowLightsBuffers = lightManager->getShadowLightsBuffers();
-                const size_t framesInFlight = std::min(entityBuffers.size(), shadowLightsBuffers.size());
-                if (framesInFlight > 0) {
-                    std::vector<VkBuffer> interleavedBuffers;
-                    interleavedBuffers.reserve(framesInFlight * 2);
-                    for (size_t frame = 0; frame < framesInFlight; ++frame) {
-                        interleavedBuffers.push_back(entityBuffers[frame]);
-                        interleavedBuffers.push_back(shadowLightsBuffers[frame]);
-                    }
+            if (shadowShader && entity->getShadowDescriptorSets().empty()) {
+                std::vector<VkBuffer> interleavedBuffers = buildShadowShaderBuffers();
+                if (!interleavedBuffers.empty()) {
                     std::vector<Texture*> noTextures;
                     entity->setShadowDescriptorSets(shadowShader->createDescriptorSets(renderer, noTextures, interleavedBuffers));
                 }

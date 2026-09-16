@@ -6,7 +6,7 @@ Texture2D<float> depthTexture;
 [[vk::binding(1)]]
 Texture2D<float4> normalTexture;
 
-[[vk::binding(2)]]
+[[vk::binding(2), vk::image_format("r8")]]
 RWTexture2D<float> outputTexture;
 
 [[vk::binding(3)]]

@@ -402,6 +402,7 @@ namespace engine {
         void createLinearClampSampler();
         void createCommandBuffers();
         void createSyncObjects();
+        void createPresentSemaphores();
         void createQuadResources();
         void buildRenderSubmitGraph();
         void buildRenderAttachmentReadStages();

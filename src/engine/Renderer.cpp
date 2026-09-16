@@ -136,6 +136,9 @@ void engine::Renderer::cleanup() {
             computeCommandPool = VK_NULL_HANDLE;
         }
 
+#ifndef NDEBUG
+        profiler->destroyGpuProfiling(device);
+#endif
         vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
     }
@@ -846,12 +849,13 @@ void engine::Renderer::drawFrame() {
         PROFILER_ZONE(profiler, profiler::Zone::Acquire);
         result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
     }
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreateSwapChain();
         return;
-    } else if (result != VK_SUCCESS) {
+    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("Failed to acquire swap chain image!");
     }
+    const bool acquiredSuboptimal = result == VK_SUBOPTIMAL_KHR;
     vkResetFences(device, hasAsyncComputeQueue ? 2 : 1, frameFences);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
@@ -1004,7 +1008,7 @@ void engine::Renderer::drawFrame() {
         imageAvailableWaitOrderPos = 0;
     }
 
-    // Find the last submission for each queue so we can fence them independently
+    // find the last submission for each queue so we can fence them independently
     size_t lastGraphicsOrderPos = SIZE_MAX;
     size_t lastComputeOrderPos = SIZE_MAX;
     for (size_t orderPos = 0; orderPos < submissionOrder.size(); ++orderPos) {
@@ -1045,7 +1049,7 @@ void engine::Renderer::drawFrame() {
                 frameSignalSemaphores.push_back(frameBoundarySemaphores[edgeIdx]);
             }
             if (isLastSubmission) {
-                frameSignalSemaphores.push_back(renderFinishedSemaphores[currentFrame]);
+                frameSignalSemaphores.push_back(renderFinishedSemaphores[imageIndex]);
             }
 
             VkFence submitFence = VK_NULL_HANDLE;
@@ -1077,14 +1081,14 @@ void engine::Renderer::drawFrame() {
         VkPresentInfoKHR presentInfo = {
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &renderFinishedSemaphores[currentFrame],
+            .pWaitSemaphores = &renderFinishedSemaphores[imageIndex],
             .swapchainCount = 1,
             .pSwapchains = &swapChain,
             .pImageIndices = &imageIndex
         };
         result = vkQueuePresentKHR(presentQueue, &presentInfo);
     }
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || acquiredSuboptimal || framebufferResized) {
         framebufferResized = false;
         recreateSwapChain();
     } else if (result != VK_SUCCESS) {
@@ -2111,6 +2115,7 @@ void engine::Renderer::recreateSwapChain() {
     }
 
     createSwapChain(VK_NULL_HANDLE);
+    createPresentSemaphores();
 
     createImageViews();
     createAttachmentResources();
@@ -3880,7 +3885,6 @@ void engine::Renderer::createCommandBuffers() {
 
 void engine::Renderer::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     crossQueueSegmentSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightComputeFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -3893,10 +3897,25 @@ void engine::Renderer::createSyncObjects() {
     };
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
             vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
             vkCreateFence(device, &fenceInfo, nullptr, &inFlightComputeFences[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create synchronization objects for a frame!");
+        }
+    }
+    createPresentSemaphores();
+}
+
+void engine::Renderer::createPresentSemaphores() {
+    for (VkSemaphore sem : renderFinishedSemaphores) {
+        if (sem != VK_NULL_HANDLE) vkDestroySemaphore(device, sem, nullptr);
+    }
+    renderFinishedSemaphores.assign(swapChainImages.size(), VK_NULL_HANDLE);
+    VkSemaphoreCreateInfo semaphoreInfo = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+    };
+    for (VkSemaphore& sem : renderFinishedSemaphores) {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &sem) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create present semaphore for a swapchain image!");
         }
     }
 }
