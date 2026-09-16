@@ -69,7 +69,7 @@ function(rind_engine_compile_shaders)
 
         add_custom_command(
             OUTPUT ${SPIRV}
-            COMMAND ${DXC_EXECUTABLE} -spirv -O3 -fvk-use-scalar-layout -fspv-target-env=vulkan1.3 -fvk-use-dx-position-w ${SHADER_EXTRA_FLAGS} -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
+            COMMAND ${DXC_EXECUTABLE} -spirv -O3 -fvk-use-scalar-layout -fspv-target-env=vulkan1.2 -fspv-extension=KHR -fspv-extension=SPV_EXT_demote_to_helper_invocation -fvk-use-dx-position-w ${SHADER_EXTRA_FLAGS} -T ${SHADER_PROFILE} -E main ${HLSL} -Fo ${SPIRV}
             DEPENDS ${HLSL}
             COMMENT "Compiling ${FILE_NAME} to SPIR-V"
         )

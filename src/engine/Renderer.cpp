@@ -1802,12 +1802,16 @@ void engine::Renderer::createLogicalDevice() {
         queueCreateInfos.push_back(queueCreateInfo);
     }
     VkPhysicalDeviceFeatures deviceFeatures = {
+        .independentBlend = VK_TRUE,
         .sampleRateShading = VK_TRUE,
         .samplerAnisotropy = VK_TRUE,
         .fragmentStoresAndAtomics = VK_TRUE,
         .shaderStorageImageReadWithoutFormat = VK_TRUE,
         .shaderStorageImageWriteWithoutFormat = VK_TRUE
     };
+    VkPhysicalDeviceProperties physicalDeviceProps;
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProps);
+    const bool hasCoreVulkan13 = physicalDeviceProps.apiVersion >= VK_API_VERSION_1_3;
     VkPhysicalDeviceVulkan13Features vulkan13Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .synchronization2 = VK_TRUE,
@@ -1836,10 +1840,29 @@ void engine::Renderer::createLogicalDevice() {
         .pQueueCreateInfos = queueCreateInfos.data()
     };
     VkPhysicalDeviceVulkan13Features enabledVulkan13Features = vulkan13Features;
+    VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT enabledDemoteFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT,
+        .shaderDemoteToHelperInvocation = VK_TRUE
+    };
+    VkPhysicalDeviceSynchronization2FeaturesKHR enabledSync2Features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+        .pNext = &enabledDemoteFeatures,
+        .synchronization2 = VK_TRUE
+    };
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR enabledDynamicRenderingFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+        .pNext = &enabledSync2Features,
+        .dynamicRendering = VK_TRUE
+    };
     VkPhysicalDeviceVulkan12Features enabledVulkan12Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &enabledVulkan13Features,
-        .scalarBlockLayout = VK_TRUE
+        .pNext = hasCoreVulkan13 ? static_cast<void*>(&enabledVulkan13Features)
+                                 : static_cast<void*>(&enabledDynamicRenderingFeatures),
+        .scalarBlockLayout = VK_TRUE,
+#ifndef NDEBUG
+        // only the debug-only GPU profiler calls vkResetQueryPool
+        .hostQueryReset = VK_TRUE,
+#endif
     };
     VkPhysicalDeviceVulkan11Features enabledVulkan11Features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
@@ -1859,6 +1882,12 @@ void engine::Renderer::createLogicalDevice() {
     }
     if (hasDeviceExtension(physicalDevice, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) {
         enabledExtensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+    }
+    if (!hasCoreVulkan13) {
+        if (!hasDeviceExtension(physicalDevice, VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME)) {
+            throw std::runtime_error("Device does not support VK_EXT_shader_demote_to_helper_invocation, which is required for discard in shaders.");
+        }
+        enabledExtensions.push_back(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
     }
 
 #ifndef NDEBUG
@@ -2553,8 +2582,7 @@ void engine::Renderer::transitionImageLayoutInline(
 void engine::Renderer::copyDataToBuffer(
     void* data,
     VkDeviceSize size,
-    VkBuffer buffer,
-    VkDeviceMemory bufferMemory
+    VkBuffer buffer
 ) {
     void* mappedData;
     VkBuffer stagingBuffer;
@@ -4139,7 +4167,8 @@ int engine::Renderer::rateDeviceSuitability(VkPhysicalDevice device) {
         return 0;
     }
     if (!deviceFeatures.samplerAnisotropy || !deviceFeatures.fragmentStoresAndAtomics ||
-        !deviceFeatures.shaderStorageImageReadWithoutFormat || !deviceFeatures.shaderStorageImageWriteWithoutFormat) {
+        !deviceFeatures.shaderStorageImageReadWithoutFormat || !deviceFeatures.shaderStorageImageWriteWithoutFormat ||
+        !deviceFeatures.independentBlend) {
         return 0;
     }
     int score = 0;

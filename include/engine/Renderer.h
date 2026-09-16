@@ -132,8 +132,7 @@ namespace engine {
         void copyDataToBuffer(
             void* data,
             VkDeviceSize size,
-            VkBuffer buffer,
-            VkDeviceMemory bufferMemory
+            VkBuffer buffer
         );
         VkSampler createTextureSampler(
             VkFilter magFilter,
@@ -428,8 +427,23 @@ namespace engine {
         void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         void setupGpuProfiling();
 
-        static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
-            std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+        static inline const char* getVulkanSeverityString(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity) {
+            switch (messageSeverity) {
+                case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+                    return "VERBOSE";
+                case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+                    return "INFO";
+                case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+                    return "WARNING";
+                case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+                    return "ERROR";
+                default:
+                    return "UNKNOWN";
+            }
+        }
+
+        static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT /* messageType */, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* /* pUserData */) {
+            std::cerr << "validation layer [" << getVulkanSeverityString(messageSeverity) << "] " << pCallbackData->pMessage << std::endl;
             return VK_FALSE;
         }
         struct QueueFamilyIndices {

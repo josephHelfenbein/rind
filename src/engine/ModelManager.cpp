@@ -391,8 +391,7 @@ void engine::Model::loadFromMemory() {
         renderer->copyDataToBuffer(
             skinningData.data(),
             sizeof(float) * skinningData.size(),
-            skinningBuffer,
-            skinningBufferMemory
+            skinningBuffer
         );
     }
     std::tie(vertexBuffer, vertexBufferMemory) = renderer->createBuffer(
@@ -408,14 +407,12 @@ void engine::Model::loadFromMemory() {
     renderer->copyDataToBuffer(
         tempVertices.data(),
         sizeof(float) * tempVertices.size(),
-        vertexBuffer,
-        vertexBufferMemory
+        vertexBuffer
     );
     renderer->copyDataToBuffer(
         tempIndices.data(),
         sizeof(uint32_t) * tempIndices.size(),
-        indexBuffer,
-        indexBufferMemory
+        indexBuffer
     );
     indexCount = static_cast<uint32_t>(tempIndices.size());
 }
