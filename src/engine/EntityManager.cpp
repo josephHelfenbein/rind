@@ -58,7 +58,7 @@ engine::Entity::Entity(
     std::vector<std::string> textures,
     bool isMovable,
     const EntityType& type
-) : entityManager(entityManager), name(name), transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable), type(type) {
+) : name(name), type(type),  transform(transform), worldTransform(transform), textures(textures), isMovable(isMovable), entityManager(entityManager)  {
         vkObjects.shader = shader;
         entityManager->addEntity(name, this);
     }
@@ -668,19 +668,19 @@ void engine::EntityManager::updateAll(float deltaTime) {
     }
     
     animatedToUpdate.clear();
-    auto updateUpdates = [&](auto& self, Entity* entity, const glm::mat4& parentWorld) -> void {
+    auto updateUpdates = [&](auto& self, Entity* entity) -> void {
         entity->update(deltaTime);
         if (entity->isAnimated()) {
             animatedToUpdate.push_back(entity);
         }
         for (Entity* child : entity->getChildren()) {
-            self(self, child, entity->getWorldTransform());
+            self(self, child);
         }
     };
     {
         PROFILER_ZONE(profiler, profiler::Zone::Update_Entities_Update);
         for (Entity* rootEntity : rootEntities) {
-            updateUpdates(updateUpdates, rootEntity, glm::mat4(1.0f));
+            updateUpdates(updateUpdates, rootEntity);
         }
     }
     const size_t animCount = animatedToUpdate.size();
@@ -746,7 +746,7 @@ void engine::EntityManager::deletePendingVkObjects(bool force) {
     PROFILER_ZONE(profiler, profiler::Zone::DeferredVulkan_ClearObjects);
     VkDevice device = renderer->getDevice();
     ShaderManager* shaderManager = renderer->getShaderManager();
-    const uint32_t requiredFenceWaits = static_cast<uint32_t>(renderer->getMaxFramesInFlight());
+    const size_t requiredFenceWaits = renderer->getMaxFramesInFlight();
     size_t kept = 0;
     for (auto& pending : pendingVkObjectDeletions) {
         if (!force && ++pending.fenceWaitsSeen < requiredFenceWaits) {

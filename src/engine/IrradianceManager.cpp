@@ -17,7 +17,7 @@ engine::IrradianceProbe::IrradianceProbe(
     const std::string& name,
     const glm::mat4& transform,
     float radius
-) : irradianceManager(irradianceManager), transform(transform), radius(radius) {}
+) : irradianceManager(irradianceManager), name(name), transform(transform), radius(radius) {}
 
 void engine::IrradianceProbe::destroy() {
     VkDevice device = irradianceManager->getRenderer()->getDevice();
@@ -198,7 +198,7 @@ void engine::IrradianceProbe::bakeCubemap(Renderer* renderer, VkCommandBuffer co
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = { .color = { 0.0f, 0.0f, 0.0f, 1.0f } }
+            .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 1.0f} } }
         };
         VkRenderingInfo renderingInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,

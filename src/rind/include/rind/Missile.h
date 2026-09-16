@@ -260,8 +260,6 @@ namespace rind {
         std::mt19937 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
 
-        float gravity = 20.0f;
-
         engine::OBBCollider* collider;
 
         std::string hashName(const glm::mat4& transform) {

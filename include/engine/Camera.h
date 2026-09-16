@@ -61,7 +61,7 @@ namespace engine {
         glm::mat4 getViewProjectionMatrix() const {
             return cachedViewProj;
         }
-        void update(float deltaTime) override {
+        void update(float /* deltaTime */) override {
             if (cachedInvView == getWorldTransform()) return;
             cachedInvView = getWorldTransform();
             cachedView = glm::inverse(cachedInvView);

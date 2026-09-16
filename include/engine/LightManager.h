@@ -80,6 +80,7 @@ namespace engine {
     private:
         void updateShadowMatrices();
 
+        std::string name;
         glm::vec3 color;
         float intensity;
         float radius;

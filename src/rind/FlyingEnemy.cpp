@@ -395,7 +395,7 @@ void rind::FlyingEnemy::shoot() {
         5.0f
     );
     audioManager->playSound3D("slowbullet_shot", gunPos, 0.5f, 0.15F);
-    rind::SlowBullet* slowBullet = new rind::SlowBullet(
+    new rind::SlowBullet(
         getEntityManager(),
         "slowBullet" + getName() + std::to_string(spawnedBullets++),
         glm::translate(glm::mat4(1.0f), gunPos + rayDir * 0.5f),

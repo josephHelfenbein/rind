@@ -17,7 +17,7 @@ engine::SceneManager::SceneManager(Renderer* renderer, std::vector<std::unique_p
     }
 
 void engine::SceneManager::setActiveScene(int index) {
-    if (index < 0 || index >= scenes.size()) {
+    if (index < 0 || static_cast<size_t>(index) >= scenes.size()) {
         throw std::out_of_range("Scene index out of range");
     }
     vkDeviceWaitIdle(renderer->getDevice());

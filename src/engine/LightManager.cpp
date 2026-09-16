@@ -20,7 +20,7 @@ engine::Light::Light(
     const glm::vec3& color,
     float intensity,
     float radius
-) : color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)), transform(transform), handle(handle), lightManager(lightManager) {}
+) : name(name), color(color), intensity(intensity), radius(radius), shadowProj(glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, radius)), transform(transform), handle(handle), lightManager(lightManager) {}
 
 void engine::Light::setColor(const glm::vec3& color) {
     this->color = color;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
@@ -7,6 +9,10 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
 
 namespace engine {
     class ThreadPool {
@@ -87,18 +93,33 @@ namespace engine {
 
     private:
         ThreadPool() {
-            const size_t hw = std::max<size_t>(1, std::thread::hardware_concurrency());
-            // caller thread runs chunk 0 workers handle the rest, so spawn hw-1
-            const size_t workerN = hw > 1 ? hw - 1 : 0;
+            // caller thread runs chunk 0, workers handle the rest
+            // reserve 2 cores on bigger machines for driver/audio threads
+            const size_t cores = usableCores();
+            const size_t reserved = cores >= 6 ? 2 : 1;
+            const size_t workerN = cores > 1 ? std::clamp<size_t>(cores - reserved, 1, 6) : 0;
             workers.reserve(workerN);
             for (size_t i = 0; i < workerN; ++i) {
                 workers.emplace_back([this] { workerLoop(); });
             }
         }
+        static size_t usableCores() {
+#if defined(__APPLE__)
+            // performance cores only, efficiency cores would stall the slowest chunk
+            int perfCores = 0;
+            size_t size = sizeof(perfCores);
+            if (sysctlbyname("hw.perflevel0.physicalcpu", &perfCores, &size, nullptr, 0) == 0 && perfCores > 0) {
+                return static_cast<size_t>(perfCores);
+            }
+#endif
+            const size_t hw = std::max<size_t>(1, std::thread::hardware_concurrency());
+            // approximate physical cores
+            return hw >= 4 ? hw / 2 : hw;
+        }
         void workerLoop() {
             while (true) {
                 inParallel = true;
-                spins = 0;
+                uint8_t spins = 0;
                 while (spins < kMaxSpins) {
                     if (isDestroyed.load(std::memory_order_acquire)) {
                         return;
@@ -140,7 +161,6 @@ namespace engine {
         std::array<std::atomic<bool>, kMaxWorkRingSize> workFlags{};
         std::array<ChunkTask, kMaxWorkRingSize> workRing{};
         size_t writeIdx{};
-        uint8_t spins{};
         std::mutex sleeper;
         std::condition_variable notification;
         std::atomic<bool> isDestroyed{false};

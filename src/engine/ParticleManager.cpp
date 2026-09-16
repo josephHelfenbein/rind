@@ -262,7 +262,7 @@ engine::ParticleManager::ParticleManager(Renderer* renderer)
 void engine::ParticleManager::init() {
     particles.reserveAll(maxParticles);
     VkDeviceSize bufferSize = maxParticles * sizeof(ParticleGPU);
-    size_t frames = static_cast<size_t>(renderer->getMaxFramesInFlight());
+    const size_t frames = renderer->getMaxFramesInFlight();
     particleBuffers.resize(frames);
     particleBufferMemory.resize(frames);
     particleBuffersMapped.resize(frames);
@@ -301,7 +301,7 @@ void engine::ParticleManager::clear() {
 void engine::ParticleManager::createParticleDescriptorSets() {
     GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("particle");
     VkDevice device = renderer->getDevice();
-    size_t frames = static_cast<size_t>(renderer->getMaxFramesInFlight());
+    const size_t frames = renderer->getMaxFramesInFlight();
     
     VkImageView depthImageView = renderer->getPassImageView("gbuffer", "Depth");
     if (depthImageView == VK_NULL_HANDLE) {

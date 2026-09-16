@@ -108,7 +108,7 @@ rind::LeaderboardWindow::~LeaderboardWindow() {
     renderer->getInputManager()->unregisterCallback("leaderboardScreenFit");
 }
 
-void rind::LeaderboardWindow::update(float deltaTime) {
+void rind::LeaderboardWindow::update(float /* deltaTime */) {
     uint32_t v = rind::steam::leaderboardVersion();
     if (v == seenVersion) return;
     seenVersion = v;

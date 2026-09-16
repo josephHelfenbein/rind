@@ -61,7 +61,7 @@ namespace engine {
 
         virtual ~Entity();
 
-        virtual void update(float deltaTime) {}
+        virtual void update(float /* deltaTime */) {}
 
         bool updateWorldTransform(const glm::mat4& parentWorld);
 
@@ -306,7 +306,7 @@ namespace engine {
         std::vector<std::pair<std::string, Entity*>> pendingAdditions;
         struct PendingVkObjectDeletion {
             Entity::EntityVkObjects objects;
-            uint32_t fenceWaitsSeen = 0;
+            size_t fenceWaitsSeen = 0;
         };
         std::vector<PendingVkObjectDeletion> pendingVkObjectDeletions;
         SpatialGrid spatialGrid;

@@ -36,6 +36,7 @@ namespace engine {
     private:
         IrradianceManager* irradianceManager;
 
+        std::string name;
         glm::mat4 transform;
         float radius;
         std::array<glm::vec3, 9> shCoeffs{};

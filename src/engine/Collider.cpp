@@ -104,7 +104,6 @@ engine::Collider::Collision engine::Collider::testRayCollision(Collider* collide
             ConvexHullCollider* hullCollider = static_cast<ConvexHullCollider*>(collider);
             const std::vector<glm::vec3>& faceAxes = hullCollider->getFaceAxesCached();
             const std::vector<glm::vec3>& worldVerts = hullCollider->getWorldVerts();
-            glm::vec3 center = hullCollider->getWorldCenter();
             float tMin = 0.0f;
             float tMax = maxDistance;
             bool hit = true;
@@ -731,7 +730,6 @@ bool engine::OBBCollider::intersectsMTV(Collider& other, CollisionMTV& out, cons
     }
 
     std::array<glm::vec3, 8> cornersB;
-    std::array<glm::vec3, 3> axesBArr;
     static const std::array<glm::vec3, 3> cardinalAxes = {
         glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
     };

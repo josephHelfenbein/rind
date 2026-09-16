@@ -20,7 +20,7 @@ engine::UIObject::UIObject(
     std::function<void()>* onHover,
     std::function<void()>* onStopHover,
     const UIType& type
-) : uiManager(uiManager), name(name), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(texture), onHover(onHover), onStopHover(onStopHover), type(type) {
+) : uiManager(uiManager), name(name), type(type), tint(tint), transform(transform), anchorCorner(anchorCorner), texture(texture), onHover(onHover), onStopHover(onStopHover) {
         uiManager->addObject(this);
     }
 
@@ -214,7 +214,7 @@ engine::CheckboxObject::CheckboxObject(
     bool& toggleBool,
     const Corner& anchorCorner,
     std::vector<CheckboxObject*> boundBools
-) : UIObject(uiManager, transform, name, tint, "", anchorCorner, nullptr, nullptr, UIType::Checkbox), checkState(initialState), checked(toggleBool), boundBools(boundBools) {
+) : UIObject(uiManager, transform, name, tint, "", anchorCorner, nullptr, nullptr, UIType::Checkbox), checked(toggleBool), checkState(initialState), boundBools(boundBools) {
         if (initialState) {
             setTexture(checkedTexture);
         } else {
@@ -747,7 +747,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
         vkCmdPushConstants(commandBuffer, shader->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(UIPC), &pushConstants);
         vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
     };
-    auto drawTextObject = [&](TextObject* object, const LayoutRect& rect, const LayoutRect& pixelRect, const LayoutRect& parentRect) -> void {
+    auto drawTextObject = [&](TextObject* object, const LayoutRect& pixelRect, const LayoutRect& parentRect) -> void {
         if (!object->isEnabled() || object->getText().empty()) return;
         GraphicsShader* shader = renderer->getShaderManager()->getGraphicsShader("text");
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipeline);
@@ -851,7 +851,7 @@ void engine::UIManager::renderUI(VkCommandBuffer commandBuffer, uint32_t frameIn
             TextObject* obj = std::get<TextObject*>(node);
             LayoutRect designRect = resolveDesignRect(obj, anchorRect);
             LayoutRect pixelRect = toPixelRect(designRect, glm::vec2(0.0f), layoutScale);
-            drawTextObject(obj, designRect, pixelRect, anchorRect);
+            drawTextObject(obj, pixelRect, anchorRect);
         }
     };
 

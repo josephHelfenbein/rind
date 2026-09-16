@@ -211,7 +211,7 @@ rind::Player::Player(
             glm::vec4(1.0f, 1.0f, 1.0f, 0.0f),
             "ui_heal_effectoverlay"
         );
-        engine::UIObject* crosshair = new engine::UIObject(
+        new engine::UIObject(
             entityManager->getRenderer()->getUIManager(),
             glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 0.2f, 1.0f)), glm::vec3(0.0f, 0.0f, 1.0f)),
             "crosshair",
@@ -1122,7 +1122,7 @@ void rind::Player::damage(float amount) {
             glm::vec4(0.5f, 0.0f, 0.0f, 0.8f),
             "ui_window"
         );
-        engine::TextObject* diedText = new engine::TextObject(
+        new engine::TextObject(
             uiManager,
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 100.0f, -2.0f)),
             "deathWindowText",
@@ -1311,7 +1311,7 @@ void rind::Player::throwGrenade() {
     float forwardSpeed = glm::dot(playerVel, playerForward);
     glm::vec3 lateralVel = playerVel - playerForward * forwardSpeed;
     glm::vec3 inheritedVel = playerForward * std::max(forwardSpeed, 0.0f) + lateralVel * 0.2f;
-    Grenade* grenade = new Grenade(
+    new Grenade(
         getEntityManager(),
         this,
         glm::translate(glm::mat4(1.0f), gunPos + playerForward + glm::vec3(0.0f, verticalAim * 0.8f, 0.0f) + inheritedVel * 0.1f),

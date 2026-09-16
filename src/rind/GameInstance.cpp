@@ -107,7 +107,7 @@ rind::GameInstance::GameInstance() {
                 }
             );
         };
-        engine::ButtonObject* settingsButton = new engine::ButtonObject(
+        new engine::ButtonObject(
             uiManager,
             glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -150.0f, 0.0f)), glm::vec3(0.12, 0.04, 1.0)),
             "SettingsButton",
@@ -118,7 +118,7 @@ rind::GameInstance::GameInstance() {
             "Lato",
             settingsCallback
         );
-        engine::Camera* camera = new engine::Camera(
+        new engine::Camera(
             entityManager,
             "titleCamera",
             glm::inverse(glm::lookAt(
@@ -242,11 +242,9 @@ rind::GameInstance::GameInstance() {
     std::function<void(engine::Renderer*)> mainGameScene = [this](engine::Renderer* renderer){
         // Gameplay scene logic here
         engine::ModelManager* modelManager = renderer->getModelManager();
-        engine::SceneManager* sceneManager = renderer->getSceneManager();
         engine::EntityManager* entityManager = renderer->getEntityManager();
         engine::LightManager* lightManager = renderer->getLightManager();
         engine::IrradianceManager* irradianceManager = renderer->getIrradianceManager();
-        engine::UIManager* uiManager = renderer->getUIManager();
         std::vector<std::string> rockMaterial = {
             "materials_rock_albedo",
             "materials_rock_metallic",
@@ -543,7 +541,7 @@ rind::GameInstance::GameInstance() {
             "player1",
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f))
         );
-        rind::EnemySpawner<rind::WalkingEnemy>* enemySpawner = new rind::EnemySpawner<rind::WalkingEnemy>(
+        new rind::EnemySpawner<rind::WalkingEnemy>(
             entityManager,
             this,
             player,
@@ -553,7 +551,7 @@ rind::GameInstance::GameInstance() {
             2,
             9.0f
         );
-        rind::EnemySpawner<rind::FlyingEnemy>* enemySpawner2 = new rind::EnemySpawner<rind::FlyingEnemy>(
+        new rind::EnemySpawner<rind::FlyingEnemy>(
             entityManager,
             this,
             player,
@@ -563,7 +561,7 @@ rind::GameInstance::GameInstance() {
             3,
             6.0f
         );
-        rind::EnemySpawner<rind::BashingEnemy>* enemySpawner3 = new rind::EnemySpawner<rind::BashingEnemy>(
+        new rind::EnemySpawner<rind::BashingEnemy>(
             entityManager,
             this,
             player,
@@ -573,7 +571,7 @@ rind::GameInstance::GameInstance() {
             1,
             6.5f
         );
-        rind::EnemySpawner<rind::FlyingBoss>* enemySpawner4 = new rind::EnemySpawner<rind::FlyingBoss>(
+        new rind::EnemySpawner<rind::FlyingBoss>(
             entityManager,
             this,
             player,
@@ -584,7 +582,7 @@ rind::GameInstance::GameInstance() {
             8.0f,
             0.1f
         );
-        rind::EnemySpawner<rind::BashingBoss>* enemySpawner5 = new rind::EnemySpawner<rind::BashingBoss>(
+        new rind::EnemySpawner<rind::BashingBoss>(
             entityManager,
             this,
             player,
@@ -595,7 +593,7 @@ rind::GameInstance::GameInstance() {
             8.0f,
             0.1f
         );
-        rind::EnemySpawner<rind::GrenadeBoss>* enemySpawner6 = new rind::EnemySpawner<rind::GrenadeBoss>(
+        new rind::EnemySpawner<rind::GrenadeBoss>(
             entityManager,
             this,
             player,
@@ -606,7 +604,7 @@ rind::GameInstance::GameInstance() {
             8.0f,
             0.075f
         );
-        rind::EnemySpawner<rind::MissileBoss>* enemySpawner7 = new rind::EnemySpawner<rind::MissileBoss>(
+        new rind::EnemySpawner<rind::MissileBoss>(
             entityManager,
             this,
             player,

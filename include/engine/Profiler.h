@@ -26,7 +26,6 @@ enum class Zone : uint8_t {
 #ifndef NDEBUG // debug build
 
 #include <array>
-#include <atomic>
 #include <string_view>
 #include <engine/Renderer.h>
 #include <engine/IO.h>
@@ -135,7 +134,7 @@ namespace profiler {
         static constexpr size_t kMaxFrames = 120;
 
         void dumpFrames() const {
-            const size_t frameIdx = currentFrameIndex.load(std::memory_order_acquire);
+            const size_t frameIdx = currentFrameIndex;
             const auto& copy = ring;
             const size_t oldest = (frameIdx + 1) % kMaxFrames;
             if (copy[oldest].endNs == 0) return; // ring not full
@@ -205,8 +204,8 @@ namespace profiler {
         [[nodiscard]] ScopedFrame scopedFrame() { beginFrame(); return {this}; }
 
         void beginFrame() {
-            size_t frameIdx = (currentFrameIndex.load(std::memory_order_release) + 1) % kMaxFrames;
-            currentFrameIndex.store(frameIdx, std::memory_order_release);
+            size_t frameIdx = (currentFrameIndex + 1) % kMaxFrames;
+            currentFrameIndex = frameIdx;
             auto& frame = ring[frameIdx];
             frame.startNs = Clock::Now();
             frame.endNs = 0;
@@ -216,21 +215,21 @@ namespace profiler {
         }
 
         void endFrame() {
-            auto& frame = ring[currentFrameIndex.load(std::memory_order_relaxed)];
+            auto& frame = ring[currentFrameIndex];
             frame.endNs = static_cast<uint32_t>(Clock::Now() - frame.startNs);
         }
 
         template <Zone Z>
         void zoneEnter() {
             const auto now = Clock::Now();
-            auto& frame = ring[currentFrameIndex.load(std::memory_order_relaxed)];
+            auto& frame = ring[currentFrameIndex];
             frame.zones[size_t(Z)].startNs = static_cast<uint32_t>(now - frame.startNs);
         }
 
         template <Zone Z>
         void zoneExit() {
             const auto now = Clock::Now();
-            auto& frame = ring[currentFrameIndex.load(std::memory_order_relaxed)];
+            auto& frame = ring[currentFrameIndex];
             const auto startNs = frame.zones[size_t(Z)].startNs;
             frame.zones[size_t(Z)].endNs = static_cast<uint32_t>(now - startNs - frame.startNs);
         }
@@ -394,7 +393,7 @@ namespace profiler {
         bool calibratedTimestampsSupported = false;
         VkTimeDomainKHR hostDomain = VK_TIME_DOMAIN_MAX_ENUM_KHR;
         Renderer* renderer;
-        std::atomic<size_t> currentFrameIndex{};
+        size_t currentFrameIndex{};
         std::string profileLocation;
         int processId = currentProcessId();
         uint64_t threadId = currentThreadId();

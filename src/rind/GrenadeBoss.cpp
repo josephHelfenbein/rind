@@ -42,7 +42,7 @@ void rind::GrenadeBoss::shoot() {
     const float verticalAim = headForward.y;
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     glm::vec3 vel = getVelocity();
-    Grenade* grenade = new Grenade(
+    new Grenade(
         getEntityManager(),
         nullptr,
         glm::translate(glm::mat4(1.0f), gunPos + bodyForward * 0.7f + glm::vec3(0.0f, verticalAim * 0.2f, 0.0f)),

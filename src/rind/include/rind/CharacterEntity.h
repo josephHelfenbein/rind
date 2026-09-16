@@ -25,9 +25,9 @@ namespace rind {
         void rotate(const glm::vec3& delta);
         void dash(const glm::vec3& direction, float strength);
 
-        const float getHealth() const { return health; }
+        float getHealth() const { return health; }
         void setHealth(float health) { this->health = health; }
-        const float getMaxHealth() const { return maxHealth; }
+        float getMaxHealth() const { return maxHealth; }
         void setMaxHealth(float maxHealth) { this->maxHealth = maxHealth; }
 
         const glm::vec3& getPressed() const { return pressed; }

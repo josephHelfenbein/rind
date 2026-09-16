@@ -39,7 +39,7 @@ namespace engine {
         }
     }
 
-    static std::filesystem::path getConfigDirectory(const std::string& location) {
+    static inline std::filesystem::path getConfigDirectory(const std::string& location) {
         std::filesystem::path configDir;
 
 #if defined(_WIN32)

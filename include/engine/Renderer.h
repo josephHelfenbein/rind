@@ -195,7 +195,7 @@ namespace engine {
         GLFWwindow* getWindow() const { return window; }
         std::pair<VkBuffer, VkBuffer> getUIBuffers() const { return { uiVertexBuffer, uiIndexBuffer }; }
         UIObject* getHoveredObject() const { return hoveredObject; }
-        int getMaxFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
+        size_t getMaxFramesInFlight() const { return MAX_FRAMES_IN_FLIGHT; }
         std::chrono::steady_clock::time_point getLastFPSUpdateTime() const { return lastFPSUpdateTime; }
         void setLastFPSUpdateTime(std::chrono::steady_clock::time_point newTime) { lastFPSUpdateTime = newTime; }
         uint32_t getFPSFrameCount() const { return fpsFrameCount; }
@@ -227,7 +227,7 @@ namespace engine {
         };
         HdrState hdrState{};
         bool hdrSupported = false;
-        static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+        static constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
 
         const HdrState& getHdrState() const { return hdrState; }
         void setHdrPaperWhiteNits(float nits) { hdrState.paperWhiteNits = nits; }

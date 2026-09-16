@@ -1450,7 +1450,7 @@ void engine::Renderer::recordCommandBuffer(
                         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                        .clearValue = { .color = {0.0f, 0.0f, 0.0f, 1.0f} }
+                        .clearValue = { .color = { {0.0f, 0.0f, 0.0f, 1.0f} } }
                     };
                     renderingInfo.colorAttachmentCount = 1;
                     renderingInfo.pColorAttachments = &swapColor;
@@ -4261,7 +4261,7 @@ void engine::Renderer::processInput(GLFWwindow* window) {
     }
 }
 
-void engine::Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+void engine::Renderer::framebufferResizeCallback(GLFWwindow* window, int /* width */, int /* height */) {
     auto renderer = reinterpret_cast<engine::Renderer*>(glfwGetWindowUserPointer(window));
     renderer->framebufferResized = true;
 }

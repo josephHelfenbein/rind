@@ -10,7 +10,7 @@ namespace rind {
     class ScoreCounter : public engine::Entity {
     public:
         ScoreCounter(engine::EntityManager* entityManager, engine::UIManager* uiManager)
-            : engine::Entity(entityManager, "scoreCounter", "", glm::mat4(1.0f), {}), uiManager(uiManager) {
+            : engine::Entity(entityManager, "scoreCounter", "", glm::mat4(1.0f), {}) {
             counter = new engine::TextObject(
                 uiManager,
                 glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -5.0f, 0.0f)), glm::vec3(0.5f, 0.5f, 1.0f)),
@@ -69,7 +69,6 @@ namespace rind {
         int32_t getScore() const { return score; }
 
     private:
-        engine::UIManager* uiManager;
         int32_t score = 0;
         engine::TextObject* counter = nullptr;
 

@@ -23,7 +23,7 @@ namespace rind {
             uint32_t baseMaxEnemies,
             float baseSpawnRate,
             float spawnChance = 0.0f
-        ) : engine::Entity(entityManager, name, "", transform, {}, false), gameInstance(gameInstance), targetPlayer(player), baseSpawnRate(baseSpawnRate), baseMaxEnemies(baseMaxEnemies), maxEnemyMultiplier(maxEnemyMultiplier), spawnChance(spawnChance) {}
+        ) : engine::Entity(entityManager, name, "", transform, {}, false), targetPlayer(player), baseSpawnRate(baseSpawnRate), spawnChance(spawnChance), maxEnemyMultiplier(maxEnemyMultiplier), baseMaxEnemies(baseMaxEnemies), gameInstance(gameInstance) {}
 
         void update(float deltaTime) override {
             countTimer += deltaTime;
@@ -71,7 +71,7 @@ namespace rind {
                     getWorldPosition()
                 )
             );
-            EnemyType* enemy = new EnemyType(
+            new EnemyType(
                 getEntityManager(),
                 targetPlayer,
                 gameInstance,

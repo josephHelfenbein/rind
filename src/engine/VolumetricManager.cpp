@@ -213,7 +213,6 @@ void engine::VolumetricManager::renderVolumetrics(VkCommandBuffer commandBuffer,
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
     Camera* camera = renderer->getEntityManager()->getCamera();
     if (!camera) return;
-    VkExtent2D extent = renderer->getSwapChainExtent();
     VolumetricPC pushConstants = {
         .viewProj = camera->getViewProjectionMatrix(),
         .camPos = glm::vec4(camera->getWorldPosition(), renderer->getSettingsManager()->getSettings()->volumetricQuality)

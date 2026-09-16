@@ -45,17 +45,17 @@ namespace engine {
             bool Settings::* boolPtr = nullptr;
 
             uint32_t Settings::* enumPtr = nullptr;
-            std::vector<std::string> enumOptions;
+            std::vector<std::string> enumOptions{};
 
             float Settings::* floatPtr = nullptr;
             float minVal = 0.0f, maxVal = 1.0f;
-            std::string textSuffix;
+            std::string textSuffix{};
             bool isInt = false;
             float textMultiplier = 1.0f;
             bool roundOnApply = false;
             float clampMin = 0.0f, clampMax = 0.0f; // 0,0 = no clamp
             float sliderOverrideValue = 0.0f;
-            std::string sliderOverrideText = "";
+            std::string sliderOverrideText{};
             
             std::function<void(Settings* prev, Settings* curr, Renderer*)> onChange = nullptr;
             std::function<bool(Renderer*)> enabledIf = nullptr;

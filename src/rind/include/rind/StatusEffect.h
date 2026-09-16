@@ -103,7 +103,7 @@ namespace rind {
         anchorStatusEffect
     };
 
-    static const StatusEffect& getRandomStatusEffect(float randomValue) { // randomValue should be between 0 and 1
+    static inline const StatusEffect& getRandomStatusEffect(float randomValue) { // randomValue should be between 0 and 1
         int index = static_cast<int>(randomValue * statusEffects.size());
         index = std::max(0, std::min(index, static_cast<int>(statusEffects.size() - 1)));
         return statusEffects[index];

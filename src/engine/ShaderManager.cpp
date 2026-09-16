@@ -1185,7 +1185,7 @@ void engine::ShaderManager::createDefaultShaders() {
                         .activeProbeCount = activeComputeProbeCount,
                         .layerBase = 0u,
                         .mappingOffset = 0u,
-                        .pad = 0u
+                        .pad = { 0u }
                     };
                     vkCmdPushConstants(cmd, shader->pipelineLayout, shader->config.pushConstantRange.stageFlags, 0, sizeof(SimpleParticlePC), &pc);
                 },
@@ -2565,7 +2565,7 @@ void engine::ShaderManager::createDefaultShaders() {
             .passInfo = uiPass.get(),
             .shaderNames = { "ui", "text" },
             .lane = generalGraphicsLane,
-            .customRenderFunc = [this](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
+            .customRenderFunc = [](Renderer* renderer, VkCommandBuffer cmd, uint32_t frame) {
                 if (renderer->getSettingsManager()->getSettings()->showFPS) {
                     if (!renderer->getFPSCounter()) {
                         renderer->setFPSCounter(new TextObject(
@@ -2790,7 +2790,7 @@ void engine::ShaderManager::resolveRenderGraphShaders() {
 }
 
 void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vector<VkDescriptorSet>& descriptorSets, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers, int frameIndex) {
-    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    const size_t MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     VkDevice device = renderer->getDevice();
     const size_t vertexBindings = static_cast<size_t>(std::max(config.vertexBitBindings, 0));
     const size_t fragmentBindings = static_cast<size_t>(std::max(config.fragmentBitBindings, 0));
@@ -2824,9 +2824,9 @@ void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vecto
         }
         return false;
     };
-    int startFrame = (frameIndex >= 0) ? frameIndex : 0;
-    int endFrame = (frameIndex >= 0) ? frameIndex + 1 : MAX_FRAMES_IN_FLIGHT;
-    for (int frame = startFrame; frame < endFrame; ++frame) {
+    const size_t startFrame = (frameIndex >= 0) ? static_cast<size_t>(frameIndex) : 0;
+    const size_t endFrame = (frameIndex >= 0) ? static_cast<size_t>(frameIndex) + 1 : MAX_FRAMES_IN_FLIGHT;
+    for (size_t frame = startFrame; frame < endFrame; ++frame) {
         std::vector<VkDescriptorImageInfo> imageInfos;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -2840,7 +2840,7 @@ void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vecto
             const uint32_t descriptorCount = getVertexCount(binding);
             if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
                 for (uint32_t c = 0; c < descriptorCount; ++c) {
-                    const size_t idx = static_cast<size_t>(frame) * (buffers.size() / static_cast<size_t>(MAX_FRAMES_IN_FLIGHT)) + bufferIndex++;
+                    const size_t idx = frame * (buffers.size() / MAX_FRAMES_IN_FLIGHT) + bufferIndex++;
                     VkBuffer bufferHandle = buffers[idx];
                     if (bufferHandle == VK_NULL_HANDLE) {
                         throw std::runtime_error("Invalid buffer handle provided for descriptor set update!");
@@ -2897,7 +2897,7 @@ void engine::GraphicsShader::updateDescriptorSets(Renderer* renderer, std::vecto
 }
 
 std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Renderer* renderer, std::vector<Texture*>& textures, std::vector<VkBuffer>& buffers) {
-    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    const size_t MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     VkDevice device = renderer->getDevice();
     VkSampler mainTextureSampler = renderer->getMainTextureSampler();
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
@@ -2970,7 +2970,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
     }
 
     size_t inputBindingCount = config.inputBindings.size();    
-    for (int frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
+    for (size_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; ++frame) {
         std::vector<VkDescriptorImageInfo> imageInfos;
         std::vector<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -2984,7 +2984,7 @@ std::vector<VkDescriptorSet> engine::GraphicsShader::createDescriptorSets(Render
             const uint32_t descriptorCount = getVertexCount(binding);
             if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
                 for (uint32_t c = 0; c < descriptorCount; ++c) {
-                    const size_t idx = static_cast<size_t>(frame) * (expectedBuffers / static_cast<size_t>(MAX_FRAMES_IN_FLIGHT)) + bufferIndex++;
+                    const size_t idx = frame * (expectedBuffers / MAX_FRAMES_IN_FLIGHT) + bufferIndex++;
                     VkBuffer bufferHandle = buffers[idx];
                     if (bufferHandle == VK_NULL_HANDLE) {
                         throw std::runtime_error("Invalid buffer handle provided for descriptor set creation!");
@@ -3488,7 +3488,7 @@ VkShaderModule engine::ShaderManager::createShaderModule(const std::vector<char>
 }
 
 void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
-    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    const size_t MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     std::vector<VkDescriptorPoolSize> poolSizes;
     std::unordered_map<VkDescriptorType, uint32_t> typeCounts;
     if (config.vertexBitBindings > 0) {
@@ -3548,7 +3548,7 @@ void engine::GraphicsShader::createDescriptorPool(Renderer* renderer) {
 }
 
 void engine::ComputeShader::createDescriptorPool(Renderer* renderer) {
-    int MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
+    const size_t MAX_FRAMES_IN_FLIGHT = renderer->getMaxFramesInFlight();
     std::vector<VkDescriptorPoolSize> poolSizes;
     if (!config.computeDescriptorTypes.empty()) {
         std::unordered_map<VkDescriptorType, uint32_t> typeCounts;

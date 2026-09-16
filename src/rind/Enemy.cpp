@@ -19,7 +19,7 @@ rind::Enemy::Enemy(
     const std::string& name,
     const glm::mat4& transform,
     uint32_t& enemyCount
-) : rind::CharacterEntity(entityManager, name, "", transform, {}, engine::Entity::EntityType::Enemy), targetPlayer(player), enemyCount(enemyCount), gameInstance(gameInstance) {
+) : rind::CharacterEntity(entityManager, name, "", transform, {}, engine::Entity::EntityType::Enemy), gameInstance(gameInstance), enemyCount(enemyCount), targetPlayer(player) {
         if (player == nullptr) {
             throw std::runtime_error("Enemy spawned without player reference");
         }
@@ -192,7 +192,6 @@ void rind::Enemy::update(float deltaTime) {
 void rind::Enemy::rotateToPlayer() {
     glm::vec3 toPlayer = targetPlayer->getWorldPosition() + glm::vec3(0.0f, 1.0f, 0.0f) - getWorldPosition();
     toPlayer.y = 0.0f;
-    float distanceToPlayer = glm::length(toPlayer);
     const glm::mat4& t = getTransform();
     glm::vec3 forward = -glm::vec3(t[2]);
     forward.y = 0.0f;
@@ -292,7 +291,7 @@ void rind::Enemy::damage(float amount) {
             2.0f,
             0.4f
         );
-        rind::TempTrigger* triggerCollider = new rind::TempTrigger(
+        new rind::TempTrigger(
             getEntityManager(),
             "enemyExplosionTrigger" + getName(),
             getTrailColor(),

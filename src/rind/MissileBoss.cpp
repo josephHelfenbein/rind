@@ -42,7 +42,7 @@ void rind::MissileBoss::shoot() {
     const float verticalAim = headForward.y;
     glm::vec3 gunPos = glm::vec3(gunEndPosition->getWorldTransform()[3]);
     glm::vec3 vel = getVelocity();
-    Missile* missile = new Missile(
+    new Missile(
         getEntityManager(),
         targetPlayer,
         glm::translate(glm::mat4(1.0f), gunPos + bodyForward * 0.7f + glm::vec3(0.0f, verticalAim * 0.2f, 0.0f)),
