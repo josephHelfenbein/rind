@@ -21,6 +21,7 @@
 #include <engine/IrradianceManager.h>
 #include <engine/AudioManager.h>
 #include <engine/SettingsManager.h>
+#include <engine/ThreadPool.h>
 #ifndef NDEBUG
 #include <engine/Profiler.h>
 #endif
@@ -43,6 +44,7 @@
 #include <rind/BashingBoss.h>
 #include <rind/GrenadeBoss.h>
 #include <rind/MissileBoss.h>
+#include <iostream>
 
 rind::GameInstance::GameInstance() {
     std::function<void(engine::Renderer*)> titleScreenScene = [](engine::Renderer* renderer){
@@ -239,8 +241,8 @@ rind::GameInstance::GameInstance() {
     #endif
     };
 
-    std::function<void(engine::Renderer*)> mainGameScene = [this](engine::Renderer* renderer){
-        // Gameplay scene logic here
+    std::function<void(engine::Renderer*)> mainGameLevel = [](engine::Renderer* renderer) {
+        // Main game level setup
         engine::ModelManager* modelManager = renderer->getModelManager();
         engine::EntityManager* entityManager = renderer->getEntityManager();
         engine::LightManager* lightManager = renderer->getLightManager();
@@ -535,6 +537,23 @@ rind::GameInstance::GameInstance() {
         engine::Model* hangingDamagedEnemiesModel = modelManager ? modelManager->getModel("damaged") : nullptr;
         hangingDamagedEnemies->setModel(hangingDamagedEnemiesModel);
 
+        for (int i = -3; i <= 3; ++i) {
+            for (int j = -3; j <= 3; ++j) {
+                irradianceManager->addIrradianceProbe(
+                    "gameProbe" + std::to_string(i) + std::to_string(j),
+                    glm::translate(glm::mat4(1.0f), glm::vec3(i * 8.0f, 4.0f, j * 8.0f)),
+                    8.0f
+                );
+            }
+        }
+    };
+
+    std::function<void(engine::Renderer*)> mainGameScene = [this, mainGameLevel](engine::Renderer* renderer){
+        // Gameplay scene logic here
+        mainGameLevel(renderer);
+
+        engine::EntityManager* entityManager = renderer->getEntityManager();
+
         rind::Player* player = new rind::Player(
             entityManager,
             renderer->getInputManager(),
@@ -616,19 +635,73 @@ rind::GameInstance::GameInstance() {
             0.065f
         );
 
-        for (int i = -3; i <= 3; ++i) {
-            for (int j = -3; j <= 3; ++j) {
-                irradianceManager->addIrradianceProbe(
-                    "gameProbe" + std::to_string(i) + std::to_string(j),
-                    glm::translate(glm::mat4(1.0f), glm::vec3(i * 8.0f, 4.0f, j * 8.0f)),
-                    8.0f
-                );
-            }
-        }
-
         renderer->getInputManager()->setUIFocused(false);
         renderer->toggleLockCursor(true);
     };
+
+#ifndef NDEBUG
+    std::function<void(engine::Renderer*)> profileScene = [this, mainGameLevel](engine::Renderer* renderer){
+        // Debug-only profiler scene
+        mainGameLevel(renderer);
+
+        engine::EntityManager* entityManager = renderer->getEntityManager();
+
+        rind::Player* player = new rind::Player(
+            entityManager,
+            renderer->getInputManager(),
+            "player1",
+            glm::rotate(
+                glm::translate(
+                    glm::mat4(1.0f),
+                    glm::vec3(3.0f, 5.0f, 1.0f)
+                ), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)
+            )
+        );
+
+        uint32_t enemyCount = 3; // enemySpawner mock
+
+        new rind::WalkingEnemy(
+            entityManager,
+            player,
+            this,
+            "walkingEnemy1",
+            glm::translate(glm::mat4(1.0f), glm::vec3(12.0f, 2.5f, -10.0f)),
+            enemyCount
+        );
+
+        new rind::BashingEnemy(
+            entityManager,
+            player,
+            this,
+            "bashingEnemy1",
+            glm::translate(glm::mat4(1.0f), glm::vec3(14.0f, 3.0f, -2.0f)),
+            enemyCount
+        );
+
+        new rind::GrenadeBoss(
+            entityManager,
+            player,
+            this,
+            "grenadeBoss1",
+            glm::rotate(
+                glm::translate(
+                    glm::mat4(1.0f),
+                    glm::vec3(8.0f, 6.0f, -10.0f)
+                ), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)
+            ),
+            enemyCount
+        );
+
+        renderer->getInputManager()->setUIFocused(false);
+        renderer->toggleLockCursor(true);
+
+        engine::ThreadPool::global().asyncChunk([renderer](size_t, size_t, size_t) {
+            std::this_thread::sleep_for(std::chrono::seconds(3u));
+            renderer->getProfiler()->dumpFrames();
+            glfwSetWindowShouldClose(renderer->getWindow(), GLFW_TRUE);
+        });
+    };
+#endif
 
     renderer = std::make_unique<engine::Renderer>("Rind");
 
@@ -640,6 +713,9 @@ rind::GameInstance::GameInstance() {
     std::vector<std::unique_ptr<engine::Scene>> scenes;
     scenes.emplace_back(std::make_unique<engine::Scene>(titleScreenScene));
     scenes.emplace_back(std::make_unique<engine::Scene>(mainGameScene));
+#ifndef NDEBUG
+    scenes.emplace_back(std::make_unique<engine::Scene>(profileScene)); // always last scene, for debug profiling
+#endif
 
     entityManager = std::make_unique<engine::EntityManager>(renderer.get(), 2.0f, glm::vec3(55.0f, 25.0f, 55.0f));
     lightManager = std::make_unique<engine::LightManager>(renderer.get());
@@ -719,3 +795,10 @@ rind::GameInstance::~GameInstance() {
 void rind::GameInstance::run() {
     renderer->run();
 }
+
+#ifndef NDEBUG
+void rind::GameInstance::profileSituation() {
+    sceneManager->setActiveSceneDeferred(sceneManager->getSceneCount() - 1); // profile scene
+    renderer->run();
+}
+#endif

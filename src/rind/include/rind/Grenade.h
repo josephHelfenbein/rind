@@ -6,6 +6,7 @@
 #include <engine/ParticleManager.h>
 #include <engine/AudioManager.h>
 #include <engine/VolumetricManager.h>
+#include <engine/Random.h>
 #include <rind/Player.h>
 #include <rind/Enemy.h>
 #include <numbers>
@@ -91,9 +92,9 @@ namespace rind {
                 );
                 return;
             }
-            float sizeFactor = dist(rng) * 0.2f + 0.4f; // 0.2 to 0.6
-            float randomPhi = dist(rng) * 2.0f * std::numbers::pi_v<float>;
-            float randomCostheta = dist(rng);
+            float sizeFactor = random.randomFloat(0.2f, 0.6f);
+            float randomPhi = random.randomFloat(0.0f, 2.0f * std::numbers::pi_v<float>);
+            float randomCostheta = random.randomFloat(1.0f);
             float randomSintheta = sqrt(1.0f - randomCostheta * randomCostheta);
             glm::vec3 randomDir = glm::vec3(
                 cos(randomPhi) * randomSintheta,
@@ -238,8 +239,7 @@ namespace rind {
         engine::VolumetricManager* volumetricManager;
         Player* player;
 
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+        engine::Random& random = engine::Random::global();
 
         float gravity = 20.0f;
 

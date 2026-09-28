@@ -199,7 +199,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
             case EnemyState::Attacking: {
                 float backToChaseDistance = 20.0f;
                 float switchToChaseProb = deltaTime * 3.0f;
-                float switchRoll = (dist(rng) + 1.0f) / 2.0f;
+                float switchRoll = random.randomFloat(0.0f, 1.0f);
                 if (!checkVisibilityOfPlayer() 
                 || distanceToPlayer > backToChaseDistance
                 || switchRoll < switchToChaseProb) {
@@ -239,7 +239,7 @@ void rind::WalkingEnemy::update(float deltaTime) {
                     lastShotTime = std::chrono::steady_clock::now();
                     shoot();
                 }
-                float randX = dist(rng);
+                float randX = random.randomFloat(1.0f);
                 if (std::abs(randX) < 0.95f && getPressed() != glm::vec3(0.0f)) {
                     break;
                 }
@@ -277,8 +277,8 @@ void rind::WalkingEnemy::wander() {
     float amount = 0.0f;
     uint32_t tries = 0;
     while (tries < 20) {
-        direction = (dist(rng) + 1.0f) * std::numbers::pi_v<float>;
-        amount = (dist(rng) + 1.0f) * 10.0f;
+        direction = random.randomFloat(0.0f, 2.0f * std::numbers::pi_v<float>);
+        amount = random.randomFloat(0.0f, 20.0f);
         glm::vec3 goal = glm::vec3(cos(direction), 0.0f, sin(direction)) * amount;
         glm::vec3 worldGoal = getWorldPosition() + goal;
         glm::vec3 rayOrigin = worldGoal + glm::vec3(0.0f, 2.0f, 0.0f);
@@ -304,7 +304,7 @@ void rind::WalkingEnemy::wander() {
 void rind::WalkingEnemy::wanderTo(float deltaTime) {
     if (waiting) {
         float escapeProb = deltaTime * 1.5f;
-        float roll = (dist(rng) + 1.0f) / 2.0f;
+        float roll = random.randomFloat(0.0f, 1.0f);
         if (roll < escapeProb) {
             waiting = false;
         } else {

@@ -166,9 +166,9 @@ void rind::SlowBullet::update(float deltaTime) {
             );
             return;
         }
-        float sizeFactor = dist(rng) * 0.2f + 0.4f; // 0.2 to 0.6
-        float randomPhi = dist(rng) * 2.0f * std::numbers::pi_v<float>;
-        float randomCostheta = dist(rng);
+        float sizeFactor = random.randomFloat(0.2f, 0.6f);
+        float randomPhi = random.randomFloat(0.0f, 2.0f * std::numbers::pi_v<float>);
+        float randomCostheta = random.randomFloat(1.0f);
         float randomSintheta = sqrt(1.0f - randomCostheta * randomCostheta);
         glm::vec3 randomDir = glm::vec3(
             cos(randomPhi) * randomSintheta,
@@ -196,11 +196,11 @@ void rind::SlowBullet::update(float deltaTime) {
                 sizeFactor
             );
         }
-        float streakRoll = dist(rng) + 1.0f;
+        float streakRoll = random.randomFloat(0.0f, 2.0f);
         if (streakRoll > 1.0f) { // 50% chance
             glm::vec3 startPos = getWorldPosition() + randomDir * 0.2f;
-            float randomPhi2 = dist(rng) * 2.0f * std::numbers::pi_v<float>;
-            float randomCostheta2 = dist(rng);
+            float randomPhi2 = random.randomFloat(0.0f, 2.0f * std::numbers::pi_v<float>);
+            float randomCostheta2 = random.randomFloat(1.0f);
             float randomSintheta2 = sqrt(1.0f - randomCostheta2 * randomCostheta2);
             glm::vec3 randomDir2 = glm::vec3(
                 cos(randomPhi2) * randomSintheta2,

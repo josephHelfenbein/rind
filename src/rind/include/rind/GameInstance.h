@@ -31,6 +31,9 @@ namespace rind {
         GameInstance();
         ~GameInstance();
         void run();
+    #ifndef NDEBUG
+        void profileSituation();
+    #endif
 
         uint32_t getDifficultyLevel() const { return difficulty; }
 
@@ -49,9 +52,9 @@ namespace rind {
         std::unique_ptr<engine::IrradianceManager> irradianceManager;
         std::unique_ptr<engine::AudioManager> audioManager;
         std::unique_ptr<engine::SettingsManager> settingsManager;
-        #ifndef NDEBUG
+    #ifndef NDEBUG
         std::unique_ptr<engine::profiler::Profiler> profiler;
-        #endif
+    #endif
 
         uint32_t difficulty = 1;
     };

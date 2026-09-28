@@ -4,6 +4,7 @@
 #include <engine/InputManager.h>
 #include <engine/UIManager.h>
 #include <engine/AudioManager.h>
+#include <engine/Random.h>
 #include <rind/StatusEffect.h>
 #include <rind/GameAction.h>
 #if RIND_ENABLE_STEAM
@@ -232,8 +233,7 @@ namespace rind {
         float punchCooldown = 0.5f;
         std::chrono::steady_clock::time_point lastPunchTime = std::chrono::steady_clock::now();
         
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+        engine::Random& random = engine::Random::global();
 
         bool canDash = false;
         long long dashCooldown = 500; // ms

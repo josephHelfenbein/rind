@@ -2,12 +2,12 @@
 
 #include <engine/SettingsManager.h>
 #include <engine/EmbeddedAssets.h>
+#include <engine/Random.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <memory>
 #include <miniaudio/miniaudio.h>
-#include <random>
 #include <glm/glm.hpp>
 
 namespace engine {
@@ -48,7 +48,6 @@ namespace engine {
 
         SettingsManager::Settings* settings = nullptr;
 
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+        Random& random = Random::global();
     };
 }

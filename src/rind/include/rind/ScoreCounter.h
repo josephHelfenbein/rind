@@ -1,9 +1,9 @@
 #pragma once
 #include <engine/EntityManager.h>
 #include <engine/UIManager.h>
+#include <engine/Random.h>
 #include <algorithm>
 #include <cmath>
-#include <random>
 #include <string>
 
 namespace rind {
@@ -62,7 +62,7 @@ namespace rind {
             float factor = (std::clamp(static_cast<float>(points), 100.0f, 300.0f) - 100.0f) / 200.0f;
             float minScale = std::lerp(1.25f, 1.4f, factor);
             float maxScale = std::lerp(1.4f, 1.6f, factor);
-            growGoal = minScale + (dist(rng) + 1.0f) * 0.5f * (maxScale - minScale);
+            growGoal = minScale + random.randomFloat(0.0f, maxScale - minScale);
             growFrame = 0.0f;
         }
 
@@ -74,7 +74,7 @@ namespace rind {
 
         float growGoal = 1.0f;
         float growFrame = -1.0f;
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+    
+        engine::Random& random = engine::Random::global();
     };
 };

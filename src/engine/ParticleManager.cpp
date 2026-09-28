@@ -371,16 +371,16 @@ void engine::ParticleManager::createParticleDescriptorSets() {
 
 void engine::ParticleManager::burstParticles(const glm::vec3& position, const glm::vec3& color, const glm::vec3& velocity, int count, float lifetime, float spread, float size) {
     if (particles.count() >= hardCap) return;
-    float velLength = glm::length(velocity) + dist(rng) * 0.1f * glm::length(velocity);
+    float velLength = glm::length(velocity) + random.randomFloat(0.1f * glm::length(velocity));
     size_t remaining = hardCap - particles.count();
     size_t spawnCount = std::min(static_cast<size_t>(count), remaining);
     for (size_t i = 0; i < spawnCount; ++i) {
-        float offsetX = dist(rng) * spread * velLength;
-        float offsetY = dist(rng) * spread * velLength;
-        float offsetZ = dist(rng) * spread * velLength;
+        float offsetX = random.randomFloat(spread * velLength);
+        float offsetY = random.randomFloat(spread * velLength);
+        float offsetZ = random.randomFloat(spread * velLength);
         glm::vec3 velocityOffset = glm::vec3(offsetX, offsetY, offsetZ);
-        float particleLifetime = lifetime + dist(rng) * 0.2f * lifetime;
-        glm::vec3 colorOffset = glm::vec3(dist(rng), dist(rng), dist(rng)) * 0.1f;
+        float particleLifetime = lifetime + random.randomFloat(0.2f * lifetime);
+        glm::vec3 colorOffset = glm::vec3(random.randomFloat(0.1f), random.randomFloat(0.1f), random.randomFloat(0.1f));
         glm::vec3 particleColor = color + colorOffset;
         particleColor = glm::clamp(particleColor, glm::vec3(0.0f), glm::vec3(1.0f));
         particles.push(position, particleColor, velocity + velocityOffset, particleLifetime, 0.0f, size);

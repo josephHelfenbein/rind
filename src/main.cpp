@@ -1,5 +1,6 @@
 #include <engine/Platform.h>
 #include <rind/GameInstance.h>
+#include <iostream>
 #if RIND_ENABLE_STEAM
 #include <rind/SteamManager.h>
 #include <rind/SteamInput.h>
@@ -59,9 +60,17 @@ int main(int argc, char** argv) {
 	rind::steam::init();
 	rind::steaminput::init();
 #endif
-	int result = engine::Platform::runWithCrashReport([] {
+	int result = engine::Platform::runWithCrashReport([argc, argv]() {
 		rind::GameInstance game;
-		game.run();
+		if (argc > 1 && argv[1] == std::string("--profile")) {
+		#ifndef NDEBUG
+			game.profileSituation();
+		#else
+			std::cerr << "Profiling is only available in debug builds." << std::endl;
+		#endif
+		} else {
+			game.run();
+		}
 	});
 #if RIND_ENABLE_STEAM
 	rind::steaminput::shutdown();

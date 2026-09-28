@@ -2,6 +2,7 @@
 
 #include <engine/Collider.h>
 #include <engine/SpatialGrid.h>
+#include <engine/Random.h>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -74,9 +75,8 @@ namespace engine {
         engine::Renderer* renderer;
         ParticleSoA particles;
 
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
-
+        Random& random = Random::global();
+        
         std::vector<VkBuffer> particleBuffers;
         std::vector<VkDeviceMemory> particleBufferMemory;
         std::vector<void*> particleBuffersMapped;

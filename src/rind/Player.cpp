@@ -285,7 +285,7 @@ rind::Player::Player(
         particleManager = entityManager->getRenderer()->getParticleManager();
         audioManager = entityManager->getRenderer()->getAudioManager();
         volumetricManager = entityManager->getRenderer()->getVolumetricManager();
-        float messageChoice = dist(rng) * 0.5f + 0.5f;
+        float messageChoice = random.randomFloat(0.0f, 1.0f);
         if (messageChoice < 0.33f) {
             showKeybindHint(HintActions::Dash, "To dash, press");
         } else if (messageChoice < 0.66f) {
@@ -441,7 +441,7 @@ void rind::Player::update(float deltaTime) {
         smokeThreshold = 25.0f * deltaTime * static_cast<float>((shotTimesEnd + maxShotTimes - shotTimesFront) % maxShotTimes) / static_cast<float>(maxShotTimes);
         // 0.0f to 25.0f * deltaTime * (1.0f - (1.0f/maxShotTimes))
     }
-    float smokeChance = (dist(rng) * 0.5f) + 0.5f; // 0 to 1
+    float smokeChance = random.randomFloat(0.0f, 1.0f);
     bool spawnSmoke = smokeChance < smokeThreshold;
 
     // grenade cooldown
@@ -484,7 +484,7 @@ void rind::Player::update(float deltaTime) {
         if (cameraShakeIntensity < 0.0f) {
             cameraShakeIntensity = 0.0f;
         }
-        glm::vec3 randomCameraLoc = glm::vec3(dist(rng), dist(rng), dist(rng)) * cameraShakeIntensity * 0.05f;
+        glm::vec3 randomCameraLoc = glm::vec3(random.randomFloat(0.05f), random.randomFloat(0.05f), random.randomFloat(0.05f)) * cameraShakeIntensity;
         camHolder->setTransform(glm::translate(glm::mat4(1.0f), randomCameraLoc));
         float overlayAlpha = std::clamp(cameraShakeIntensity * 2.0f, std::min(1.0f - (getHealth() / getMaxHealth()), 0.8f), 0.8f);
         damageEffectObject->setTint(glm::vec4(1.0f, 1.0f, 1.0f, overlayAlpha));
@@ -623,7 +623,7 @@ void rind::Player::update(float deltaTime) {
         particleManager->burstParticles(
             gunEndWorldPos - gunDir * smokeChance * 2.0f,
             trailColor,
-            gunDir * 0.5f + glm::vec3((dist(rng) - 0.5f) * 0.5f, (dist(rng) - 0.5f) * 0.5f, (dist(rng) - 0.5f) * 0.5f),
+            gunDir * 0.5f + glm::vec3(random.randomFloat(-0.75f, 0.25f), random.randomFloat(-0.75f, 0.25f), random.randomFloat(-0.75f, 0.25f)),
             5,
             0.3f,
             0.5f,
@@ -1090,7 +1090,7 @@ void rind::Player::damage(float amount) {
     if (earlyReturn) {
         return;
     }
-    cameraShakeIntensity = dist(rng) * 0.5f + 1.2f;
+    cameraShakeIntensity = random.randomFloat(0.7f, 1.7f);
     if (getHealth() <= 0.0f && !isDead) {
         heartbeatOffset = 0.0f;
         isDead = true;

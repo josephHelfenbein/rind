@@ -186,8 +186,8 @@ void rind::BashingEnemy::wander() {
     float amount = 0.0f;
     uint32_t tries = 0;
     while (tries < 20) {
-        direction = (dist(rng) + 1.0f) * std::numbers::pi_v<float>;
-        amount = (dist(rng) + 1.0f) * 10.0f;
+        direction = random.randomFloat(0.0f, 2.0f * std::numbers::pi_v<float>);
+        amount = random.randomFloat(0.0f, 20.0f);
         glm::vec3 goal = glm::vec3(cos(direction), 0.0f, sin(direction)) * amount;
         glm::vec3 worldGoal = getWorldPosition() + goal;
         glm::vec3 rayOrigin = worldGoal + glm::vec3(0.0f, 2.0f, 0.0f);
@@ -214,7 +214,7 @@ void rind::BashingEnemy::wander() {
 void rind::BashingEnemy::wanderTo(float deltaTime) {
     if (waiting) {
         float escapeProb = deltaTime * 1.5f;
-        float roll = (dist(rng) + 1.0f) / 2.0f;
+        float roll = random.randomFloat(0.0f, 1.0f);
         if (roll < escapeProb) {
             waiting = false;
         } else {

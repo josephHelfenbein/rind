@@ -1,7 +1,7 @@
 #pragma once
 
 #include <engine/EntityManager.h>
-#include <random>
+#include <engine/Random.h>
 
 namespace engine {
     class OBBCollider;
@@ -31,7 +31,6 @@ namespace rind {
         engine::ParticleManager* particleManager = nullptr;
         engine::VolumetricManager* volumetricManager = nullptr;
         engine::AudioManager* audioManager = nullptr;
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+        engine::Random& random = engine::Random::global();
     };
 };

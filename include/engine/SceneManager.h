@@ -26,6 +26,7 @@ namespace engine {
         void setActiveSceneDeferred(int index);
         void processPendingSceneChange();
         bool hasPendingSceneChange() const { return pendingSceneIndex != -1; }
+        size_t getSceneCount() const { return scenes.size(); }
 
     private:
         Renderer* renderer;

@@ -174,7 +174,7 @@ void rind::FlyingEnemy::update(float deltaTime) {
             case EnemyState::Attacking: {
                 float backToChaseDistance = 16.0f;
                 float switchToChaseProb = deltaTime * 3.0f;
-                float switchRoll = (dist(rng) + 1.0f) / 2.0f;
+                float switchRoll = random.randomFloat(0.0f, 1.0f);
                 if (!checkVisibilityOfPlayer() 
                 || distanceToPlayer > backToChaseDistance
                 || switchRoll < switchToChaseProb) {
@@ -214,9 +214,9 @@ void rind::FlyingEnemy::update(float deltaTime) {
                     lastShotTime = std::chrono::steady_clock::now();
                     shoot();
                 }
-                float randX = dist(rng);
+                float randX = random.randomFloat(1.0f);
                 float strafeChangeProb = deltaTime * 3.0f;
-                float strafeRoll = (dist(rng) + 1.0f) / 2.0f;
+                float strafeRoll = random.randomFloat(0.0f, 1.0f);
                 if (strafeRoll > strafeChangeProb && getPressed() != glm::vec3(0.0f)) {
                     break;
                 }
@@ -252,9 +252,9 @@ void rind::FlyingEnemy::wander() {
     uint32_t tries = 0;
     glm::vec3 playerPos = targetPlayer->getWorldPosition();
     while (tries < 20) {
-        direction = (dist(rng) + 1.0f) * std::numbers::pi_v<float>;
-        yOffset = dist(rng) * 0.5f;
-        amount = (dist(rng) + 1.0f) * 10.0f;
+        direction = random.randomFloat(0.0f, 2.0f * std::numbers::pi_v<float>);
+        yOffset = random.randomFloat(0.5f);
+        amount = random.randomFloat(0.0f, 20.0f);
         if ((getWorldPosition().y + yOffset * amount <= -5.0f && yOffset < 0.0f)
          || (getWorldPosition().y + yOffset * amount >= 10.0f && yOffset > 0.0f)) {
             yOffset = -yOffset;
@@ -288,7 +288,7 @@ void rind::FlyingEnemy::wander() {
 void rind::FlyingEnemy::wanderTo(float deltaTime) {
     if (waiting) {
         float escapeProb = deltaTime * 1.5f;
-        float roll = (dist(rng) + 1.0f) / 2.0f;
+        float roll = random.randomFloat(0.0f, 1.0f);
         if (roll < escapeProb) {
             waiting = false;
         } else {

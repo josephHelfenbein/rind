@@ -166,7 +166,7 @@ void rind::Enemy::update(float deltaTime) {
         );
         trailFramesRemaining--;
     }
-    float spawnCloud = pow(dist(rng) + 1.0f, (getMaxHealth() - getHealth()) / getMaxHealth());
+    float spawnCloud = pow(random.randomFloat(0.0f, 2.0f), (getMaxHealth() - getHealth()) / getMaxHealth());
     if (spawnCloud < 0.2f) {
         volumetricManager->createVolumetric(
             glm::scale(
@@ -182,7 +182,7 @@ void rind::Enemy::update(float deltaTime) {
         );
         audioManager->playSound3D("enemy_smoke", getWorldPosition(), 0.8f, 0.5f);
     }
-    float playTalk = dist(rng) + 1.0f;
+    float playTalk = random.randomFloat(0.0f, 2.0f);
     if (playTalk > 1.999f) {
         audioManager->playSound3D("enemy_talk", getWorldPosition(), 0.5f, 0.5f);
     }
@@ -223,10 +223,10 @@ void rind::Enemy::damage(float amount) {
     if (getHealth() <= 0.0f) return; // already dead, pending deletion
     setHealth(getHealth() - amount);
     if (getHealth() <= 0.0f) {
-        float statusChance = (dist(rng) * 0.5f) + 0.5f; // 0 to 1
+        float statusChance = random.randomFloat(0.0f, 1.0f);
         if (statusChance <= 0.1f // 10% chance
          && !targetPlayer->statusEnabled()) { // status effect not already enabled
-            float randomValue = (dist(rng) * 0.5f) + 0.5f; // 0 to 1
+            float randomValue = random.randomFloat(0.0f, 1.0f);
             targetPlayer->setStatusEffect(getRandomStatusEffect(randomValue));
         }
         targetPlayer->addScore(getScoreWorth());

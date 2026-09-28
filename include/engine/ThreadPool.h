@@ -39,6 +39,17 @@ namespace engine {
             return std::min(byMin, maxChunks);
         }
 
+        void asyncChunk(ChunkFn&& fn) {
+            writeIdx = (writeIdx + 1) % kMaxWorkRingSize; // single-threaded writer, safe
+            while (workFlags[writeIdx].load(std::memory_order_acquire)) {
+                notification.notify_all();
+                std::this_thread::yield(); // spin until slot is free
+            }
+            workRing[writeIdx] = ChunkTask{std::move(fn), 0, 0, 0, nullptr};
+            workFlags[writeIdx].store(true, std::memory_order_release);
+            notification.notify_one();
+        }
+
         void parallelForChunks(size_t begin, size_t end, size_t minChunk, const ChunkFn& fn) {
             if (end <= begin) return;
 
@@ -66,7 +77,7 @@ namespace engine {
                     notification.notify_all();
                     std::this_thread::yield(); // spin until slot is free
                 }
-                workRing[writeIdx] = ChunkTask{&fn, b, e, c, &remaining};
+                workRing[writeIdx] = ChunkTask{fn, b, e, c, &remaining};
                 workFlags[writeIdx].store(true, std::memory_order_release);
                 notification.notify_one();
             }
@@ -97,7 +108,7 @@ namespace engine {
             // reserve 2 cores on bigger machines for driver/audio threads
             const size_t cores = usableCores();
             const size_t reserved = cores >= 6 ? 2 : 1;
-            const size_t workerN = cores > 1 ? std::clamp<size_t>(cores - reserved, 1, 6) : 0;
+            const size_t workerN = cores > 1 ? std::clamp<size_t>(cores - reserved, 1, 6) : 1;
             workers.reserve(workerN);
             for (size_t i = 0; i < workerN; ++i) {
                 workers.emplace_back([this] { workerLoop(); });
@@ -129,8 +140,10 @@ namespace engine {
                         if (workFlags[readIdx].exchange(false, std::memory_order_acquire)) {
                             ChunkTask hold = std::move(workRing[readIdx]);
                             workRing[readIdx] = ChunkTask{};
-                            (*hold.fn)(hold.begin, hold.end, hold.chunkIdx);
-                            hold.remaining->fetch_sub(1, std::memory_order_release);
+                            hold.fn(hold.begin, hold.end, hold.chunkIdx);
+                            if (hold.remaining) {
+                                hold.remaining->fetch_sub(1, std::memory_order_release);
+                            }
                             hadWork = true;
                         }
                     }
@@ -149,7 +162,7 @@ namespace engine {
         }
 
         struct ChunkTask {
-            const ChunkFn* fn;
+            ChunkFn fn;
             size_t begin;
             size_t end;
             size_t chunkIdx;

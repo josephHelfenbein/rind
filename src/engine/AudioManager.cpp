@@ -127,7 +127,7 @@ void engine::AudioManager::playSound3D(const std::string& name, const glm::vec3&
     ma_sound_set_rolloff(&data->sound, 0.3f);
 
     if (pitchVariation != 0.0f) {
-        float vary = dist(rng) * pitchVariation;
+        float vary = random.randomFloat(pitchVariation);
         ma_sound_set_pitch(&data->sound, 1.0f + vary);
     }
 
@@ -150,7 +150,7 @@ void engine::AudioManager::playSound(const std::string& name, float volume, floa
     ma_sound_set_volume(&data->sound, volume);
 
     if (pitchVariation != 0.0f) {
-        float vary = dist(rng) * pitchVariation;
+        float vary = random.randomFloat(pitchVariation);
         ma_sound_set_pitch(&data->sound, 1.0f + vary);
     }
 

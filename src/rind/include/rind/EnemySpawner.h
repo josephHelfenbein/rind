@@ -1,9 +1,9 @@
 #pragma once
 
 #include <engine/EntityManager.h>
-#include <glm/gtc/matrix_transform.hpp>
+#include <engine/Random.h>
 #include <rind/GameInstance.h>
-#include <random>
+#include <glm/gtc/matrix_transform.hpp>
 #include <numbers>
 #include <cmath>
 
@@ -43,11 +43,11 @@ namespace rind {
             }
 
             spawnTimer += deltaTime;
-            float timeRandomness = dist(rng) * baseSpawnRate * 0.25f; // +-25% of base spawn rate
+            float timeRandomness = random.randomFloat(baseSpawnRate * 0.25f);
             float adjustedSpawnInterval = (baseSpawnRate + timeRandomness) * ((5.0f - difficultyScale) / 5.0f);
             if (spawnTimer >= adjustedSpawnInterval) {
                 if (spawnChance > 1e-9f) {
-                    float spawnRoll = (dist(rng) + 1.0f) * 0.5f; // 0 to 1
+                    float spawnRoll = random.randomFloat(0.0f, 1.0f);
                     if (spawnRoll > spawnChance) {
                         spawnTimer = 0.0f;
                         return;
@@ -65,7 +65,7 @@ namespace rind {
                 glm::translate(
                     glm::rotate(
                         glm::mat4(1.0f),
-                        glm::radians(180.0f * dist(rng)),
+                        glm::radians(random.randomFloat(180.0f)),
                         glm::vec3(0.0f, 1.0f, 0.0f)
                     ),
                     getWorldPosition()
@@ -93,7 +93,6 @@ namespace rind {
         uint32_t baseMaxEnemies;
         uint32_t assumedDifficulty = 0u;
         rind::GameInstance* gameInstance = nullptr;
-        std::mt19937 rng{std::random_device{}()};
-        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+        engine::Random& random = engine::Random::global();
     };
 };
