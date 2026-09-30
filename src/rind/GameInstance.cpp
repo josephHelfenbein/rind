@@ -798,7 +798,10 @@ void rind::GameInstance::run() {
 
 #ifndef NDEBUG
 void rind::GameInstance::profileSituation() {
+    std::error_code ec;
+    std::filesystem::remove(profiler->dumpPath(), ec); // never open a stale trace
     sceneManager->setActiveSceneDeferred(sceneManager->getSceneCount() - 1); // profile scene
     renderer->run();
+    profiler->openTraceInPerfettoUI(profiler->dumpPath());
 }
 #endif

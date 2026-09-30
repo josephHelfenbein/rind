@@ -133,13 +133,19 @@ namespace profiler {
 
         static constexpr size_t kMaxFrames = 120;
 
+        std::filesystem::path dumpPath() const {
+            return getConfigDirectory(profileLocation) / "profile.json";
+        }
+
+        bool openTraceInPerfettoUI(const std::filesystem::path& tracePath, int timeoutSeconds = 30);
+
         void dumpFrames() const {
             const size_t frameIdx = currentFrameIndex;
             const auto& copy = ring;
             const size_t oldest = (frameIdx + 1) % kMaxFrames;
             if (copy[oldest].endNs == 0) return; // ring not full
 
-            std::filesystem::path path = getConfigDirectory(profileLocation) / "profile.json";
+            std::filesystem::path path = dumpPath();
             
             std::string out;
             // estimated 128 chars per zone, 256 chars for header
@@ -421,10 +427,7 @@ namespace profiler {
             #endif
         }
 
-        std::string_view nodeName(uint8_t i) const {
-            const auto& graph = renderer->getShaderManager()->getRenderGraph();
-            return i < graph.size() ? std::string_view(graph[i].name) : "unknown";
-        }
+        std::string_view nodeName(uint8_t i) const;
     };
 
     template <Zone Z>
@@ -486,7 +489,7 @@ namespace engine {
 namespace profiler {
     class Profiler {
     public:
-        Profiler(Renderer* renderer) {}
+        Profiler(class Renderer* renderer) {}
         ~Profiler() {}
     };
 };

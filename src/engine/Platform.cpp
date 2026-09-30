@@ -3,6 +3,14 @@
 #include <exception>
 #include <iostream>
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #if defined(__APPLE__)
 #include <cstdlib>
 #include <filesystem>
@@ -66,6 +74,33 @@ namespace Platform {
 		return false;
 	}
 #endif
+
+	bool openURL(const std::string& url) {
+#if defined(_WIN32)
+		const HINSTANCE result = ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+		return reinterpret_cast<INT_PTR>(result) > 32;
+#else
+#if defined(__APPLE__)
+		const char* launcher = "open";
+#else
+		const char* launcher = "xdg-open";
+#endif
+		const pid_t pid = fork();
+		if (pid < 0) {
+			return false;
+		}
+		if (pid == 0) {
+			execlp(launcher, launcher, url.c_str(), static_cast<char*>(nullptr));
+			_exit(127);
+		}
+		// both launchers return as soon as the browser has been handed the url
+		int status = 0;
+		if (waitpid(pid, &status, 0) < 0) {
+			return false;
+		}
+		return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#endif
+	}
 
 	int runWithCrashReport(const std::function<void()>& body, const char* logName) {
 		try {
